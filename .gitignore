@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.env.runtime
+.first-api-key
+*.tsbuildinfo
+infra/.terraform/
+infra/terraform.tfstate*
+infra/terraform.tfvars
+infra/.terraform.lock.hcl
