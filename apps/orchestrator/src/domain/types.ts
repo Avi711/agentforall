@@ -1,16 +1,7 @@
 import { z } from "zod";
+import { INSTANCE_STATUSES } from "@agent-forall/db";
 
-export const INSTANCE_STATUSES = [
-  "provisioning",
-  "running",
-  "degraded",
-  "unhealthy",
-  "stopped",
-  "destroying",
-  "destroyed",
-  "error",
-] as const;
-
+export { INSTANCE_STATUSES };
 export type InstanceStatus = (typeof INSTANCE_STATUSES)[number];
 
 export const VALID_TRANSITIONS: Record<InstanceStatus, readonly InstanceStatus[]> = {

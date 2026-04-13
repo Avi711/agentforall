@@ -15,6 +15,13 @@
       "when": 1712786400000,
       "tag": "0001_fix_port_index",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776107904313,
+      "tag": "0002_light_grey_gargoyle",
+      "breakpoints": true
     }
   ]
 }

@@ -72,7 +72,7 @@ async function main(): Promise<void> {
   log.info("database connected");
 
   const db = drizzle(pool);
-  await migrate(db, { migrationsFolder: "./drizzle" });
+  await migrate(db, { migrationsFolder: "../../packages/db/drizzle" });
   log.info("migrations applied");
 
   const repo = new InstanceRepository(db, encryptionKey);

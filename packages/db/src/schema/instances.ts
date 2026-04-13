@@ -10,7 +10,17 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { INSTANCE_STATUSES } from "../domain/types.js";
+
+export const INSTANCE_STATUSES = [
+  "provisioning",
+  "running",
+  "degraded",
+  "unhealthy",
+  "stopped",
+  "destroying",
+  "destroyed",
+  "error",
+] as const;
 
 export const instances = pgTable(
   "instances",

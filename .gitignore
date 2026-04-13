@@ -1,9 +1,14 @@
 node_modules/
 dist/
+.next/
 .env
-.env.runtime
+.env.*
+!.env.example
 .first-api-key
 *.tsbuildinfo
+.claude/
+.playwright-mcp/
+*.png
 infra/.terraform/
 infra/terraform.tfstate*
 infra/terraform.tfvars
