@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { trackLead } from "./MetaPixel";
 
 type FormState = "idle" | "submitting" | "success" | "error";
 
@@ -52,6 +53,7 @@ export function LeadForm() {
       }
 
       setState("success");
+      trackLead();
       form.reset();
     } catch (err) {
       setState("error");

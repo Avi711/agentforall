@@ -27,8 +27,8 @@ export function Navbar() {
       }`}
     >
       <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4 sm:px-8">
-        <a href="#" className="text-lg font-black tracking-tight text-espresso">
-          Agent<span className="text-terra">ForAll</span>
+        <a href="#" className="text-xl text-espresso" style={{ letterSpacing: '-0.02em' }}>
+          <span className="font-extrabold">Agent</span><span className="font-normal text-espresso-light">for</span><span className="font-extrabold text-terra">All</span>
         </a>
 
         <div className="hidden items-center gap-7 sm:flex">

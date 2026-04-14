@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Heebo } from "next/font/google";
+import { MetaPixel } from "@/components/MetaPixel";
 import "./globals.css";
 
 const heebo = Heebo({
@@ -28,6 +29,7 @@ export default function RootLayout({
   return (
     <html lang="he" dir="rtl" className={heebo.variable}>
       <body className="bg-cream font-[family-name:var(--font-heebo)] text-espresso antialiased">
+        <MetaPixel />
         {children}
       </body>
     </html>
