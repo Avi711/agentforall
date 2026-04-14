@@ -90,17 +90,18 @@ export function LeadForm() {
             <h2 className="text-4xl font-black tracking-tight text-espresso sm:text-5xl">
               הצטרפו
               <br />
-              <span className="text-terra">לגישה מוקדמת</span>
+              <span className="text-terra">לרשימת ההמתנה</span>
             </h2>
             <p className="mt-5 text-lg font-light leading-relaxed text-espresso-light">
-              היו מהראשונים לקבל עוזר אישי AI משלכם. השאירו פרטים ואנחנו נסדר הכל בשבילכם — בלי טכנולוגיה, בלי סיבוכים.
+              הצטרפו לרשימת ההמתנה וקבלו גישה מוקדמת לסוכן AI אישי משלכם. השאירו פרטים ואנחנו נסדר הכל בשבילכם — בלי טכנולוגיה, בלי סיבוכים.
             </p>
 
             <div className="mt-8 space-y-4">
               {[
                 "הקמה תוך דקות — בלי להתקין כלום",
                 "סוכן פרטי על שרת מאובטח",
-                "תעריף מייסדים מיוחד לנרשמים מוקדם",
+                "החל מ-99 ש״ח/חודש — תלוי כמה תעבידו אותו",
+                "תעריף מייסדים מיוחד למצטרפים מרשימת ההמתנה",
               ].map((item) => (
                 <div key={item} className="flex items-start gap-3">
                   <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sage text-white">
@@ -189,7 +190,7 @@ export function LeadForm() {
                     <svg className="mt-0.5 h-3.5 w-3.5 shrink-0 text-terra" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    לוואטסאפ צריך מספר ייעודי לסוכן (eSIM או SIM נוסף). אנחנו מלווים אתכם בתהליך.
+                    לוואטסאפ של הסוכן צריך מספר ייעודי. יש לכם? מעולה. אין? נסדר לכם.
                   </p>
                 )}
               </div>
@@ -228,7 +229,7 @@ export function LeadForm() {
                 disabled={state === "submitting"}
                 className="w-full rounded-xl bg-terra px-8 py-4 text-lg font-bold text-white transition-all hover:bg-espresso hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {state === "submitting" ? "שולח..." : "אני רוצה סוכן — שמרו לי מקום"}
+                {state === "submitting" ? "שולח..." : "שמרו לי מקום ברשימה"}
               </button>
 
               <p className="text-center text-xs text-espresso-light/60">

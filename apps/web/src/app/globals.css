@@ -73,3 +73,31 @@ body {
 .animate-pulse-soft {
   animation: pulse-soft 3s ease-in-out infinite;
 }
+
+/* ── Stories-style progress bar (GPU-composited, no layout thrash) ── */
+@keyframes bar-fill {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+.bar-fill-active {
+  animation: bar-fill var(--bar-duration, 5000ms) linear forwards;
+  will-change: transform;
+}
+
+/* ── Marquee scroll (GPU-composited translateX) ── */
+@keyframes marquee-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-33.333%); }
+}
+
+.marquee-row {
+  animation: marquee-scroll 40s linear infinite;
+  animation-direction: var(--marquee-direction, normal);
+  will-change: transform;
+  width: max-content;
+}
+
+.marquee-row:hover {
+  animation-play-state: paused;
+}

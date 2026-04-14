@@ -7,7 +7,6 @@ import { LeadForm } from "@/components/LeadForm";
 import { FAQ } from "@/components/FAQ";
 import { Footer } from "@/components/Footer";
 import { Disclaimer } from "@/components/Disclaimer";
-
 export default function Home() {
   return (
     <>

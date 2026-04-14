@@ -45,7 +45,7 @@ export function Navbar() {
             href="#signup"
             className="rounded-full bg-espresso px-6 py-2.5 text-sm font-bold text-cream transition-all hover:bg-terra hover:shadow-lg hover:shadow-terra/20"
           >
-            רוצה סוכן
+            הצטרפו לרשימה
           </a>
         </div>
 
@@ -81,7 +81,7 @@ export function Navbar() {
             onClick={() => setMenuOpen(false)}
             className="mt-4 block rounded-full bg-terra px-6 py-3 text-center text-base font-bold text-white"
           >
-            רוצה סוכן
+            הצטרפו לרשימה
           </a>
         </div>
       )}
