@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>Agent For All — Social Posts</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;800;900&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Heebo', sans-serif;
+    background: #d5d0ca;
+    padding: 40px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 40px;
+    justify-content: center;
+  }
+  h2.section-title {
+    width: 100%;
+    text-align: center;
+    font-size: 24px;
+    color: #2C1810;
+    padding: 20px 0 0;
+  }
+  .post {
+    width: 1080px;
+    height: 1350px;
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+    border-radius: 12px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.12);
+  }
+  .post-label {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    background: rgba(0,0,0,0.5);
+    color: white;
+    font-size: 16px;
+    padding: 5px 12px;
+    border-radius: 16px;
+    z-index: 10;
+    direction: ltr;
+    backdrop-filter: blur(4px);
+  }
+
+  /* === SHARED LOGO === */
+  .logo { letter-spacing: -0.02em; }
+  .logo .a { font-weight: 800; }
+  .logo .f { font-weight: 400; }
+  .logo .al { font-weight: 800; }
+
+  /* ===== EXPLAINER POSTS ===== */
+  .explainer {
+    background: #FBF8F3;
+    display: flex;
+    flex-direction: column;
+    padding: 90px 80px;
+  }
+  .explainer .logo {
+    font-size: 28px;
+    margin-bottom: 60px;
+  }
+  .explainer .logo .a { color: #2C1810; }
+  .explainer .logo .f { color: #8C7A6B; }
+  .explainer .logo .al { color: #C7522A; }
+
+  .explainer h1 {
+    font-size: 72px;
+    font-weight: 900;
+    color: #2C1810;
+    line-height: 1.15;
+    margin-bottom: 44px;
+  }
+  .explainer h1 .hl { color: #C7522A; }
+
+  .explainer .body-text {
+    font-size: 34px;
+    font-weight: 400;
+    color: #5C4033;
+    line-height: 1.7;
+  }
+  .explainer .body-text strong { font-weight: 700; color: #2C1810; }
+
+  .explainer .bottom-bar {
+    margin-top: auto;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding-top: 36px;
+    border-top: 2px solid rgba(44,24,16,0.1);
+  }
+  .explainer .bottom-bar .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: #C7522A;
+  }
+  .explainer .bottom-bar span {
+    font-size: 24px;
+    color: #8C7A6B;
+    font-weight: 500;
+  }
+
+  /* Bullet list style */
+  .bullet-list {
+    list-style: none;
+    margin-top: 28px;
+  }
+  .bullet-list li {
+    font-size: 34px;
+    color: #2C1810;
+    padding: 22px 0;
+    border-bottom: 1px solid rgba(44,24,16,0.08);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    font-weight: 500;
+  }
+  .bullet-list li:last-child { border-bottom: none; }
+  .bullet-list .ck {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: #6B8F71;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+
+  /* ===== WHATSAPP CHAT POSTS ===== */
+  .wa-post {
+    display: flex;
+    flex-direction: column;
+    background: #FBF8F3;
+  }
+  .wa-post .header {
+    background: linear-gradient(135deg, #2C1810 0%, #3D2518 100%);
+    padding: 60px 72px 52px;
+    color: white;
+    position: relative;
+  }
+  .wa-post .header::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 20px;
+    background: #FBF8F3;
+    border-radius: 20px 20px 0 0;
+  }
+  .wa-post .header .logo {
+    font-size: 24px;
+    margin-bottom: 18px;
+    opacity: 0.9;
+  }
+  .wa-post .header .logo .a { color: #fff; }
+  .wa-post .header .logo .f { color: rgba(255,255,255,0.5); }
+  .wa-post .header .logo .al { color: #E8875F; }
+  .wa-post .header h1 {
+    font-size: 48px;
+    font-weight: 800;
+    line-height: 1.2;
+  }
+  .wa-post .header h1 .hl { color: #E8875F; }
+
+  .wa-post .chat-area {
+    flex: 1;
+    padding: 28px 56px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow: hidden;
+  }
+
+  /* Chat bubbles */
+  .bubble {
+    max-width: 78%;
+    padding: 18px 24px;
+    border-radius: 18px;
+    font-size: 27px;
+    line-height: 1.55;
+  }
+  .bubble .time {
+    font-size: 16px;
+    color: rgba(0,0,0,0.3);
+    margin-top: 6px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    justify-content: flex-end;
+  }
+  .bubble .time .ck { color: #53bdeb; font-size: 15px; }
+
+  .bubble.user {
+    align-self: flex-start;
+    background: #DCF8C6;
+    border-bottom-right-radius: 5px;
+    color: #111;
+  }
+  .bubble.bot {
+    align-self: flex-end;
+    background: white;
+    border-bottom-left-radius: 5px;
+    color: #111;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .bubble.bot .label {
+    font-size: 18px;
+    font-weight: 700;
+    color: #C7522A;
+    margin-bottom: 8px;
+  }
+  .bubble strong { font-weight: 700; }
+
+  /* Mini table */
+  .mt { margin: 10px 0 8px; font-size: 24px; width: 100%; }
+  .mt tr td {
+    padding: 6px 0;
+    border-bottom: 1px solid #f0ede8;
+  }
+  .mt tr:last-child td { border-bottom: none; }
+  .mt tr td:first-child { font-weight: 700; }
+  .mt tr td:last-child { text-align: left; direction: ltr; font-weight: 500; }
+
+  .wa-post .footer-tag {
+    padding: 24px 56px 44px;
+    font-size: 24px;
+    color: #8C7A6B;
+    text-align: center;
+  }
+  .wa-post .footer-tag strong { color: #C7522A; font-weight: 700; }
+
+  /* Time gap separator */
+  .time-gap {
+    align-self: center;
+    font-size: 17px;
+    color: #8C7A6B;
+    background: rgba(44,24,16,0.06);
+    padding: 5px 18px;
+    border-radius: 10px;
+    margin: 8px 0;
+  }
+
+  /* ===== CTA POST ===== */
+  .cta-post {
+    background: linear-gradient(135deg, #C7522A 0%, #A8421F 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 120px 100px;
+    position: relative;
+  }
+  .cta-post::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.08) 0%, transparent 60%);
+  }
+  .cta-post > * { position: relative; }
+  .cta-post .logo {
+    font-size: 32px;
+    margin-bottom: 64px;
+  }
+  .cta-post .logo .a { color: #fff; }
+  .cta-post .logo .f { color: rgba(255,255,255,0.5); }
+  .cta-post .logo .al { color: #2C1810; }
+  .cta-post h1 {
+    font-size: 84px;
+    font-weight: 900;
+    color: white;
+    line-height: 1.15;
+    margin-bottom: 44px;
+  }
+  .cta-post .subtitle {
+    font-size: 36px;
+    color: rgba(255,255,255,0.85);
+    line-height: 1.65;
+    margin-bottom: 64px;
+  }
+  .cta-post .cta-btn {
+    display: inline-block;
+    background: #2C1810;
+    color: white;
+    font-size: 38px;
+    font-weight: 800;
+    padding: 30px 68px;
+    border-radius: 60px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+  }
+  .cta-post .url {
+    margin-top: 32px;
+    font-size: 28px;
+    color: rgba(255,255,255,0.6);
+    font-weight: 500;
+  }
+</style>
+</head>
+<body>
+
+<h2 class="section-title">Agent For All — 19 Social Posts (1080&times;1350 &mdash; 4:5 Portrait)</h2>
+
+<!-- POST 1: INTRO -->
+<div class="post explainer">
+  <div class="post-label">Post 1 — Intro</div>
+  <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+  <h1>מה אם היה לכם<br><span class="hl">עוזר אישי</span><br>בוואטסאפ?</h1>
+  <div class="body-text">
+    לא אפליקציה חדשה. לא צ'אט-בוט טיפש.<br><br>
+    <strong>סוכן AI אישי</strong> שחי בוואטסאפ שלכם,<br>
+    מכיר אתכם, לומד את ההרגלים שלכם,<br>
+    ועובד בשבילכם <strong>24/7</strong>.
+  </div>
+  <div class="bottom-bar">
+    <div class="dot"></div>
+    <span>agentforall.co.il</span>
+  </div>
+</div>
+
+<!-- POST 2: BUDGET -->
+<div class="post wa-post">
+  <div class="post-label">Post 2 — Budget</div>
+  <div class="header">
+    <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+    <h1>הוא יודע כמה<br><span class="hl">הוצאתם החודש</span></h1>
+  </div>
+  <div class="chat-area">
+    <div class="bubble user">
+      כמה הוצאתי על אוכל החודש?
+      <div class="time">09:14 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">שלומי 🤖</div>
+      הנה הסיכום שלך לאפריל:
+      <table class="mt">
+        <tr><td>מסעדות</td><td>₪1,840</td></tr>
+        <tr><td>סופר</td><td>₪2,360</td></tr>
+        <tr><td>משלוחים</td><td>₪920</td></tr>
+        <tr><td><strong>סה"כ</strong></td><td><strong>₪5,120</strong></td></tr>
+      </table>
+      זה 18% יותר מחודש שעבר. רוב העלייה — משלוחים 📊
+      <div class="time">09:14</div>
+    </div>
+  </div>
+  <div class="footer-tag">הסוכן שלכם <strong>עוקב, מנתח ומתריע</strong> — אוטומטית</div>
+</div>
+
+<!-- POST 3: MORNING BRIEFING -->
+<div class="post wa-post">
+  <div class="post-label">Post 3 — Morning Briefing</div>
+  <div class="header">
+    <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+    <h1>הוא <span class="hl">מעיר אתכם</span><br>עם תדריך בוקר</h1>
+  </div>
+  <div class="chat-area">
+    <div class="bubble bot">
+      <div class="label">ג'ארוויס ☀️</div>
+      בוקר טוב! הנה הסיכום להיום ☀️<br><br>
+      <strong>🌤 מזג אוויר:</strong> 28°, בהיר<br><br>
+      <strong>📅 יומן:</strong><br>
+      09:00 — שיחה עם רואה חשבון<br>
+      12:30 — ארוחת צהריים עם דנה<br>
+      16:00 — לאסוף את הילדים<br><br>
+      <strong>⚡ תזכורות:</strong><br>
+      • לשלם ארנונה (מחר אחרון!)<br>
+      • יום הולדת של אמא בעוד 3 ימים 🎂
+      <div class="time">07:00</div>
+    </div>
+  </div>
+  <div class="footer-tag">כל בוקר. <strong>אוטומטית.</strong> בלי שתבקשו.</div>
+</div>
+
+<!-- POST 4: CALENDAR -->
+<div class="post wa-post">
+  <div class="post-label">Post 4 — Calendar</div>
+  <div class="header">
+    <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+    <h1>תזיזו פגישות<br><span class="hl">בהודעה אחת</span></h1>
+  </div>
+  <div class="chat-area">
+    <div class="bubble user">
+      תעביר את הפגישה עם יוסי למחר ב-3
+      <div class="time">11:22 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">סמנתה 📅</div>
+      הזזתי את הפגישה עם יוסי שלומי:<br><br>
+      <strong>מ:</strong> היום, 14:00<br>
+      <strong>ל:</strong> מחר (15/4), 15:00<br><br>
+      ✅ שלחתי ליוסי הודעה על השינוי.
+      <div class="time">11:22</div>
+    </div>
+    <div class="bubble user">
+      מתי אני פנוי השבוע לשעה?
+      <div class="time">11:23 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">סמנתה 📅</div>
+      3 חלונות פנויים:<br>
+      • יום ג׳ 10:00–11:00<br>
+      • יום ד׳ 14:00–15:00<br>
+      • יום ה׳ 09:00–10:00<br><br>
+      לקבוע?
+      <div class="time">11:23</div>
+    </div>
+  </div>
+</div>
+
+<!-- POST 5: WHY WHATSAPP -->
+<div class="post explainer">
+  <div class="post-label">Post 5 — Why WhatsApp</div>
+  <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+  <h1>למה <span class="hl">בוואטסאפ</span><br>ולא עוד אפליקציה?</h1>
+  <ul class="bullet-list">
+    <li><span class="ck">✓</span> כבר פותחים אותו 80 פעם ביום</li>
+    <li><span class="ck">✓</span> לא צריך להתקין כלום</li>
+    <li><span class="ck">✓</span> עובד גם כשאתם בדרכים</li>
+    <li><span class="ck">✓</span> הכל במקום אחד — בלי עוד טאב</li>
+    <li><span class="ck">✓</span> שולח תזכורות ישירות לצ'אט</li>
+  </ul>
+  <div class="bottom-bar">
+    <div class="dot"></div>
+    <span>הסוכן חי איפה שאתם כבר נמצאים</span>
+  </div>
+</div>
+
+<!-- POST 6: PRICE ALERT -->
+<div class="post wa-post">
+  <div class="post-label">Post 6 — Price Alert</div>
+  <div class="header">
+    <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+    <h1>הוא <span class="hl">עוקב אחרי מחירים</span><br>בשבילכם</h1>
+  </div>
+  <div class="chat-area">
+    <div class="bubble user">
+      תעקוב אחרי טיסות לברלין בספטמבר. תגיד לי כשיורד מ-800 ש"ח
+      <div class="time">20:15 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">מוישה ✈️</div>
+      אני על זה 👀 אבדוק כל יום ואעדכן ברגע שיש ירידה.
+      <div class="time">20:15</div>
+    </div>
+    <div class="time-gap">3 ימים אחר כך</div>
+    <div class="bubble bot">
+      <div class="label">מוישה ✈️</div>
+      🎉 <strong>ירידת מחיר!</strong><br><br>
+      טיסה לברלין 8–12/9<br>
+      <strong style="font-size:32px">₪740</strong> <span style="text-decoration:line-through;color:#999">₪1,150</span><br>
+      Wizz Air, ישיר מנתב"ג<br><br>
+      לשלוח קישור להזמנה?
+      <div class="time">08:30</div>
+    </div>
+  </div>
+  <div class="footer-tag">אתם לא צריכים לבדוק. <strong>הוא יגיד לכם.</strong></div>
+</div>
+
+<!-- POST 7: FAMILY -->
+<div class="post wa-post">
+  <div class="post-label">Post 7 — Family</div>
+  <div class="header">
+    <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+    <h1>הוא <span class="hl">מכיר את החיים</span><br>שלכם</h1>
+  </div>
+  <div class="chat-area">
+    <div class="bubble user">
+      תזכיר לי מחר לשלם חוג כדורגל של איתי ולהזמין מתנה ליום הולדת של עידן
+      <div class="time">22:41 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">יענטה 💛</div>
+      הגדרתי שתי תזכורות למחר:<br><br>
+      ⏰ 09:00 — לשלם חוג כדורגל של איתי (₪280)<br>
+      ⏰ 12:00 — להזמין מתנה לעידן<br><br>
+      אגב, עידן בן כמה? ככה אציע רעיונות 🎁
+      <div class="time">22:41</div>
+    </div>
+    <div class="bubble user">
+      בן 8, אוהב לגו ודינוזאורים
+      <div class="time">22:42 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">יענטה 💛</div>
+      שמרתי 👍 מחר אשלח 3 אפשרויות עם קישורים.
+      <div class="time">22:42</div>
+    </div>
+  </div>
+</div>
+
+<!-- POST 8: RESEARCH -->
+<div class="post wa-post">
+  <div class="post-label">Post 8 — Research</div>
+  <div class="header">
+    <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+    <h1>בקשה אחת.<br><span class="hl">מחקר שלם.</span></h1>
+  </div>
+  <div class="chat-area">
+    <div class="bubble user">
+      תשווה לי ביטוח רכב — הראל, מגדל וכלל. יונדאי i20 2022, בלי תביעות
+      <div class="time">14:08 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">ויקי 🔍</div>
+      הנה השוואה לפי הנתונים שלך:
+      <table class="mt">
+        <tr><td>הראל</td><td>₪2,850/שנה</td></tr>
+        <tr><td>מגדל</td><td>₪3,100/שנה</td></tr>
+        <tr><td>כלל</td><td>₪2,680/שנה</td></tr>
+      </table>
+      <strong>כלל הכי זול</strong>, אבל הראל כולל גרירה ללא הגבלה + רכב חלופי.<br><br>
+      המלצה: <strong>הראל</strong> — יחס מחיר-שירות הכי טוב.<br>
+      לשלוח קישור להצעה?
+      <div class="time">14:09</div>
+    </div>
+  </div>
+  <div class="footer-tag">לא גוגל. לא 15 טאבים. <strong>תשובה אחת מדויקת.</strong></div>
+</div>
+
+<!-- POST 10: DOCTOR -->
+<div class="post wa-post">
+  <div class="post-label">Post 10 — Doctor</div>
+  <div class="header">
+    <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+    <h1>המזכירה שלא<br><span class="hl">הולכת הביתה</span></h1>
+  </div>
+  <div class="chat-area">
+    <div class="bubble bot">
+      <div class="label">פלורנס 🏥</div>
+      בוקר טוב ד"ר כהן 👋<br><br>
+      <strong>📋 היום במרפאה:</strong><br>
+      8 מטופלים, 2 חדשים<br>
+      09:00 — רונית לוי (מעקב סוכרת)<br>
+      09:30 — דוד אברהם (תוצאות דם)<br>
+      10:00–12:00 — 6 תורים נוספים<br><br>
+      <strong>⚠️ שימי לב:</strong><br>
+      • רונית לא שלחה בדיקות — שלחתי לה תזכורת<br>
+      • התור של 11:00 ביטל, פתחתי את המקום לרשימת המתנה
+      <div class="time">07:30</div>
+    </div>
+    <div class="bubble user">
+      תזכיר לרונית לקחת את המטפורמין לפני הפגישה
+      <div class="time">07:32 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">פלורנס 🏥</div>
+      שלחתי לרונית הודעה ✅<br>
+      גם הוספתי לתיק שלה הערה על המטפורמין.
+      <div class="time">07:32</div>
+    </div>
+  </div>
+  <div class="footer-tag">מנהל תורים, מזכיר למטופלים, <strong>חוסך שעות בשבוע</strong></div>
+</div>
+
+<!-- POST 11: BUSINESS MANAGER -->
+<div class="post wa-post">
+  <div class="post-label">Post 11 — Business Manager</div>
+  <div class="header">
+    <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+    <h1>הוא <span class="hl">מכין אתכם</span><br>לכל פגישה</h1>
+  </div>
+  <div class="chat-area">
+    <div class="bubble bot">
+      <div class="label">ג'ארוויס 📊</div>
+      תזכורת: בעוד 15 דק׳ פגישת דירקטוריון 🏢<br><br>
+      <strong>משתתפים:</strong> 6 (אושרו כולם)<br><br>
+      <strong>📊 תקציר להכנה:</strong><br>
+      • הכנסות Q1 — ₪2.3M (עלייה של 12%)<br>
+      • 3 לקוחות חדשים החודש<br>
+      • חריגה בתקציב שיווק (8% מעל היעד)<br><br>
+      המצגת של דנה מצורפת למייל שלך.
+      <div class="time">08:45</div>
+    </div>
+    <div class="bubble user">
+      תוסיף לאג'נדה סעיף על הגיוס החדש
+      <div class="time">08:46 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">ג'ארוויס 📊</div>
+      הוספתי ✅ ושלחתי עדכון למשתתפים.
+      <div class="time">08:46</div>
+    </div>
+  </div>
+  <div class="footer-tag">לא עוד "רגע, מה היה באג'נדה?" — <strong>הוא תמיד מוכן</strong></div>
+</div>
+
+<!-- POST 12: LAWYER -->
+<div class="post wa-post">
+  <div class="post-label">Post 12 — Lawyer</div>
+  <div class="header">
+    <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+    <h1>אף <span class="hl">דדליין</span><br>לא נופל</h1>
+  </div>
+  <div class="chat-area">
+    <div class="bubble bot">
+      <div class="label">אלפרד ⚖️</div>
+      בוקר טוב עו"ד! 3 דברים דחופים 📌<br><br>
+      <strong>🔴 היום:</strong> הגשת כתב תביעה — תיק שמעוני (בית משפט שלום ת"א)<br><br>
+      <strong>🟡 מחר:</strong> תשובה לגילוי מסמכים — תיק רביבו<br><br>
+      <strong>🟢 בעוד 5 ימים:</strong> דיון קדם-משפט — תיק אלון נכסים
+      <div class="time">08:00</div>
+    </div>
+    <div class="bubble user">
+      תשלח ללקוח שמעוני שצריך חתימה על התצהיר היום
+      <div class="time">08:03 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">אלפרד ⚖️</div>
+      שלחתי לשמעוני הודעה + קישור לחתימה דיגיטלית ✅<br>
+      אעקוב ואעדכן כשיחתום.
+      <div class="time">08:03</div>
+    </div>
+  </div>
+  <div class="footer-tag">מעקב תיקים, דדליינים, לקוחות — <strong>בלי אקסל</strong></div>
+</div>
+
+<!-- POST 13: SMALL BUSINESS -->
+<div class="post wa-post">
+  <div class="post-label">Post 13 — Small Business</div>
+  <div class="header">
+    <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+    <h1>סיכום יומי<br><span class="hl">של העסק שלכם</span></h1>
+  </div>
+  <div class="chat-area">
+    <div class="bubble bot">
+      <div class="label">אביגדור ☕</div>
+      סיכום יום — קפה &amp; קרואסון 🥐<br><br>
+      <strong>💰 מכירות היום:</strong> ₪8,450 (86 עסקאות)<br>
+      <strong>📈 לעומת אתמול:</strong> +14%<br>
+      <strong>🏆 מוצר מוביל:</strong> קרואסון שוקולד (34 יח׳)<br><br>
+      <strong>⚠️ מלאי נמוך:</strong><br>
+      • חלב שקדים — נשאר ל-2 ימים<br>
+      • כוסות 350ml — 40 יחידות
+      <div class="time">21:00</div>
+    </div>
+    <div class="bubble user">
+      תזמין חלב שקדים מהספק הרגיל, 20 ליטר
+      <div class="time">21:02 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">אביגדור ☕</div>
+      שלחתי הזמנה לטל משקאות — 20 ליטר חלב שקדים ✅<br>
+      אישור צפוי מחר בבוקר.
+      <div class="time">21:02</div>
+    </div>
+  </div>
+  <div class="footer-tag">סיכום יומי, מעקב מלאי, הזמנות — <strong>העסק בכיס</strong></div>
+</div>
+
+<!-- POST 14: OPENCLAW EXPLAINER -->
+<div class="post explainer">
+  <div class="post-label">Post 14 — OpenClaw</div>
+  <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+  <h1>קוד פתוח.<br>שקוף.<br><span class="hl">שלכם.</span></h1>
+  <div class="body-text">
+    הסוכן שלנו בנוי על <strong>OpenClaw</strong> — פרויקט קוד פתוח שכל אחד יכול לראות, לבדוק ולשפר.<br><br>
+    מה זה אומר בשבילכם?<br><br>
+    <strong>אין קסמים מאחורי הקלעים.</strong><br>
+    אין אלגוריתם סודי שמחליט בשבילכם.<br>
+    הכל שקוף, הכל בקוד, הכל שלכם.
+  </div>
+  <div class="bottom-bar">
+    <div class="dot"></div>
+    <span>Open Source — כי אמון מתחיל בשקיפות</span>
+  </div>
+</div>
+
+<!-- POST 15: PRIVACY -->
+<div class="post explainer">
+  <div class="post-label">Post 15 — Privacy</div>
+  <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+  <h1>הנתונים שלכם<br><span class="hl">לא אצלנו</span></h1>
+  <ul class="bullet-list">
+    <li><span class="ck">🔒</span> כל סוכן רץ בשרת נפרד ומוצפן</li>
+    <li><span class="ck">🚫</span> אנחנו לא קוראים את השיחות שלכם</li>
+    <li><span class="ck">📂</span> הקוד פתוח — תבדקו בעצמכם</li>
+    <li><span class="ck">🗑️</span> רוצים למחוק? הכל נמחק. לצמיתות.</li>
+    <li><span class="ck">🇮🇱</span> שרתים באירופה, חוק GDPR</li>
+  </ul>
+  <div class="bottom-bar">
+    <div class="dot"></div>
+    <span>פרטיות היא לא פיצ'ר — היא הבסיס</span>
+  </div>
+</div>
+
+<!-- POST 16: CRYPTO -->
+<div class="post wa-post">
+  <div class="post-label">Post 16 — Crypto</div>
+  <div class="header">
+    <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+    <h1>הוא <span class="hl">עוקב אחרי<br>הקריפטו</span> שלכם</h1>
+  </div>
+  <div class="chat-area">
+    <div class="bubble user">
+      תעקוב אחרי ביטקוין ואת'ריום. תגיד לי אם יש תנועה של יותר מ-5%
+      <div class="time">22:10 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">באפט 📈</div>
+      אני על זה 📊 אבדוק כל שעה ואשלח התראה מיידית.
+      <div class="time">22:10</div>
+    </div>
+    <div class="time-gap">למחרת בבוקר</div>
+    <div class="bubble bot">
+      <div class="label">באפט 📈</div>
+      🚀 <strong>ביטקוין זז!</strong><br><br>
+      <strong style="font-size:32px">$71,200</strong> <span style="color:#22c55e;font-weight:700">+6.2%</span><br>
+      בלילה האחרון. את'ריום עלה 3.1%.<br><br>
+      גם שמתי לב שסולנה זינקה 11% — רוצה שאעקוב?
+      <div class="time">06:45</div>
+    </div>
+  </div>
+  <div class="footer-tag">התראות בזמן אמת. <strong>לא מפספסים תנועה.</strong></div>
+</div>
+
+<!-- POST 17: STOCKS -->
+<div class="post wa-post">
+  <div class="post-label">Post 17 — Stocks</div>
+  <div class="header">
+    <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+    <h1>סיכום תיק<br><span class="hl">כל בוקר</span></h1>
+  </div>
+  <div class="chat-area">
+    <div class="bubble bot">
+      <div class="label">באפט 💼</div>
+      בוקר טוב! הנה סיכום התיק שלך 💼<br><br>
+      <table class="mt">
+        <tr><td>🍎 AAPL</td><td style="color:#22c55e">+1.8%</td></tr>
+        <tr><td>🔍 GOOG</td><td style="color:#22c55e">+0.4%</td></tr>
+        <tr><td>⚡ TSLA</td><td style="color:#ef4444">-2.1%</td></tr>
+        <tr><td>🏦 לאומי</td><td style="color:#22c55e">+0.9%</td></tr>
+      </table>
+      <strong>סה"כ:</strong> +₪1,240 אתמול 📈<br><br>
+      שמתי לב שטסלה ירדה 3 ימים ברצף. רוצה שאשים התראה על $180?
+      <div class="time">07:00</div>
+    </div>
+    <div class="bubble user">
+      כן, ואם זה מגיע ל-175 תקנה 10 מניות
+      <div class="time">07:02 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">באפט 💼</div>
+      הגדרתי:<br>
+      📢 התראה על $180<br>
+      🛒 קניה אוטומטית — 10 מניות TSLA ב-$175<br><br>
+      אעדכן ברגע שיקרה ✅
+      <div class="time">07:02</div>
+    </div>
+  </div>
+</div>
+
+<!-- POST 18: FUNNY — ANNIVERSARY -->
+<div class="post wa-post">
+  <div class="post-label">Post 18 — Funny Anniversary</div>
+  <div class="header">
+    <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+    <h1>הוא זוכר<br><span class="hl">גם מה שאתם לא</span></h1>
+  </div>
+  <div class="chat-area">
+    <div class="bubble bot">
+      <div class="label">ברוכי 😏</div>
+      היי, רק תזכורת קטנה... 😏<br><br>
+      <strong>מחר יום נישואין שלך ושל מיכל. 7 שנים 💍</strong><br><br>
+      בשנה שעברה הזמנת פרחים של 200 ש"ח ברגע האחרון.<br>
+      רוצה שאזמין היום משהו יותר טוב? 🌹
+      <div class="time">09:00</div>
+    </div>
+    <div class="bubble user">
+      😅😅😅 שכחתי לגמרי. כן בבקשה, תזמין מלון לסופש קרוב
+      <div class="time">09:01 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">ברוכי 😏</div>
+      מצאתי 3 אפשרויות:<br><br>
+      🏨 ספא במצפה הימים — ₪1,200/לילה<br>
+      🏨 הרברט סמואל — ₪980/לילה<br>
+      🏨 בוטיק בנהריה — ₪750/לילה<br><br>
+      מיכל אוהבת ספא, אז ממליץ על הראשון 😉
+      <div class="time">09:02</div>
+    </div>
+  </div>
+  <div class="footer-tag">הציל עוד זוגיות אחת 😂 <strong>תודו לו אח"כ</strong></div>
+</div>
+
+<!-- POST 19: FUNNY — CHATGPT VS AGENT -->
+<div class="post explainer">
+  <div class="post-label">Post 19 — ChatGPT vs Agent</div>
+  <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+  <h1>צ'אט GPT<br><span class="hl">vs הסוכן שלכם</span></h1>
+  <div class="body-text" style="font-size:28px; line-height:1.7">
+    <strong>אתם:</strong> "תזכיר לי מחר לקנות חלב"<br><br>
+    <strong>ChatGPT:</strong> "אני לא יכול לשלוח תזכורות, אבל הנה 5 טיפים לזיכרון..." 🤖<br><br>
+    <strong>הסוכן שלכם:</strong> "מחר ב-8 בוקר? או כשתהיה ליד הסופר ברחוב הרצל?" 📍<br><br>
+    <span style="font-size:24px; color:#8C7A6B">ההבדל? הוא <strong style="color:#C7522A">עושה</strong> ולא רק <strong style="color:#C7522A">מדבר</strong>.</span>
+  </div>
+  <div class="bottom-bar">
+    <div class="dot"></div>
+    <span>AI שעובד בשבילכם, לא רק עונה לכם</span>
+  </div>
+</div>
+
+<!-- POST 20: SASSY — WOLT ADDICTION -->
+<div class="post wa-post">
+  <div class="post-label">Post 20 — Wolt Roast</div>
+  <div class="header">
+    <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+    <h1>הוא לא ישקר<br><span class="hl">לכם</span></h1>
+  </div>
+  <div class="chat-area">
+    <div class="bubble user">
+      כמה הוצאתי על וולט החודש?
+      <div class="time">21:30 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">שלומי 🤖</div>
+      בטוח שאתה רוצה לדעת? 😬<br><br>
+      <strong>₪1,870.</strong> זה 23 משלוחים.<br>
+      בממוצע ₪81 למשלוח.<br><br>
+      לשים את זה בפרספקטיבה — זה יותר מהחשמל שלך.
+      <div class="time">21:30</div>
+    </div>
+    <div class="bubble user">
+      😭 תחסום אותי מוולט
+      <div class="time">21:31 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">שלומי 🤖</div>
+      חסימה? לא. אבל בפעם הבאה שתפתח וולט אחרי 22:00 אשלח לך תמונה של הדוח הזה 😏
+      <div class="time">21:31</div>
+    </div>
+  </div>
+  <div class="footer-tag">חבר אמיתי אומר לך <strong>את האמת</strong></div>
+</div>
+
+<!-- POST 21: SASSY — GYM -->
+<div class="post wa-post">
+  <div class="post-label">Post 21 — Gym</div>
+  <div class="header">
+    <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+    <h1>הוא <span class="hl">לא מוותר</span><br>עליכם</h1>
+  </div>
+  <div class="chat-area">
+    <div class="bubble bot">
+      <div class="label">ג'ארוויס ☀️</div>
+      היי, אמרת שאתה הולך לחדר כושר 3 פעמים השבוע.<br><br>
+      היום יום חמישי. היית <strong>0 פעמים</strong>. 🫠
+      <div class="time">07:00</div>
+    </div>
+    <div class="bubble user">
+      היה לי שבוע עמוס...
+      <div class="time">07:15 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">ג'ארוויס ☀️</div>
+      אמרת את זה גם בשבוע שעבר 🤷‍♂️<br><br>
+      יש לך חלון ב-17:00 היום. קבעתי תזכורת ב-16:30. אין תירוצים.
+      <div class="time">07:15</div>
+    </div>
+    <div class="bubble user">
+      😤 בסדר אבא
+      <div class="time">07:16 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">ג'ארוויס ☀️</div>
+      אבא שרוצה לך טוב 💪
+      <div class="time">07:16</div>
+    </div>
+  </div>
+  <div class="footer-tag">הסוכן שלא נותן לכם <strong>להתחמק</strong></div>
+</div>
+
+<!-- POST 22: SASSY — LATE NIGHT SHOPPING -->
+<div class="post wa-post">
+  <div class="post-label">Post 22 — Shopping</div>
+  <div class="header">
+    <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+    <h1>הוא יגן עליכם<br><span class="hl">מעצמכם</span></h1>
+  </div>
+  <div class="chat-area">
+    <div class="bubble user">
+      תזמין לי את האוזניות האלה מאמזון — Sony WH-1000XM6
+      <div class="time">01:15 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">אלפרד ⚖️</div>
+      השעה 01:15 בלילה. 😐<br><br>
+      בפעם האחרונה שקנית משהו אחרי חצות חזרת בבוקר עם חרטה (מכשיר עיסוי צוואר, ₪340, לא פתחת אותו).<br><br>
+      שומר לך את הקישור ומזכיר מחר ב-10 בבוקר. עדיין רוצה?
+      <div class="time">01:15</div>
+    </div>
+    <div class="bubble user">
+      ...טוב נו
+      <div class="time">01:16 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">אלפרד ⚖️</div>
+      ידעתי 😉 לילה טוב.
+      <div class="time">01:16</div>
+    </div>
+  </div>
+  <div class="footer-tag">כבר חסך לכם <strong>₪340 על עיסוי צוואר</strong> 🤝</div>
+</div>
+
+<!-- POST 9: CTA -->
+<div class="post cta-post">
+  <div class="post-label">Post 9 — CTA</div>
+  <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+  <h1>הסוכן שלכם<br>כבר מחכה</h1>
+  <div class="subtitle">
+    עוזר אישי AI שחי בוואטסאפ שלכם.<br>
+    מנהל יומן, תקציב, תזכורות ועוד.<br>
+    מוכן תוך דקות.
+  </div>
+  <div class="cta-btn">הצטרפו לגישה מוקדמת →</div>
+  <div class="url">agentforall.co.il</div>
+</div>
+
+</body>
+</html>
