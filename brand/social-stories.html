@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>Agent For All — Stories (1080×1920)</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;800;900&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Heebo', sans-serif;
+    background: #d5d0ca;
+    padding: 40px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 40px;
+    justify-content: center;
+  }
+  .story {
+    width: 1080px;
+    height: 1920px;
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+    border-radius: 16px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.12);
+  }
+  .story-label {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    background: rgba(0,0,0,0.5);
+    color: white;
+    font-size: 16px;
+    padding: 5px 12px;
+    border-radius: 16px;
+    z-index: 10;
+    direction: ltr;
+    backdrop-filter: blur(4px);
+  }
+
+  /* === SHARED LOGO === */
+  .logo { letter-spacing: -0.02em; direction: ltr; text-align: left; }
+  .logo .a { font-weight: 800; }
+  .logo .f { font-weight: 400; }
+  .logo .al { font-weight: 800; }
+
+  /* ===== STORY: EXPLAINER TYPE ===== */
+  .story-explainer {
+    background: #FBF8F3;
+    display: flex;
+    flex-direction: column;
+    padding: 100px 80px 160px;
+  }
+  .story-explainer .logo {
+    font-size: 36px;
+    margin-bottom: 80px;
+  }
+  .story-explainer .logo .a { color: #2C1810; }
+  .story-explainer .logo .f { color: #8C7A6B; }
+  .story-explainer .logo .al { color: #C7522A; }
+
+  .story-explainer h1 {
+    font-size: 88px;
+    font-weight: 900;
+    color: #2C1810;
+    line-height: 1.12;
+    margin-bottom: 56px;
+  }
+  .story-explainer h1 .hl { color: #C7522A; }
+
+  .story-explainer .body-text {
+    font-size: 44px;
+    font-weight: 400;
+    color: #5C4033;
+    line-height: 1.6;
+    flex: 1;
+  }
+  .story-explainer .body-text strong { font-weight: 700; color: #2C1810; }
+
+  .story-explainer .swipe-hint {
+    text-align: center;
+    font-size: 28px;
+    color: #8C7A6B;
+    padding-top: 40px;
+  }
+  .story-explainer .swipe-hint strong { color: #C7522A; }
+
+  /* ===== STORY: WHATSAPP CHAT ===== */
+  .story-wa {
+    display: flex;
+    flex-direction: column;
+    background: #FBF8F3;
+  }
+  .story-wa .header {
+    background: linear-gradient(135deg, #2C1810 0%, #3D2518 100%);
+    padding: 80px 72px 50px;
+    color: white;
+    position: relative;
+  }
+  .story-wa .header::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 20px;
+    background: #FBF8F3;
+    border-radius: 20px 20px 0 0;
+  }
+  .story-wa .header .logo {
+    font-size: 32px;
+    margin-bottom: 8px;
+    opacity: 0.9;
+  }
+  .story-wa .header .logo .a { color: #fff; }
+  .story-wa .header .logo .f { color: rgba(255,255,255,0.5); }
+  .story-wa .header .logo .al { color: #E8875F; }
+  .story-wa .header h1 {
+    font-size: 60px;
+    font-weight: 800;
+    line-height: 1.2;
+  }
+  .story-wa .header h1 .hl { color: #E8875F; }
+
+  .story-wa .chat-area {
+    flex: 1;
+    padding: 32px 56px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    overflow: hidden;
+  }
+
+  /* Chat bubbles */
+  .bubble {
+    max-width: 82%;
+    padding: 22px 28px;
+    border-radius: 20px;
+    font-size: 34px;
+    line-height: 1.5;
+  }
+  .bubble .time {
+    font-size: 19px;
+    color: rgba(0,0,0,0.3);
+    margin-top: 6px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    justify-content: flex-end;
+  }
+  .bubble .time .ck { color: #53bdeb; font-size: 17px; }
+
+  .bubble.user {
+    align-self: flex-start;
+    background: #DCF8C6;
+    border-bottom-right-radius: 5px;
+    color: #111;
+  }
+  .bubble.bot {
+    align-self: flex-end;
+    background: white;
+    border-bottom-left-radius: 5px;
+    color: #111;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .bubble.bot .label {
+    font-size: 24px;
+    font-weight: 700;
+    color: #C7522A;
+    margin-bottom: 8px;
+  }
+  .bubble strong { font-weight: 700; }
+
+  .story-wa .footer-tag {
+    padding: 28px 56px 160px;
+    font-size: 30px;
+    color: #8C7A6B;
+    text-align: center;
+  }
+  .story-wa .footer-tag strong { color: #C7522A; font-weight: 700; }
+
+  .time-gap {
+    align-self: center;
+    font-size: 21px;
+    color: #8C7A6B;
+    background: rgba(44,24,16,0.06);
+    padding: 6px 20px;
+    border-radius: 10px;
+    margin: 8px 0;
+  }
+
+  /* Mini table */
+  .mt { margin: 10px 0 8px; font-size: 30px; width: 100%; }
+  .mt tr td {
+    padding: 7px 0;
+    border-bottom: 1px solid #f0ede8;
+  }
+  .mt tr:last-child td { border-bottom: none; }
+  .mt tr td:first-child { font-weight: 700; }
+  .mt tr td:last-child { text-align: left; direction: ltr; font-weight: 500; }
+
+  /* ===== STORY: CTA ===== */
+  .story-cta {
+    background: linear-gradient(135deg, #C7522A 0%, #A8421F 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 140px 90px 200px;
+    position: relative;
+  }
+  .story-cta::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.08) 0%, transparent 60%);
+  }
+  .story-cta > * { position: relative; }
+  .story-cta .logo {
+    font-size: 40px;
+    margin-bottom: 80px;
+    text-align: center;
+  }
+  .story-cta .logo .a { color: #fff; }
+  .story-cta .logo .f { color: rgba(255,255,255,0.5); }
+  .story-cta .logo .al { color: #2C1810; }
+  .story-cta h1 {
+    font-size: 100px;
+    font-weight: 900;
+    color: white;
+    line-height: 1.15;
+    margin-bottom: 48px;
+  }
+  .story-cta .subtitle {
+    font-size: 44px;
+    color: rgba(255,255,255,0.85);
+    line-height: 1.6;
+    margin-bottom: 72px;
+  }
+  .story-cta .cta-btn {
+    display: inline-block;
+    background: #2C1810;
+    color: white;
+    font-size: 46px;
+    font-weight: 800;
+    padding: 34px 76px;
+    border-radius: 60px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+  }
+</style>
+</head>
+<body>
+
+<!-- STORY 1: INTRO -->
+<div class="story story-explainer">
+  <div class="story-label">Story 1 — Intro</div>
+  <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+  <h1>מה אם היה לכם<br><span class="hl">עוזר אישי</span><br>בוואטסאפ?</h1>
+  <div class="body-text">
+    לא אפליקציה חדשה.<br>
+    לא צ'אט-בוט טיפש.<br><br>
+    <strong>סוכן AI אישי</strong> שחי בוואטסאפ שלכם,<br>
+    מכיר אתכם, לומד את ההרגלים שלכם,<br>
+    ועובד בשבילכם <strong>24/7</strong>.
+  </div>
+  <div class="swipe-hint">👆 <strong>agentforall.co.il</strong></div>
+</div>
+
+<!-- STORY 2: WOLT ROAST -->
+<div class="story story-wa">
+  <div class="story-label">Story 2 — Wolt</div>
+  <div class="header">
+    <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+    <h1>הוא לא ישקר<br><span class="hl">לכם</span></h1>
+  </div>
+  <div class="chat-area">
+    <div class="bubble user">
+      כמה הוצאתי על וולט החודש?
+      <div class="time">21:30 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">שלומי 🤖</div>
+      בטוח שאתה רוצה לדעת? 😬<br><br>
+      <strong>₪1,870.</strong> זה 23 משלוחים.<br>
+      בממוצע ₪81 למשלוח.<br><br>
+      לשים את זה בפרספקטיבה — זה יותר מהחשמל שלך.
+      <div class="time">21:30</div>
+    </div>
+    <div class="bubble user">
+      😭 תחסום אותי מוולט
+      <div class="time">21:31 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">שלומי 🤖</div>
+      חסימה? לא. אבל בפעם הבאה שתפתח וולט אחרי 22:00 אשלח לך תמונה של הדוח הזה 😏
+      <div class="time">21:31</div>
+    </div>
+  </div>
+  <div class="footer-tag">חבר אמיתי אומר לך <strong>את האמת</strong></div>
+</div>
+
+<!-- STORY 3: DOCTOR -->
+<div class="story story-wa">
+  <div class="story-label">Story 3 — Doctor</div>
+  <div class="header">
+    <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+    <h1>המזכירה<br><span class="hl">שלא נחה</span></h1>
+  </div>
+  <div class="chat-area">
+    <div class="bubble bot">
+      <div class="label">פלורנס 🏥</div>
+      בוקר טוב ד"ר כהן 👋<br><br>
+      <strong>📋 היום במרפאה:</strong><br>
+      8 מטופלים, 2 חדשים<br>
+      09:00 — רונית לוי (מעקב סוכרת)<br>
+      09:30 — דוד אברהם (תוצאות דם)<br><br>
+      <strong>⚠️ שימי לב:</strong><br>
+      • רונית לא שלחה בדיקות — שלחתי לה תזכורת<br>
+      • התור של 11:00 ביטל, פתחתי מקום לרשימת המתנה
+      <div class="time">07:30</div>
+    </div>
+  </div>
+  <div class="footer-tag">מנהל תורים, מזכיר למטופלים, <strong>חוסך שעות בשבוע</strong></div>
+</div>
+
+<!-- STORY 4: GYM -->
+<div class="story story-wa">
+  <div class="story-label">Story 4 — Gym</div>
+  <div class="header">
+    <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+    <h1>הוא <span class="hl">לא מוותר</span><br>עליכם</h1>
+  </div>
+  <div class="chat-area">
+    <div class="bubble bot">
+      <div class="label">ג'ארוויס ☀️</div>
+      היי, אמרת שאתה הולך לחדר כושר 3 פעמים השבוע.<br><br>
+      היום יום חמישי. היית <strong>0 פעמים</strong>. 🫠
+      <div class="time">07:00</div>
+    </div>
+    <div class="bubble user">
+      היה לי שבוע עמוס...
+      <div class="time">07:15 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">ג'ארוויס ☀️</div>
+      אמרת את זה גם בשבוע שעבר 🤷‍♂️<br><br>
+      יש לך חלון ב-17:00 היום. קבעתי תזכורת ב-16:30. אין תירוצים.
+      <div class="time">07:15</div>
+    </div>
+    <div class="bubble user">
+      😤 בסדר אבא
+      <div class="time">07:16 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">ג'ארוויס ☀️</div>
+      אבא שרוצה לך טוב 💪
+      <div class="time">07:16</div>
+    </div>
+  </div>
+  <div class="footer-tag">הסוכן שלא נותן לכם <strong>להתחמק</strong></div>
+</div>
+
+<!-- STORY 5: OPENCLAW -->
+<div class="story story-explainer">
+  <div class="story-label">Story 5 — OpenClaw</div>
+  <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+  <h1>קוד פתוח.<br>שקוף.<br><span class="hl">שלכם.</span></h1>
+  <div class="body-text">
+    הסוכן שלנו בנוי על <strong>OpenClaw</strong> — פרויקט קוד פתוח שכל אחד יכול לראות, לבדוק ולשפר.<br><br>
+    <strong>אין קסמים מאחורי הקלעים.</strong><br>
+    אין אלגוריתם סודי שמחליט בשבילכם.<br>
+    הכל שקוף, הכל בקוד, הכל שלכם.
+  </div>
+  <div class="swipe-hint">👆 <strong>agentforall.co.il</strong></div>
+</div>
+
+<!-- STORY 6: ANNIVERSARY -->
+<div class="story story-wa">
+  <div class="story-label">Story 6 — Anniversary</div>
+  <div class="header">
+    <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+    <h1>הוא זוכר<br><span class="hl">גם מה שאתם לא</span></h1>
+  </div>
+  <div class="chat-area">
+    <div class="bubble bot">
+      <div class="label">ברוכי 😏</div>
+      היי, רק תזכורת קטנה... 😏<br><br>
+      <strong>מחר יום נישואין שלך ושל מיכל. 7 שנים 💍</strong><br><br>
+      בשנה שעברה הזמנת פרחים של 200 ש"ח ברגע האחרון.<br>
+      רוצה שאזמין היום משהו יותר טוב? 🌹
+      <div class="time">09:00</div>
+    </div>
+    <div class="bubble user">
+      😅😅😅 שכחתי לגמרי. כן בבקשה, תזמין מלון לסופש קרוב
+      <div class="time">09:01 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">ברוכי 😏</div>
+      מיכל אוהבת ספא, אז ממליץ על מצפה הימים 😉<br>
+      ₪1,200/לילה. להזמין?
+      <div class="time">09:02</div>
+    </div>
+  </div>
+  <div class="footer-tag">הציל עוד זוגיות אחת 😂</div>
+</div>
+
+<!-- STORY 7: CRYPTO -->
+<div class="story story-wa">
+  <div class="story-label">Story 7 — Crypto</div>
+  <div class="header">
+    <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+    <h1>הוא <span class="hl">עוקב אחרי<br>הקריפטו</span> שלכם</h1>
+  </div>
+  <div class="chat-area">
+    <div class="bubble user">
+      תעקוב אחרי ביטקוין ואת'ריום. תגיד לי אם יש תנועה של יותר מ-5%
+      <div class="time">22:10 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">באפט 📈</div>
+      אני על זה 📊 אבדוק כל שעה ואשלח התראה מיידית.
+      <div class="time">22:10</div>
+    </div>
+    <div class="time-gap">למחרת בבוקר</div>
+    <div class="bubble bot">
+      <div class="label">באפט 📈</div>
+      🚀 <strong>ביטקוין זז!</strong><br><br>
+      <strong style="font-size:38px">$71,200</strong> <span style="color:#22c55e;font-weight:700">+6.2%</span><br>
+      בלילה האחרון. את'ריום עלה 3.1%.<br><br>
+      גם שמתי לב שסולנה זינקה 11% — רוצה שאעקוב?
+      <div class="time">06:45</div>
+    </div>
+  </div>
+  <div class="footer-tag">התראות בזמן אמת. <strong>לא מפספסים תנועה.</strong></div>
+</div>
+
+<!-- STORY 8: SHOPPING -->
+<div class="story story-wa">
+  <div class="story-label">Story 8 — Shopping</div>
+  <div class="header">
+    <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+    <h1>הוא יגן עליכם<br><span class="hl">מעצמכם</span></h1>
+  </div>
+  <div class="chat-area">
+    <div class="bubble user">
+      תזמין לי את האוזניות האלה מאמזון — Sony WH-1000XM6
+      <div class="time">01:15 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">אלפרד ⚖️</div>
+      השעה 01:15 בלילה. 😐<br><br>
+      בפעם האחרונה שקנית משהו אחרי חצות חזרת בבוקר עם חרטה (מכשיר עיסוי צוואר, ₪340, לא פתחת אותו).<br><br>
+      שומר לך את הקישור ומזכיר מחר ב-10 בבוקר. עדיין רוצה?
+      <div class="time">01:15</div>
+    </div>
+    <div class="bubble user">
+      ...טוב נו
+      <div class="time">01:16 <span class="ck">✓✓</span></div>
+    </div>
+    <div class="bubble bot">
+      <div class="label">אלפרד ⚖️</div>
+      ידעתי 😉 לילה טוב.
+      <div class="time">01:16</div>
+    </div>
+  </div>
+  <div class="footer-tag">כבר חסך לכם <strong>₪340 על עיסוי צוואר</strong> 🤝</div>
+</div>
+
+<!-- STORY 9: CTA -->
+<div class="story story-cta">
+  <div class="story-label">Story 9 — CTA</div>
+  <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+  <h1>הסוכן שלכם<br>כבר מחכה</h1>
+  <div class="subtitle">
+    עוזר אישי AI שחי בוואטסאפ שלכם.<br>
+    מנהל יומן, תקציב, תזכורות ועוד.<br>
+    מוכן תוך דקות.
+  </div>
+  <div class="cta-btn">הצטרפו לגישה מוקדמת →</div>
+</div>
+
+</body>
+</html>

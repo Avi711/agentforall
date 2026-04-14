@@ -1,4 +1,18 @@
-# Agent For All — Session Summary (updated 2026-04-14, session 2)
+# Agent For All — Session Summary (updated 2026-04-14, session 3)
+
+## Project Vision
+
+**Agent For All** makes [OpenClaw](https://github.com/openclaw) — an open-source AI agent framework — accessible to everyone. Not just developers. Not just tech companies. *Everyone.*
+
+A doctor who needs a secretary that never sleeps. A parent who forgets anniversaries. A freelancer drowning in WhatsApp tabs. A shop owner who wants a daily sales summary at 9pm.
+
+We wrap OpenClaw in a friendly WhatsApp/Telegram interface, host it on a private encrypted server, and let people name their bot whatever they want — שלומי, ג'ארוויס, אלפרד. It's *their* agent.
+
+**Open source at the core**: The engine is transparent. No hidden algorithms. No data harvesting. Users can inspect the code themselves. We believe AI assistants should be owned, not rented.
+
+**Target audience**: Israeli entrepreneurs, freelancers, doctors, lawyers, small business owners, busy parents — anyone who'd benefit from a personal secretary but can't afford one.
+
+---
 
 ## What we built
 
@@ -10,7 +24,7 @@ agent-forall/
 │   └── orchestrator/     # Fastify backend (OpenClaw instance manager)
 ├── packages/
 │   └── db/               # Shared Drizzle 0.45 schema (Supabase PostgreSQL)
-├── brand/                # Logo PNGs, social posts, comparison HTML
+├── brand/                # Logo PNGs, social posts, stories, comparison HTML
 ├── infra/                # Terraform (GCP deployment - unchanged)
 └── package.json          # workspace root
 ```
@@ -22,47 +36,50 @@ agent-forall/
 - **Sections**: Hero → Safety disclaimer → Features (WhatsApp conversation examples) → How it works → Testimonials → Lead form → FAQ → Footer
 - **Lead form**: Name, email, phone, platform selector (WhatsApp/Telegram/Both with eSIM note), interest chips
 - **API**: POST /api/leads → Supabase PostgreSQL with rate limiting, duplicate email protection, Zod validation
+- **Admin panel**: `/admin` — password-protected lead dashboard with stats, table, CSV export, delete
+  - API: GET/DELETE /api/admin/leads with Bearer token auth
+  - Password configurable via `ADMIN_PASSWORD` env var
 - **Security**: CSP headers (Meta Pixel domains whitelisted, unsafe-eval removed), X-Frame-Options, rate limiting, singleton DB pool, no secrets in git
-- **Favicon**: SVG icon — espresso rounded square with white "A" and terra accent dot (`apps/web/src/app/icon.svg`)
-- **Meta Pixel**: Integrated via `MetaPixel.tsx` component, fires PageView on load + Lead event on form submit
+- **Favicon**: SVG icon — espresso rounded square with white "A" and terra accent dot
+- **Meta Pixel**: Integrated via `MetaPixel.tsx`, fires PageView on load + Lead event on form submit
 
-### Navbar logo (updated 2026-04-14)
+### Navbar + Footer logo
 - **Wordmark**: `AgentforAll` — Option 3 (looser tracking, -0.02em)
 - "Agent" extrabold espresso, "for" normal weight lighter color, "All" extrabold terra
-- Chose after 4-option comparison (comparison saved in `brand/logo-comparison.html`)
+- Consistent across navbar and footer
 
 ### Brand assets (brand/)
-- Profile pic PNGs at 2048px, 800px, 400px, 170px in 4 variants:
-  - v1: single line, cream background
-  - v2: stacked, cream background
-  - v3: stacked, terra background
-  - v4: stacked, espresso background (chosen for Facebook + Instagram)
+- Profile pic PNGs at 2048px, 800px, 400px, 170px in 4 variants (v4-espresso chosen for social)
 - **22 Social media posts** (1080×1350 4:5 portrait at 2× = 2160×2700px):
-  - `post-01-intro.png` — "מה אם היה לכם עוזר אישי בוואטסאפ?"
-  - `post-02-budget.png` — WhatsApp expense breakdown (bot: שלומי 🤖)
-  - `post-03-morning.png` — Proactive morning briefing (bot: ג'ארוויס ☀️)
-  - `post-04-calendar.png` — Move meetings + find free slots (bot: סמנתה 📅)
-  - `post-05-whywhatsapp.png` — Why WhatsApp (5 reasons checklist)
-  - `post-06-price.png` — Flight price monitoring + alert 3 days later (bot: מוישה ✈️)
-  - `post-07-family.png` — Kids activities, gift suggestions (bot: יענטה 💛)
-  - `post-08-research.png` — Insurance comparison with recommendation (bot: ויקי 🔍)
-  - `post-09-cta.png` — "הסוכן שלכם כבר מחכה" call to action
-  - `post-10-doctor.png` — Doctor clinic management (bot: פלורנס 🏥)
-  - `post-11-business.png` — Business meeting prep & Q1 briefing (bot: ג'ארוויס 📊)
-  - `post-12-lawyer.png` — Lawyer deadline & case tracking (bot: אלפרד ⚖️)
-  - `post-13-smallbiz.png` — Small business daily summary + inventory (bot: אביגדור ☕)
-  - `post-14-openclaw.png` — OpenClaw explainer: "קוד פתוח. שקוף. שלכם."
-  - `post-15-privacy.png` — Privacy: "הנתונים שלכם לא אצלנו"
-  - `post-16-crypto.png` — Crypto price monitoring + alerts (bot: באפט 📈)
-  - `post-17-stocks.png` — Stock portfolio summary + auto-buy (bot: באפט 💼)
-  - `post-18-anniversary.png` — Anniversary save — bot remembers what you forgot (bot: ברוכי 😏)
-  - `post-19-chatgpt-vs-agent.png` — ChatGPT vs Your Agent comparison
-  - `post-20-wolt.png` — Wolt spending roast (bot: שלומי 🤖)
-  - `post-21-gym.png` — Gym accountability call-out (bot: ג'ארוויס ☀️)
-  - `post-22-shopping.png` — Late night impulse buy block (bot: אלפרד ⚖️)
-  - Source: `brand/social-posts.html`
-  - Export script: `brand/export-posts.mjs`
-- Not committed to git (*.png in .gitignore)
+  - Source: `brand/social-posts.html` — Export: `brand/export-posts.mjs`
+  - **Original 9**: Intro, budget, morning briefing, calendar, why WhatsApp, price monitoring, family, research, CTA
+  - **Professional 4**: Doctor (פלורנס), business manager (ג'ארוויס), lawyer (אלפרד), small business (אביגדור)
+  - **Explainers 2**: OpenClaw open source, privacy & data ownership
+  - **Trading 2**: Crypto alerts (באפט), stock portfolio + auto-buy (באפט)
+  - **Funny/sassy 5**: Anniversary save (ברוכי), ChatGPT vs Agent, Wolt roast (שלומי), gym accountability (ג'ארוויס), late night shopping block (אלפרד)
+  - Each WhatsApp post has a personalized bot name showing users can name their agent
+- **9 Instagram stories** (1080×1920 9:16 at 2× = 2160×3840px):
+  - Source: `brand/social-stories.html` — Export: `brand/export-stories.mjs`
+  - Dedicated story-optimized versions with bigger text, full vertical space, link sticker area
+  - Intro, Wolt, Doctor, Gym, OpenClaw, Anniversary, Crypto, Shopping, CTA
+- PNGs not committed to git (*.png in .gitignore)
+
+### Social media — published & scheduled (session 3, 2026-04-14)
+- **6 posts published now** (FB + IG): Intro, Doctor, Wolt, Gym, Morning, OpenClaw
+- **16 posts scheduled over 4 days** (Apr 15–18, 4/day at 10:00, 13:00, 17:00, 20:00):
+  - Apr 15: Budget, ChatGPT vs, Shopping, Why WhatsApp
+  - Apr 16: Calendar, Price, Business, Privacy
+  - Apr 17: Family, Research, Lawyer, Crypto
+  - Apr 18: Small biz, Stocks, Anniversary, CTA (finale)
+- **9 stories published** (FB + IG): All 9 story versions uploaded in 3 batches
+- **Highlights** (to be created from Instagram app): מה זה?, רופאים, כסף, חיים, הצטרפו
+
+### Design iterations (session 3)
+- Fonts bumped ~15% across all post types (bubbles 27→30px, headers 48→54px, explainer h1 72→80px, body 34→38px)
+- Logo moved to left side (more room since not stacked above headline)
+- Header height optimized: tight top padding (24px), comfortable bottom (42px), minimal logo-to-headline gap (2px)
+- Doctor post title changed: "המזכירה שלא הולכת הביתה" → "המזכירה שלא נחה"
+- Multiple test uploads to Instagram for mobile review before finalizing
 
 ### Database (packages/db)
 - Connected to **Supabase** (Frankfurt eu-central-1)
@@ -76,55 +93,9 @@ agent-forall/
 
 ### Meta Business Suite (2026-04-14)
 - **Business Portfolio**: "agentforall_il" — contains FB page + Instagram account
-  - Contact: Avraham Sikirov, agentforall.il@gmail.com
-- **Facebook Page**: "Agent For All"
-  - Category: Software Company
-  - Bio: סוכן AI אישי שחי בוואטסאפ שלכם. מנהל יומן, תקציב, תזכורות ועוד.
-  - Email: agentforall.il@gmail.com
-  - Website: agentforall.co.il
-  - Profile pic: v4-stacked-espresso (dark brown/mocha)
-- **Instagram**: @agentforall_il — connected to Facebook page
-  - Profile pic: v4-stacked-espresso (same as Facebook)
-  - Bio: סוכן הAI האישי שלכם
-  - Needs verification to edit from Meta Business Suite
-- **Meta Pixel / Dataset**: "Agent For All Website"
-  - Pixel ID: `803144279101703`
-  - Created in Events Manager under agentforall_il portfolio
-  - Setup wizard started — will complete once site is deployed with pixel code
-  - Pixel code added to website (`MetaPixel.tsx`), fires PageView + Lead events
-
-### Social posts expanded to 22 (session 2, 2026-04-14)
-- **Resized all posts**: 1080×1080 (square) → **1080×1350 (4:5 portrait)** — optimal Instagram feed format for 2026
-- **Export resolution**: 2160×2700px at 2× retina via Playwright script (`brand/export-posts.mjs`)
-- **Removed rounded corners** from exports (Instagram applies its own rounding)
-- **Personalized bot names** in WhatsApp chat mockups (instead of generic "Agent For All"):
-  - שלומי 🤖 (budget), ג'ארוויס ☀️ (morning/gym), סמנתה 📅 (calendar), מוישה ✈️ (flights)
-  - יענטה 💛 (family), ויקי 🔍 (research), פלורנס 🏥 (doctor), אלפרד ⚖️ (lawyer)
-  - אביגדור ☕ (small biz), באפט 📈💼 (crypto/stocks), ברוכי 😏 (anniversary)
-- **New professional posts (10–13)**: Doctor clinic management, business meeting prep, lawyer deadline tracking, small business daily summary
-- **OpenClaw explainer posts (14–15)**: Open source/transparency, privacy & data ownership
-- **Trading posts (16–17)**: Crypto price alerts (Bitcoin/ETH), stock portfolio summary + auto-buy orders
-- **Funny/sassy bot posts (18–22)**:
-  - Anniversary save (ברוכי reminds you before your wife does)
-  - ChatGPT vs Your Agent (talks vs does)
-  - Wolt roast (שלומי tells you your delivery bill > electricity bill)
-  - Gym accountability (ג'ארוויס calls out "0 times this week, it's Thursday")
-  - Late night shopping block (אלפרד stops 1am Amazon impulse buy)
-- **Footer logo fixed**: Updated to match navbar wordmark (Agent extrabold + for light + All terra)
-- Source HTML: `brand/social-posts.html` (22 posts)
-- Export script: `brand/export-posts.mjs` (Playwright, 2× retina)
-- PNGs: `brand/post-01-intro.png` through `brand/post-22-shopping.png` + `post-09-cta.png`
-
-### Code changes committed (2026-04-14)
-Commit `b7a3774` — "Add favicon, Meta Pixel tracking, and update branding"
-- `apps/web/src/app/icon.svg` — new SVG favicon
-- `apps/web/src/components/MetaPixel.tsx` — Meta Pixel component + trackLead()
-- `apps/web/src/types/global.d.ts` — TypeScript types for fbq
-- `apps/web/src/app/layout.tsx` — added MetaPixel to layout
-- `apps/web/src/components/LeadForm.tsx` — fires Lead event on success
-- `apps/web/src/components/Navbar.tsx` — updated wordmark to Option 3
-- `apps/web/next.config.ts` — CSP updated for Meta domains, removed unsafe-eval
-- `.env.example` + `apps/web/.env.example` — added NEXT_PUBLIC_META_PIXEL_ID
+- **Facebook Page**: "Agent For All" — Software Company, v4-espresso profile pic
+- **Instagram**: @agentforall_il — connected to Facebook page, v4-espresso profile pic
+- **Meta Pixel**: ID `803144279101703`, fires PageView + Lead events
 
 ## Deployed to
 - **GitHub**: https://github.com/Avi711/agentforall (pushed)
@@ -134,21 +105,12 @@ Commit `b7a3774` — "Add favicon, Meta Pixel tracking, and update branding"
 
 ## What's left
 
-### Immediate (to launch ads)
+### Immediate
+- [ ] Add `ADMIN_PASSWORD` (strong) to Vercel env vars
 - [ ] Add `NEXT_PUBLIC_META_PIXEL_ID=803144279101703` to Vercel env vars → redeploy
 - [ ] Complete Meta Pixel setup wizard (after deploy — needs to detect PageView)
 - [ ] Reset Supabase password (it was shared in chat)
-- [x] Create Facebook page for Agent For All
-- [x] Create Meta Business Portfolio for Agent For All
-- [x] Upload profile pic to Facebook page (v4-espresso)
-- [x] Upload profile pic to Instagram (v4-espresso)
-- [x] Connect Instagram to Facebook page
-- [x] Set up Meta Pixel + add to landing page
-- [x] Add a proper favicon
-- [x] Commit and push all changes
-- [x] Create 22 social media posts for Instagram/Facebook (resized to 4:5 portrait, personalized bot names, professional + funny posts)
-- [x] Fix footer logo to match navbar wordmark (Option 3)
-- [ ] Post content to Instagram and Facebook (22 posts ready)
+- [ ] Create Instagram highlights from published stories
 - [ ] Create Meta ad campaign (use pixel for Lead conversion optimization)
 
 ### Soon after
@@ -156,13 +118,12 @@ Commit `b7a3774` — "Add favicon, Meta Pixel tracking, and update branding"
 - [ ] Add Google Analytics or Vercel Analytics
 - [ ] A/B test different hero copy
 - [ ] Add Hebrew Open Graph image for social sharing
-- [ ] Consider adding a video embed (from the Kan 11 piece?)
 - [ ] Set up email forwarding for hello@agentforall.co.il
 - [ ] Verify Instagram account in Meta Business Suite
 - [ ] Claim domain in Meta Business Suite (for better ad performance)
 
 ### Later (after validation)
-- [ ] Build dashboard in apps/web (user management, instance control)
+- [ ] Build full dashboard in apps/web (user management, instance control)
 - [ ] Move orchestrator from Docker to Kubernetes
 - [ ] Implement actual agent provisioning flow (QR code, eSIM setup)
 - [ ] Payment integration
