@@ -1,63 +1,92 @@
-const steps = [
-  {
-    number: "01",
-    title: "נרשמים ומספרים מה חשוב",
-    description: "בוחרים פלטפורמה (וואטסאפ, טלגרם, או שניהם) ומספרים מה הכי חשוב — יומן, תקציב, תזכורות, או הכל ביחד.",
-    visual: "📝",
-  },
-  {
-    number: "02",
-    title: "אנחנו מקימים לכם סוכן",
-    description: "מפעילים סוכן AI פרטי רק בשבילכם — על תשתית מאובטחת, מותאם לחלוטין לנתונים ולצרכים שלכם.",
-    visual: "🔒",
-  },
-  {
-    number: "03",
-    title: "סורקים QR ומתחילים לדבר",
-    description: "סורקים QR קוד, שומרים את המספר באנשי הקשר — וזהו. שולחים הודעה כמו לחבר. הסוכן לומד ומשתפר עם הזמן.",
-    visual: "💬",
-  },
-];
-
 export function HowItWorks() {
   return (
     <section
       id="how-it-works"
-      className="grain relative overflow-hidden bg-espresso px-5 py-24 sm:px-8"
+      className="relative overflow-hidden bg-espresso px-5 py-16 sm:px-8 sm:py-20"
     >
-      {/* Decorative circle */}
-      <div className="absolute top-[-200px] left-[-200px] h-[500px] w-[500px] rounded-full bg-terra/10 blur-3xl" />
-
-      <div className="relative mx-auto max-w-6xl">
+      <div className="mx-auto max-w-6xl">
         <div className="text-center">
-          <h2 className="text-4xl font-black tracking-tight text-cream sm:text-5xl">
+          <h2 className="text-4xl font-black tracking-tight text-white sm:text-5xl">
             איך זה עובד
           </h2>
-          <p className="mt-4 text-lg font-light text-sand-light">
+          <p className="mx-auto mt-4 max-w-md text-lg font-light text-white/50">
             מאפס לעוזר אישי משלכם. תוך דקות.
           </p>
         </div>
 
-        <div className="mt-16 grid gap-6 sm:grid-cols-3">
-          {steps.map((step) => (
-            <div
-              key={step.number}
-              className="group relative rounded-3xl border border-white/10 bg-white/5 p-8 backdrop-blur-sm transition-all duration-300 hover:border-terra/30 hover:bg-white/10"
-            >
-              <div className="mb-6 flex items-center justify-between">
-                <span className="text-5xl">{step.visual}</span>
-                <span className="text-5xl font-black text-white/10 transition-colors group-hover:text-terra/30">
-                  {step.number}
+        <div className="mx-auto mt-14 grid max-w-5xl gap-16 sm:grid-cols-3 sm:gap-12">
+          {/* Step 01 */}
+          <div className="text-center" dir="rtl">
+            <span className="text-7xl font-black leading-none text-terra/80">01</span>
+            <h3 className="mt-5 text-xl font-bold text-white">
+              נרשמים ומספרים מה חשוב
+            </h3>
+            <p className="mt-3 text-sm leading-relaxed text-white/50">
+              בוחרים פלטפורמה ומספרים מה הכי חשוב — יומן, תקציב, תזכורות, או הכל ביחד.
+            </p>
+            {/* Preview: interest chips */}
+            <div className="mt-6 flex flex-wrap justify-center gap-2">
+              {["📅 יומן", "💰 תקציב", "⏰ תזכורות", "🔍 מחקר", "🤖 הכל!"].map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-xs text-white/60"
+                >
+                  {tag}
                 </span>
-              </div>
-              <h3 className="text-xl font-bold text-cream">
-                {step.title}
-              </h3>
-              <p className="mt-3 leading-relaxed text-sand-light">
-                {step.description}
-              </p>
+              ))}
             </div>
-          ))}
+          </div>
+
+          {/* Step 02 */}
+          <div className="text-center" dir="rtl">
+            <span className="text-7xl font-black leading-none text-terra/80">02</span>
+            <h3 className="mt-5 text-xl font-bold text-white">
+              אנחנו מקימים לכם סוכן
+            </h3>
+            <p className="mt-3 text-sm leading-relaxed text-white/50">
+              מפעילים סוכן AI פרטי על שרת מאובטח. אתם לא צריכים לעשות כלום.
+            </p>
+            {/* Preview: status checklist */}
+            <div className="mt-6 space-y-2.5 text-start">
+              {[
+                { label: "שרת פרטי מוקצה", done: true },
+                { label: "הצפנת AES-256 פעילה", done: true },
+                { label: "סוכן מותאם אישית", done: true },
+                { label: "חיבור וואטסאפ", done: false },
+              ].map((item) => (
+                <div key={item.label} className="flex items-center gap-2.5">
+                  <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] ${
+                    item.done ? "bg-terra/20 text-terra" : "border border-white/10 text-white/20"
+                  }`}>
+                    {item.done ? "✓" : ""}
+                  </div>
+                  <span className={`text-xs ${item.done ? "text-white/60" : "text-white/30"}`}>
+                    {item.label}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Step 03 */}
+          <div className="text-center" dir="rtl">
+            <span className="text-7xl font-black leading-none text-terra/80">03</span>
+            <h3 className="mt-5 text-xl font-bold text-white">
+              שולחים הודעה ומתחילים
+            </h3>
+            <p className="mt-3 text-sm leading-relaxed text-white/50">
+              סורקים QR, שומרים באנשי קשר — וזהו. שולחים הודעה כמו לחבר.
+            </p>
+            {/* Preview: mini chat */}
+            <div className="mt-6 space-y-2">
+              <div className="mr-auto w-fit max-w-[85%] rounded-2xl rounded-br-sm bg-[#DCF8C6] px-3.5 py-2 text-start text-xs leading-relaxed text-black/80">
+                היי, אני רוצה שתנהל לי את היומן
+              </div>
+              <div className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-bl-sm bg-white/10 px-3.5 py-2 text-start text-xs leading-relaxed text-white/70">
+                בוקר טוב! 🙌 ספר לי איך היומן שלך נראה ואני מתחיל לסדר.
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </section>

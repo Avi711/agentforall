@@ -13,7 +13,8 @@ const names = [
   'post-16-crypto', 'post-17-stocks',
   'post-18-anniversary', 'post-19-chatgpt-vs-agent',
   'post-20-wolt', 'post-21-gym', 'post-22-shopping',
-  'post-09-cta'
+  'post-09-cta',
+  'post-23-ad-viral'
 ];
 
 async function main() {

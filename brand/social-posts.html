@@ -303,6 +303,137 @@
     color: rgba(255,255,255,0.6);
     font-weight: 500;
   }
+
+  /* ===== AD — VIRAL VIDEO REFERENCE ===== */
+  .ad-viral {
+    background: linear-gradient(165deg, #1a0f08 0%, #2C1810 40%, #1a0f08 100%);
+    display: flex;
+    flex-direction: column;
+    padding: 64px 72px 60px;
+    position: relative;
+    overflow: hidden;
+  }
+  .ad-viral::before {
+    content: '';
+    position: absolute;
+    top: -200px;
+    right: -200px;
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, rgba(199,82,42,0.12) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .ad-viral::after {
+    content: '';
+    position: absolute;
+    bottom: -100px;
+    left: -100px;
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle, rgba(199,82,42,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .ad-viral > * { position: relative; z-index: 1; }
+
+  .ad-viral .logo {
+    font-size: 30px;
+    margin-bottom: 40px;
+    direction: ltr;
+    text-align: left;
+  }
+  .ad-viral .logo .a { color: rgba(255,255,255,0.9); }
+  .ad-viral .logo .f { color: rgba(255,255,255,0.35); }
+  .ad-viral .logo .al { color: #E8875F; }
+
+  .ad-viral .video-frame {
+    position: relative;
+    width: 100%;
+    height: 500px;
+    border-radius: 20px;
+    overflow: hidden;
+    background: #111;
+    box-shadow:
+      0 0 0 1px rgba(199,82,42,0.25),
+      0 20px 60px rgba(0,0,0,0.5),
+      0 0 80px rgba(199,82,42,0.08);
+    margin-bottom: 48px;
+  }
+  .ad-viral .video-frame img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .ad-viral .video-frame .play-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,0.4) 100%);
+  }
+  .ad-viral .video-frame .play-btn {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.35);
+  }
+  .ad-viral .video-frame .play-btn::after {
+    content: '';
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-width: 15px 0 15px 26px;
+    border-color: transparent transparent transparent #C7522A;
+    margin-left: 5px;
+  }
+
+  .ad-viral h1 {
+    font-size: 76px;
+    font-weight: 900;
+    color: #FBF8F3;
+    line-height: 1.15;
+    margin-bottom: 24px;
+  }
+  .ad-viral h1 .hl { color: #E8875F; }
+
+  .ad-viral .ad-body {
+    font-size: 36px;
+    font-weight: 400;
+    color: rgba(251,248,243,0.6);
+    line-height: 1.65;
+    flex: 1;
+  }
+  .ad-viral .ad-body strong {
+    font-weight: 700;
+    color: #FBF8F3;
+  }
+
+  .ad-viral .cta-bar {
+    margin-top: auto;
+    padding-top: 40px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+  .ad-viral .cta-btn {
+    background: linear-gradient(135deg, #C7522A, #E8875F);
+    color: white;
+    font-size: 38px;
+    font-weight: 800;
+    padding: 28px 56px;
+    border-radius: 50px;
+    box-shadow: 0 8px 32px rgba(199,82,42,0.4);
+  }
+  .ad-viral .cta-url {
+    font-size: 26px;
+    color: rgba(251,248,243,0.35);
+    font-weight: 500;
+  }
 </style>
 </head>
 <body>
@@ -921,6 +1052,32 @@
   </div>
   <div class="cta-btn">הצטרפו לגישה מוקדמת →</div>
   <div class="url">agentforall.co.il</div>
+</div>
+
+<!-- POST 23: AD — VIRAL VIDEO REFERENCE -->
+<div class="post ad-viral">
+  <div class="post-label">Post 23 — Ad (Viral Video)</div>
+  <div class="logo"><span class="a">Agent</span><span class="f">for</span><span class="al">All</span></div>
+
+  <div class="video-frame">
+    <img src="shaul-thumbnail.jpg" alt="">
+    <div class="play-overlay">
+      <div class="play-btn"></div>
+    </div>
+  </div>
+
+  <h1>ראיתם את <span class="hl">הסרטון?</span></h1>
+
+  <div class="ad-body">
+    כולם אמרו לכם שסוכן AI זה מסובך?<br><br>
+    <strong>אנחנו עושים לכם את כל העבודה.</strong><br>
+    בכמה קליקים פשוטים.
+  </div>
+
+  <div class="cta-bar">
+    <div class="cta-btn">אני רוצה סוכן →</div>
+    <div class="cta-url">agentforall.co.il</div>
+  </div>
 </div>
 
 </body>

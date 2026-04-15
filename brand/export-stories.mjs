@@ -7,7 +7,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const names = [
   'story-01-intro', 'story-02-wolt', 'story-03-doctor',
   'story-04-gym', 'story-05-openclaw', 'story-06-anniversary',
-  'story-07-crypto', 'story-08-shopping', 'story-09-cta'
+  'story-07-crypto', 'story-08-shopping', 'story-09-cta',
+  'story-10-ad-viral'
 ];
 
 async function main() {
