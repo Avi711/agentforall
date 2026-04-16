@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Heebo } from "next/font/google";
 import { MetaPixel } from "@/components/MetaPixel";
+import { WhatsAppFloat } from "@/components/WhatsAppFloat";
 import "./globals.css";
 
 const heebo = Heebo({
@@ -31,6 +32,7 @@ export default function RootLayout({
       <body className="bg-cream font-[family-name:var(--font-heebo)] text-espresso antialiased">
         <MetaPixel />
         {children}
+        <WhatsAppFloat />
       </body>
     </html>
   );
