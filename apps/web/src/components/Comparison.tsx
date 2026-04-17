@@ -144,7 +144,7 @@ export function Comparison() {
           </h2>
           <p className="mx-auto mt-5 max-w-xl text-lg font-light leading-relaxed text-espresso-light">
             ChatGPT מחכה שתפתחו אותו. הסוכן שלכם חי על שרת פרטי, פועל 24/7,
-            ומגיע אליכם — גם כשאתם לא מחשבים בכלל על AI.
+            ומגיע אליכם.
           </p>
         </div>
 

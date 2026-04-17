@@ -23,8 +23,18 @@ const interests = [
 export function LeadForm() {
   const [state, setState] = useState<FormState>("idle");
   const [errorMessage, setErrorMessage] = useState("");
+  const [phone, setPhone] = useState("");
   const [platform, setPlatform] = useState("whatsapp");
   const [interest, setInterest] = useState("");
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let val = e.target.value.replace(/\D/g, ""); // Keep only digits
+    if (val.length > 10) val = val.slice(0, 10); // Limit to 10 digits
+    if (val.length > 3) {
+      val = `${val.slice(0, 3)}-${val.slice(3)}`; // Add dash after 05X
+    }
+    setPhone(val);
+  };
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -152,15 +162,20 @@ export function LeadForm() {
               {/* Phone */}
               <div>
                 <label htmlFor="phone" className="mb-2 block text-sm font-bold text-espresso">
-                  טלפון <span className="font-normal text-espresso-light/60">(לא חובה)</span>
+                  טלפון
                 </label>
                 <input
                   id="phone"
                   name="phone"
                   type="tel"
+                  required
+                  value={phone}
+                  onChange={handlePhoneChange}
+                  pattern="^05[0-9]-[0-9]{7}$"
+                  title="מספר הטלפון חייב להיות בן 10 ספרות ולהתחיל ב-05 (למשל 050-1234567)"
                   dir="ltr"
                   className="w-full rounded-xl border-0 bg-cream px-5 py-4 text-base text-espresso ring-1 ring-sand/50 transition-all placeholder:text-espresso-light/40 focus:ring-2 focus:ring-terra focus:outline-none"
-                  placeholder="050-000-0000"
+                  placeholder="050-0000000"
                 />
               </div>
 
