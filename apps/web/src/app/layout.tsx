@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Heebo, Secular_One } from "next/font/google";
 import { MetaPixel } from "@/components/MetaPixel";
 import { WhatsAppFloat } from "@/components/WhatsAppFloat";
+import { AccessibilityWidget } from "@/components/AccessibilityWidget";
 import "./globals.css";
 
 const heebo = Heebo({
@@ -81,16 +82,16 @@ export default function RootLayout({
 }) {
   return (
     <html lang="he-IL" dir="rtl" className={`${heebo.variable} ${secular.variable}`}>
-      <head>
+      <body className="bg-cream font-[family-name:var(--font-heebo)] text-espresso antialiased">
+        <a href="#main" className="skip-link">דלג לתוכן הראשי</a>
+        <MetaPixel />
+        {children}
+        <WhatsAppFloat />
+        <AccessibilityWidget />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
         />
-      </head>
-      <body className="bg-cream font-[family-name:var(--font-heebo)] text-espresso antialiased">
-        <MetaPixel />
-        {children}
-        <WhatsAppFloat />
       </body>
     </html>
   );

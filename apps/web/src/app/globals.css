@@ -143,3 +143,57 @@ body {
   }
   .reveal { opacity: 1 !important; }
 }
+
+/* ── User accessibility preferences (AccessibilityWidget) ── */
+
+/* Font size steps — scale root to affect rem-based Tailwind sizes */
+html[data-font-size="sm"]   { font-size: 14px; }
+html[data-font-size="base"] { font-size: 16px; }
+html[data-font-size="lg"]   { font-size: 18px; }
+html[data-font-size="xl"]   { font-size: 20px; }
+
+/* High contrast: remap tokens to darker text and punchier accents */
+html[data-high-contrast] {
+  --color-cream: #FFFFFF;
+  --color-cream-dark: #F0F0F0;
+  --color-espresso: #000000;
+  --color-espresso-light: #1A1A1A;
+  --color-terra: #9A3C1E;
+  --color-terra-light: #C4502A;
+  --color-terra-pale: #FFE4D6;
+  --color-sand: #666666;
+  --color-sand-light: #BBBBBB;
+}
+
+/* User-forced reduced motion (in addition to media query) */
+html[data-reduced-motion] { scroll-behavior: auto; }
+html[data-reduced-motion] .animate-fade-up,
+html[data-reduced-motion] .animate-float,
+html[data-reduced-motion] .reveal,
+html[data-reduced-motion] .reveal.in-view,
+html[data-reduced-motion] .bar-fill-active,
+html[data-reduced-motion] .marquee-row,
+html[data-reduced-motion] .typing-dot {
+  animation: none !important;
+}
+html[data-reduced-motion] .reveal { opacity: 1 !important; }
+
+/* Skip-to-content link — visually hidden until focused */
+.skip-link {
+  position: fixed;
+  top: 0;
+  inset-inline-start: 0;
+  z-index: 100;
+  transform: translateY(-100%);
+  background: var(--color-espresso);
+  color: var(--color-cream);
+  padding: 0.75rem 1.25rem;
+  border-radius: 0 0 0.75rem 0.75rem;
+  font-weight: 700;
+  transition: transform 0.2s ease;
+}
+.skip-link:focus {
+  transform: translateY(0);
+  outline: 3px solid var(--color-terra);
+  outline-offset: 2px;
+}

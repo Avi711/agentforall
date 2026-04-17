@@ -13,7 +13,7 @@ export function LegalPage({
 }) {
   return (
     <>
-      <main className="min-h-screen px-5 py-24 sm:px-8">
+      <main id="main" className="min-h-screen px-5 py-24 sm:px-8">
         <div className="mx-auto max-w-3xl">
           <Link href="/" className="text-sm font-medium text-terra hover:underline">
             ← חזרה לעמוד הראשי
