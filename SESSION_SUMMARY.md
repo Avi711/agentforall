@@ -1,4 +1,4 @@
-# Agent For All — Session Summary (updated 2026-04-14, session 3)
+# Agent For All — Session Summary (updated 2026-04-16, session 4)
 
 ## Project Vision
 
@@ -92,10 +92,57 @@ agent-forall/
 - Dockerfile needs updating for monorepo (not blocking — not deploying yet)
 
 ### Meta Business Suite (2026-04-14)
-- **Business Portfolio**: "agentforall_il" — contains FB page + Instagram account
-- **Facebook Page**: "Agent For All" — Software Company, v4-espresso profile pic
+- **Business Portfolio**: "Agent For All" (business_id: 1586169975794890) — contains FB page + Instagram account
+- **Facebook Page**: "Agent For All" (page_id: 1123533370833805, asset_id in MBS URLs) — Software Company, v4-espresso profile pic
 - **Instagram**: @agentforall_il — connected to Facebook page, v4-espresso profile pic
 - **Meta Pixel**: ID `803144279101703`, fires PageView + Lead events
+- **MBS URL pattern**: `business.facebook.com/latest/home?asset_id=1123533370833805&business_id=1586169975794890`
+
+### Remotion Video Project — `D:\Projects\remotion-vid` (session 4, 2026-04-16)
+- **Purpose**: Create animated Reel ads using React-based video framework
+- **Stack**: Remotion 4.0.445, React 19, TypeScript, Tailwind v4, @remotion/google-fonts (Heebo)
+- **Key files**:
+  - `src/AgentForAllReel.tsx` — Main composition (the published Reel)
+  - `src/Root.tsx` — Composition registry (also has PhoneComparison, DemoReel for Compledio)
+  - `remotion.config.ts` — Webpack config + Tailwind + xxhash64 hash workaround
+  - `public/shaul-thumbnail.jpg` — Kan 11 "הבוט של שאול" thumbnail
+  - `public/agentforall-logo.png` — Brand logo
+  - `out/AgentForAllReel.mp4` — Rendered video (2.5MB, 16s)
+  - `out/AgentForAllReel-thumbnail.jpg` — Still at frame 90 for thumbnail
+- **AgentForAllReel composition** (480 frames, 30fps, 1080×1920):
+  - Layout: Cream bg (#FBF8F3), top section with Kan 11 thumbnail + Hebrew text hierarchy, phone mockup at bottom
+  - Hook: "כולם מדברים על בוט, סוכן, עוזר אישי?" → quote from Shaul → "אמרו לכם שזה מסובך?" → "אתם יכולים ליצור אחד. בדקות."
+  - Phone: 440×880 WhatsApp chat mockup, agent "ג׳ארוויס 🤖" with personality
+  - Chat scenario: User asks to plan family weekend → agent checks calendars, books Dead Sea hotel ₪1,200, messages wife, adds calendar+fuel reminder, finds Druze restaurant, closes with "שבת שלום!"
+  - Animations: spring() entrance with staggered delays, frame-based interpolate() for chat scrolling
+  - 700px dead zone spacer at bottom for Reel UI overlay
+  - CTA: "הגיבו ״בוט״ או השאירו פרטים לרשימת ההמתנה"
+- **KNOWN BUG**: Node.js 22 + webpack WASM hash crash (`TypeError: Cannot read properties of undefined (reading 'length')` in wasm-hash.js). Intermittent. `npx remotion render` more reliable than `npx remotion studio`. Workaround: `hashFunction: 'xxhash64'` in config + clear `node_modules/.cache`
+- **Render command**: `npx remotion render AgentForAllReel --output=out/AgentForAllReel.mp4`
+- **Still command**: `npx remotion still AgentForAllReel --frame=90 --output=out/AgentForAllReel-thumbnail.jpg`
+
+### First Reel Ad — Published (session 4, 2026-04-16)
+- **Published to**: Facebook Reels + Instagram Reels + Facebook Story (via Meta Business Suite)
+- **Video**: AgentForAllReel.mp4 (16s, 1080×1920)
+- **Thumbnail**: Custom still at frame 90 (all text visible + phone with first chat message)
+- **Audio**: "Ser Campeao" by Tinho Menezes (from Meta's free audio library)
+- **Caption** (no hashtags — user preference):
+  ```
+  כולם מדברים על סוכני AI — אבל מי באמת בנה אחד?
+
+  תארגן לי סופ״ש עם המשפחה 👉 תוך שניות הוא בודק יומנים, מזמין צימר, מודיע לאשתי, ומוסיף תזכורת תדלוק.
+
+  זה לא ChatGPT.
+  זה סוכן אישי שחי בוואטסאפ שלכם.
+
+  הגיבו ״בוט״ או השאירו פרטים ונחזור אליכם 👇
+
+  🔗 agentforall.co.il
+  ```
+- **Settings**: Public, closed captions ON, remixing allowed, no paid boost yet
+- **Publishing flow**: Used Playwright MCP plugin → Meta Business Suite → Create Reel
+  - Files must be copied to `D:\Projects\agent-forall\` first (Playwright sandbox restriction)
+  - Playwright MCP tools: browser_navigate, browser_click, browser_snapshot, browser_file_upload, browser_type, browser_wait_for
 
 ## Deployed to
 - **GitHub**: https://github.com/Avi711/agentforall (pushed)
@@ -111,7 +158,9 @@ agent-forall/
 - [ ] Complete Meta Pixel setup wizard (after deploy — needs to detect PageView)
 - [ ] Reset Supabase password (it was shared in chat)
 - [ ] Create Instagram highlights from published stories
-- [ ] Create Meta ad campaign (use pixel for Lead conversion optimization)
+- [ ] Boost the published Reel as a paid ad (set up targeting: Israel, Hebrew, 25-55, interests in AI/tech/productivity)
+- [ ] Create more Reel variations (different use cases: doctor, business owner, crypto trader)
+- [ ] Monitor Reel engagement and iterate on content
 
 ### Soon after
 - [ ] Fix orchestrator Dockerfile for monorepo builds
@@ -121,6 +170,16 @@ agent-forall/
 - [ ] Set up email forwarding for hello@agentforall.co.il
 - [ ] Verify Instagram account in Meta Business Suite
 - [ ] Claim domain in Meta Business Suite (for better ad performance)
+
+### Design & Content Preferences (learned session 4)
+- **No "2024 AI slop"** — avoid dark gradients, generic tech aesthetics. Use clean cream backgrounds with bold typography
+- **No camera** — Avraimi doesn't want to appear on camera. Use text/animation/mockups only
+- **No hashtags** on social media captions
+- **Don't change code without being asked** — if user asks "is this optimal?", answer first, don't change
+- **Don't guess values** — research platform specs (dead zones, safe areas) and calculate optimal values
+- **Hebrew RTL** — all user-facing content is Hebrew, right-to-left
+- **WhatsApp chat mockups** are the primary creative format — show real agent power, not basic ChatGPT-level stuff
+- **Agent personality** — bot responses should have humor/personality (emoji, slang, sass like "אמרתי לך 😏")
 
 ### Later (after validation)
 - [ ] Build full dashboard in apps/web (user management, instance control)

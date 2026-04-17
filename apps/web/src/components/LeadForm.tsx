@@ -93,7 +93,7 @@ export function LeadForm() {
               <span className="text-terra">לרשימת ההמתנה</span>
             </h2>
             <p className="mt-5 text-lg font-light leading-relaxed text-espresso-light">
-              הצטרפו לרשימת ההמתנה וקבלו גישה מוקדמת לסוכן AI אישי משלכם. השאירו פרטים ואנחנו נסדר הכל בשבילכם — בלי טכנולוגיה, בלי סיבוכים.
+              הצטרפו לרשימת ההמתנה וקבלו גישה מוקדמת לסוכן AI אישי משלכם. השאירו פרטים ואנחנו נסדר הכל בשבילכם.
             </p>
 
             <div className="mt-8 space-y-4">

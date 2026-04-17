@@ -15,12 +15,12 @@ export function Hero() {
             <h1 className="font-display text-[2.75rem] font-black leading-[1.05] tracking-tight text-espresso sm:text-6xl lg:text-7xl">
               רוצים סוכן AI?
               <br />
-              <span className="text-terra">אנחנו נסדר.</span>
+              <span className="text-terra">עכשיו זה פשוט.</span>
             </h1>
 
             <p className="mt-6 max-w-lg text-xl font-light leading-relaxed text-espresso-light sm:text-2xl lg:text-start">
               ראיתם את כל הסרטונים על בוטים חכמים בוואטסאפ ונשמע לכם מסובך?
-              אנחנו מקימים לכם סוכן AI אישי — על שרת פרטי, מוכן לשימוש, בלי לגעת בקוד.
+              עכשיו אפשר להקים סוכן AI אישי על שרת פרטי, מוכן לשימוש, בכמה קליקים.
             </p>
 
             <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row lg:justify-start">
