@@ -11,7 +11,7 @@ export function Footer() {
               <span className="font-extrabold">Agent</span><span className="font-normal text-espresso-light">for</span><span className="font-extrabold text-terra">All</span>
             </span>
             <p className="mt-3 max-w-xs text-sm leading-relaxed text-espresso-light">
-              סוכן AI אישי בוואטסאפ וטלגרם. מ-99 ש״ח לחודש, כולל מע״מ.
+              סוכן AI אישי בוואטסאפ וטלגרם. מ-199 ש״ח לחודש, כולל מע״מ.
             </p>
           </div>
 
