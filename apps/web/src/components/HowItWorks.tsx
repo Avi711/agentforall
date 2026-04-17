@@ -6,7 +6,7 @@ export function HowItWorks() {
     >
       <div className="mx-auto max-w-6xl">
         <div className="text-center">
-          <h2 className="text-4xl font-black tracking-tight text-white sm:text-5xl">
+          <h2 className="font-display text-4xl font-black leading-[1.1] tracking-tight text-white sm:text-5xl">
             איך זה עובד
           </h2>
           <p className="mx-auto mt-4 max-w-md text-lg font-light text-white/50">

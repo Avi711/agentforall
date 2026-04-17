@@ -64,14 +64,41 @@ body {
   animation: float 6s ease-in-out infinite;
 }
 
-/* Pulse for CTA */
-@keyframes pulse-soft {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(199, 82, 42, 0.4); }
-  50% { box-shadow: 0 0 0 12px rgba(199, 82, 42, 0); }
+/* Display utility — Secular One for contemporary Hebrew headlines */
+.font-display {
+  font-family: var(--font-display), var(--font-heebo), system-ui, sans-serif;
+  letter-spacing: -0.02em;
 }
 
-.animate-pulse-soft {
-  animation: pulse-soft 3s ease-in-out infinite;
+/* Subtle reveal on scroll */
+@keyframes reveal-up {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.reveal {
+  opacity: 0;
+  will-change: opacity, transform;
+}
+
+.reveal.in-view {
+  animation: reveal-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Typing indicator dots */
+@keyframes typing-dot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+.typing-dot {
+  animation: typing-dot 1.2s ease-in-out infinite;
+}
+
+/* WhatsApp chat wallpaper */
+.bg-wa-wallpaper {
+  background-color: #ECE5DD;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23c8c3ba' fill-opacity='0.15'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
 }
 
 /* ── Stories-style progress bar (GPU-composited, no layout thrash) ── */
@@ -100,4 +127,19 @@ body {
 
 .marquee-row:hover {
   animation-play-state: paused;
+}
+
+/* Respect reduced-motion preference (IL AA requirement) */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .animate-fade-up,
+  .animate-float,
+  .reveal,
+  .reveal.in-view,
+  .bar-fill-active,
+  .marquee-row,
+  .typing-dot {
+    animation: none !important;
+  }
+  .reveal { opacity: 1 !important; }
 }

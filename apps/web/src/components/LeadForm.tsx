@@ -87,7 +87,7 @@ export function LeadForm() {
         <div className="grid items-start gap-12 lg:grid-cols-[1fr_1fr] lg:gap-20">
           {/* Left side - copy */}
           <div>
-            <h2 className="text-4xl font-black tracking-tight text-espresso sm:text-5xl">
+            <h2 className="font-display text-4xl font-black leading-[1.05] tracking-tight text-espresso sm:text-5xl">
               הצטרפו
               <br />
               <span className="text-terra">לרשימת ההמתנה</span>
@@ -99,8 +99,8 @@ export function LeadForm() {
             <div className="mt-8 space-y-4">
               {[
                 "הקמה תוך דקות — בלי להתקין כלום",
-                "סוכן פרטי על שרת מאובטח",
-                "החל מ-99 ש״ח/חודש — תלוי כמה תעבידו אותו",
+                "סוכן פרטי על שרת מאובטח, נתונים בישראל/אירופה",
+                "החל מ-99 ש״ח/חודש (כולל מע״מ) — לפי שימוש",
                 "תעריף מייסדים מיוחד למצטרפים מרשימת ההמתנה",
               ].map((item) => (
                 <div key={item} className="flex items-start gap-3">
