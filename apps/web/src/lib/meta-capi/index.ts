@@ -42,8 +42,8 @@ export async function sendLeadEvent(input: SendLeadEventInput): Promise<CapiSend
         error: result.error,
         eventId: input.eventId,
       });
-    } else if (result.eventsReceived !== 1) {
-      console.warn(LOG_PREFIX, "unexpected events_received", {
+    } else {
+      console.log(LOG_PREFIX, "lead event sent", {
         eventsReceived: result.eventsReceived,
         fbtraceId: result.fbtraceId,
         eventId: input.eventId,
