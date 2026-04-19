@@ -28,11 +28,9 @@ export function LeadForm() {
   const [interest, setInterest] = useState("");
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let val = e.target.value.replace(/\D/g, ""); // Keep only digits
-    if (val.length > 10) val = val.slice(0, 10); // Limit to 10 digits
-    if (val.length > 3) {
-      val = `${val.slice(0, 3)}-${val.slice(3)}`; // Add dash after 05X
-    }
+    let val = e.target.value.replace(/\D/g, "");
+    if (val.length > 10) val = val.slice(0, 10);
+    if (val.length > 3) val = `${val.slice(0, 3)}-${val.slice(3)}`;
     setPhone(val);
   };
 
@@ -43,27 +41,38 @@ export function LeadForm() {
 
     const form = e.currentTarget;
     const data = new FormData(form);
+    const name = String(data.get("name") ?? "");
+    const email = String(data.get("email") ?? "");
+    const phoneValue = String(data.get("phone") ?? "");
+    const eventId = crypto.randomUUID();
 
     try {
       const res = await fetch("/api/leads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: data.get("name"),
-          email: data.get("email"),
-          phone: data.get("phone"),
+          name,
+          email,
+          phone: phoneValue,
           platform,
           interest,
+          eventId,
         }),
       });
 
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        duplicate?: boolean;
+      };
+
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
         throw new Error(body.error || "משהו השתבש");
       }
 
       setState("success");
-      trackLead();
+      if (!body.duplicate) {
+        trackLead({ eventId, email, phone: phoneValue, name });
+      }
       form.reset();
     } catch (err) {
       setState("error");

@@ -2,7 +2,9 @@
 
 import Script from "next/script";
 
-const PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID;
+const RAW_PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID;
+// Numeric check guards the inline script below from env-var injection.
+const PIXEL_ID = RAW_PIXEL_ID && /^\d+$/.test(RAW_PIXEL_ID) ? RAW_PIXEL_ID : undefined;
 
 export function MetaPixel() {
   if (!PIXEL_ID) return null;
@@ -36,9 +38,34 @@ export function MetaPixel() {
   );
 }
 
-/** Call this after a successful lead form submission */
-export function trackLead() {
-  if (typeof window !== "undefined" && typeof window.fbq === "function") {
-    window.fbq("track", "Lead");
+export interface TrackLeadArgs {
+  eventId: string;
+  email?: string;
+  phone?: string;
+  name?: string;
+}
+
+// Fires a deduplicated Lead event. eventId MUST be forwarded to the server so
+// Meta can collapse the Pixel event with the matching Conversions API event
+// (dedup window: 48h on event_name + event_id).
+export function trackLead(args: TrackLeadArgs): void {
+  if (typeof window === "undefined" || typeof window.fbq !== "function" || !PIXEL_ID) {
+    return;
   }
+
+  // Re-init with customer data so Meta hashes it client-side for Advanced
+  // Matching. This raises the EMQ score even when the server event is blocked.
+  const matching: FbqAdvancedMatching = {};
+  if (args.email) matching.em = args.email;
+  if (args.phone) matching.ph = args.phone;
+  if (args.name) {
+    const [first, ...rest] = args.name.trim().split(/\s+/).filter(Boolean);
+    if (first) matching.fn = first;
+    if (rest.length > 0) matching.ln = rest.join(" ");
+  }
+  if (Object.keys(matching).length > 0) {
+    window.fbq("init", PIXEL_ID, matching);
+  }
+
+  window.fbq("track", "Lead", {}, { eventID: args.eventId });
 }
