@@ -26,12 +26,14 @@ const ChannelSchema = z.discriminatedUnion("type", [
 
 const CreateInstanceBody = z.object({
   displayName: z.string().min(1).max(255),
-  provider: z.object({
-    name: z.enum(["anthropic", "openai", "openrouter", "gemini"]),
-    apiKey: z.string().min(1),
-    model: z.string().min(1),
-    fallbacks: z.array(z.string()).max(5).optional(),
-  }),
+  provider: z
+    .object({
+      name: z.enum(["anthropic", "openai", "openrouter", "gemini"]),
+      apiKey: z.string().min(1),
+      model: z.string().min(1),
+      fallbacks: z.array(z.string()).max(5).optional(),
+    })
+    .optional(),
   channels: z
     .array(ChannelSchema)
     .min(1, "at least one channel required")
@@ -71,10 +73,24 @@ const PatchConfigBody = z
     message: "at least one field required",
   });
 
+// Composite cursor `<iso>:<uuid>` — stable-sorts same-ms peers.
+const CURSOR_RE = /^(\d{4}-\d{2}-\d{2}T[^:]+Z):([0-9a-f-]{36})$/i;
 const ListQuery = z.object({
-  cursor: z.coerce.date().optional(),
+  cursor: z
+    .string()
+    .regex(CURSOR_RE, "cursor must be '<iso8601>:<uuid>'")
+    .optional()
+    .transform((raw) => {
+      if (!raw) return undefined;
+      const match = CURSOR_RE.exec(raw)!;
+      return { createdAt: new Date(match[1]!), id: match[2]! };
+    }),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
+
+function encodeCursor(inst: { createdAt: Date; id: string }): string {
+  return `${inst.createdAt.toISOString()}:${inst.id}`;
+}
 
 export interface InstanceRouteDeps {
   manager: InstanceManager;
@@ -97,8 +113,8 @@ export const instanceRoutes: FastifyPluginAsync<InstanceRouteDeps> = async (
     const userId = request.authenticatedUserId;
     const { cursor, limit } = ListQuery.parse(request.query);
     const list = await manager.list(userId, cursor, limit);
-    const nextCursor =
-      list.length === limit ? list[list.length - 1]?.createdAt.toISOString() : undefined;
+    const last = list[list.length - 1];
+    const nextCursor = list.length === limit && last ? encodeCursor(last) : undefined;
     return reply.send({ data: list.map(sanitize), cursor: nextCursor });
   });
 

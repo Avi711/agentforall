@@ -1,8 +1,9 @@
 import { z } from "zod";
-import { INSTANCE_STATUSES } from "@agent-forall/db";
+import { INSTANCE_STATUSES, PAIRING_STATUSES } from "@agent-forall/db";
 
-export { INSTANCE_STATUSES };
+export { INSTANCE_STATUSES, PAIRING_STATUSES };
 export type InstanceStatus = (typeof INSTANCE_STATUSES)[number];
+export type PairingStatus = (typeof PAIRING_STATUSES)[number];
 
 export const VALID_TRANSITIONS: Record<InstanceStatus, readonly InstanceStatus[]> = {
   provisioning: ["running", "error"],
@@ -44,7 +45,7 @@ export interface ResourceLimits {
 }
 
 export const DEFAULT_RESOURCE_LIMITS: ResourceLimits = {
-  memoryMb: 512,
+  memoryMb: 1536,
   cpuShares: 512,
 };
 
@@ -86,7 +87,7 @@ export interface ConfigPatch {
 
 export interface CreateInstanceInput {
   displayName: string;
-  provider: ProviderConfig;
+  provider?: ProviderConfig;
   channels: ChannelConfig[];
   resources?: Partial<ResourceLimits>;
 }
@@ -103,10 +104,15 @@ export interface Instance {
   gatewayToken: string;
   healthFailures: number;
   errorMessage: string | null;
+  pairingStatus: PairingStatus;
+  whatsappAccountId: string | null;
+  hasWhatsappCreds: boolean;
+  lastSeenAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   stoppedAt: Date | null;
   destroyedAt: Date | null;
 }
 
-export const USER_ID_PATTERN = /^[a-zA-Z0-9_\-:.]{1,128}$/;
+// Narrow — rejects anything that could slip into a log line or container label.
+export const USER_ID_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;

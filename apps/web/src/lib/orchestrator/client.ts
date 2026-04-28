@@ -32,37 +32,19 @@ export class OrchestratorError extends Error {
 interface EnvConfig {
   baseUrl: string;
   serviceToken: string;
-  defaultProvider: {
-    name: "anthropic" | "openai" | "openrouter" | "gemini";
-    apiKey: string;
-    model: string;
-  };
   requestTimeoutMs: number;
 }
 
 function readEnvConfig(): EnvConfig {
   const baseUrl = process.env.ORCHESTRATOR_BASE_URL;
   const serviceToken = process.env.ORCHESTRATOR_SERVICE_TOKEN;
-  const providerName = process.env.ORCHESTRATOR_PROVIDER ?? "anthropic";
-  const providerKey = process.env.ORCHESTRATOR_PROVIDER_API_KEY;
-  const providerModel =
-    process.env.ORCHESTRATOR_PROVIDER_MODEL ?? "claude-opus-4-7";
 
   if (!baseUrl) throw new Error("ORCHESTRATOR_BASE_URL is not set");
   if (!serviceToken) throw new Error("ORCHESTRATOR_SERVICE_TOKEN is not set");
-  if (!providerKey) throw new Error("ORCHESTRATOR_PROVIDER_API_KEY is not set");
-  if (!["anthropic", "openai", "openrouter", "gemini"].includes(providerName)) {
-    throw new Error(`invalid ORCHESTRATOR_PROVIDER: ${providerName}`);
-  }
 
   return {
     baseUrl: baseUrl.replace(/\/+$/, ""),
     serviceToken,
-    defaultProvider: {
-      name: providerName as EnvConfig["defaultProvider"]["name"],
-      apiKey: providerKey,
-      model: providerModel,
-    },
     requestTimeoutMs: 10_000,
   };
 }
@@ -73,7 +55,6 @@ export class OrchestratorClient {
   async createBot(userId: string, input: CreateInstanceInput): Promise<Instance> {
     const body = {
       displayName: input.displayName,
-      provider: this.env.defaultProvider,
       channels: [{ type: "whatsapp" }],
     };
     return this.call({
