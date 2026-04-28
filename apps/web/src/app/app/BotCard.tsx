@@ -40,6 +40,12 @@ export function BotCard({ bot }: { bot: BotSnapshot }) {
     };
   }, [menuOpen]);
 
+  useEffect(() => {
+    if (bot.status !== "provisioning" && bot.status !== "degraded") return;
+    const id = setInterval(() => router.refresh(), 5000);
+    return () => clearInterval(id);
+  }, [bot.status, router]);
+
   async function handleDelete() {
     const res = await fetch(`/api/bot/${bot.id}`, { method: "DELETE" });
     if (!res.ok && res.status !== 204) {
@@ -58,7 +64,7 @@ export function BotCard({ bot }: { bot: BotSnapshot }) {
             <h2 className="font-display text-2xl text-espresso mb-1">
               {bot.displayName}
             </h2>
-            <StatusBadge kind={state.kind} label={state.label} />
+            <StatusBadge kind={state.kind} label={state.label} pulse={state.pulse} />
           </div>
 
           <div className="flex items-center gap-3">
@@ -146,9 +152,11 @@ function TrashIcon() {
 function StatusBadge({
   kind,
   label,
+  pulse,
 }: {
   kind: "ok" | "warn" | "err" | "info";
   label: string;
+  pulse?: boolean;
 }) {
   const tone =
     kind === "ok"
@@ -162,7 +170,12 @@ function StatusBadge({
     <span
       className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium ${tone}`}
     >
-      <span aria-hidden className="w-1.5 h-1.5 rounded-full bg-current" />
+      <span aria-hidden className="relative flex w-1.5 h-1.5">
+        {pulse ? (
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-75" />
+        ) : null}
+        <span className="relative inline-flex w-1.5 h-1.5 rounded-full bg-current" />
+      </span>
       {label}
     </span>
   );
@@ -172,21 +185,24 @@ interface BotState {
   kind: "ok" | "warn" | "err" | "info";
   label: string;
   cta: { href: string; label: string } | null;
+  pulse?: boolean;
 }
 
 function resolveState(bot: BotSnapshot): BotState {
   if (bot.status === "provisioning") {
-    return { kind: "info", label: "מכין את הסוכן…", cta: null };
+    return { kind: "info", label: "מכין את הסוכן…", cta: null, pulse: true };
   }
   if (bot.status === "error") {
     return { kind: "err", label: "שגיאה", cta: null };
   }
   if (bot.pairingStatus === "paired" && bot.hasWhatsappCreds) {
-    return {
-      kind: "ok",
-      label: "מחובר ופעיל",
-      cta: null,
-    };
+    if (bot.status === "degraded") {
+      return { kind: "info", label: "מאתחל את הסוכן…", cta: null, pulse: true };
+    }
+    if (bot.status === "unhealthy") {
+      return { kind: "err", label: "הסוכן לא מגיב — מנסים לתקן", cta: null };
+    }
+    return { kind: "ok", label: "מחובר ופעיל", cta: null };
   }
   if (
     bot.pairingStatus === "awaiting_qr" ||
