@@ -21,7 +21,9 @@ export function AccessibilityWidget() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) setPrefs({ ...DEFAULTS, ...JSON.parse(raw) });
-    } catch {}
+    } catch {
+      // localStorage unavailable (private mode / quota / SSR) — fall back to defaults.
+    }
     setLoaded(true);
   }, []);
 
@@ -37,7 +39,9 @@ export function AccessibilityWidget() {
       : root.removeAttribute("data-reduced-motion");
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
-    } catch {}
+    } catch {
+      // localStorage may reject (quota / private mode); the in-memory state still applies.
+    }
   }, [prefs, loaded]);
 
   useEffect(() => {

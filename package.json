@@ -5,13 +5,13 @@
     "node": ">=22.0.0"
   },
   "workspaces": [
-    "apps/*",
-    "packages/*"
+    "packages/*",
+    "apps/*"
   ],
   "scripts": {
     "dev:web": "npm run dev --workspace=apps/web",
-    "dev:orchestrator": "npm run dev --workspace=apps/orchestrator",
-    "build": "npm run build --workspaces",
+    "dev:orchestrator": "npm run build --workspace=packages/db && npm run dev --workspace=apps/orchestrator",
+    "build": "npm run build --workspace=packages/db && npm run build --workspace=apps/orchestrator && npm run build --workspace=apps/whatsapp-pairing && npm run build --workspace=apps/web",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "db:generate": "npm run db:generate --workspace=packages/db",
     "db:migrate": "npm run db:migrate --workspace=packages/db",

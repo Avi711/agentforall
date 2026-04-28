@@ -2,14 +2,11 @@
 
 import { useState } from "react";
 import { trackLead } from "./MetaPixel";
+import { PLATFORM_OPTIONS_HE } from "@/lib/platforms";
 
 type FormState = "idle" | "submitting" | "success" | "error";
 
-const platforms = [
-  { value: "whatsapp", label: "וואטסאפ" },
-  { value: "telegram", label: "טלגרם" },
-  { value: "both", label: "שניהם" },
-];
+const platforms = PLATFORM_OPTIONS_HE;
 
 const interests = [
   { value: "calendar", label: "יומן" },

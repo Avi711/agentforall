@@ -5,10 +5,12 @@ import {
   timestamp,
   text,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 export const PLATFORMS = ["whatsapp", "telegram", "both"] as const;
 
+// Email stored normalized (lowercase+trimmed by lead service); unique index enforces dedup.
 export const leads = pgTable(
   "leads",
   {
@@ -24,7 +26,7 @@ export const leads = pgTable(
       .defaultNow(),
   },
   (table) => [
-    index("idx_leads_email").on(table.email),
+    uniqueIndex("idx_leads_email").on(table.email),
     index("idx_leads_created_at").on(table.createdAt),
   ],
 );

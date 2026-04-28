@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
+import { PLATFORM_LABELS_HE, type Platform } from "@/lib/platforms";
 
 interface Lead {
   id: string;
@@ -20,6 +21,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Component state only — no persistence; reload requires re-entry.
   const fetchLeads = useCallback(async (pw: string) => {
     setLoading(true);
     setError("");
@@ -30,28 +32,18 @@ export default function AdminPage() {
       if (res.status === 401) {
         setAuthed(false);
         setError("סיסמה שגויה");
-        sessionStorage.removeItem("admin_pw");
         return;
       }
       if (!res.ok) throw new Error("Failed to fetch");
       const data = await res.json();
       setLeads(data.leads);
       setAuthed(true);
-      sessionStorage.setItem("admin_pw", pw);
     } catch {
       setError("שגיאה בטעינת נתונים");
     } finally {
       setLoading(false);
     }
   }, []);
-
-  useEffect(() => {
-    const saved = sessionStorage.getItem("admin_pw");
-    if (saved) {
-      setPassword(saved);
-      fetchLeads(saved);
-    }
-  }, [fetchLeads]);
 
   function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -193,7 +185,6 @@ export default function AdminPage() {
               onClick={() => {
                 setAuthed(false);
                 setPassword("");
-                sessionStorage.removeItem("admin_pw");
               }}
               className="rounded-lg px-4 py-2 text-sm font-medium text-espresso-light ring-1 ring-sand/50 transition-colors hover:bg-cream"
             >
@@ -280,11 +271,7 @@ export default function AdminPage() {
                                 : "bg-terra-pale text-terra"
                           }`}
                         >
-                          {lead.platform === "whatsapp"
-                            ? "וואטסאפ"
-                            : lead.platform === "telegram"
-                              ? "טלגרם"
-                              : "שניהם"}
+                          {PLATFORM_LABELS_HE[lead.platform as Platform] ?? lead.platform}
                         </span>
                       </td>
                       <td className="px-5 py-3.5 text-sm text-espresso-light">

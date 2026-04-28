@@ -82,7 +82,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="he-IL" dir="rtl" className={`${heebo.variable} ${secular.variable}`}>
-      <body className="bg-cream font-[family-name:var(--font-heebo)] text-espresso antialiased">
+      <body
+        className="bg-cream font-[family-name:var(--font-heebo)] text-espresso antialiased"
+        suppressHydrationWarning
+      >
         <a href="#main" className="skip-link">דלג לתוכן הראשי</a>
         <MetaPixel />
         {children}

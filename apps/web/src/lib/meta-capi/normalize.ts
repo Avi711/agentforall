@@ -54,6 +54,7 @@ export function deriveFbcFromUrl(url: string | undefined, now: number = Date.now
     if (!fbclid) return null;
     return `fb.1.${now}.${fbclid}`;
   } catch {
+    // URL parse failed — referer is malformed, treat as if there were no fbclid.
     return null;
   }
 }
