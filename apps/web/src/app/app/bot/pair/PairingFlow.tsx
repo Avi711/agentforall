@@ -155,7 +155,7 @@ export function PairingFlow({ botId }: Props) {
       const res = await fetch(`/api/bot/${botId}/pair/code`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ phone: phone.replace(/[\s-]/g, "") }),
+        body: JSON.stringify({ phone: normalizeIsraeliPhone(phone) }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -410,24 +410,25 @@ function CodePanel({
     <form onSubmit={onSubmit} className="space-y-4 max-w-md">
       <label className="block">
         <span className="block text-sm text-espresso-light mb-1.5">
-          מספר הטלפון של WhatsApp (כולל קידומת, ללא +)
+          מספר הטלפון של WhatsApp
         </span>
-        <input
-          type="tel"
-          required
-          dir="ltr"
-          value={phone}
-          onChange={(e) => onPhoneChange(e.target.value)}
-          placeholder="972501234567"
-          disabled={busy}
-          className="w-full px-4 py-3 rounded-xl border border-sand bg-white text-espresso placeholder:text-sand focus:outline-none focus:border-terra focus:ring-2 focus:ring-terra-pale disabled:opacity-50"
-        />
+        <div dir="ltr" className="flex items-stretch rounded-xl border border-sand bg-white focus-within:border-terra focus-within:ring-2 focus-within:ring-terra-pale">
+          <span className="px-3 flex items-center gap-1.5 border-e border-sand text-espresso-light text-sm select-none">
+            <span aria-hidden>🇮🇱</span>
+            <span className="font-mono">+972</span>
+          </span>
+          <input
+            type="tel"
+            required
+            dir="ltr"
+            value={phone}
+            onChange={(e) => onPhoneChange(e.target.value)}
+            placeholder="050-123-4567"
+            disabled={busy}
+            className="flex-1 px-4 py-3 rounded-xl bg-transparent text-espresso placeholder:text-sand focus:outline-none disabled:opacity-50"
+          />
+        </div>
       </label>
-      {phoneStartsWithZero(phone) ? (
-        <p className="text-xs text-espresso-light">
-          יש להתחיל בקידומת מדינה (למשל 972 לישראל), לא ב-0.
-        </p>
-      ) : null}
       <button
         type="submit"
         disabled={busy || !isValidPhone(phone)}
@@ -523,12 +524,14 @@ function isAbort(err: unknown): boolean {
   return err instanceof DOMException && err.name === "AbortError";
 }
 
-function isValidPhone(value: string): boolean {
+function normalizeIsraeliPhone(value: string): string {
   const digits = value.replace(/\D/g, "");
-  return digits.length >= 10 && digits.length <= 15 && !digits.startsWith("0");
+  if (digits.startsWith("972")) return digits;
+  return `972${digits.replace(/^0+/, "")}`;
 }
 
-function phoneStartsWithZero(value: string): boolean {
+function isValidPhone(value: string): boolean {
   const digits = value.replace(/\D/g, "");
-  return digits.length > 0 && digits.startsWith("0");
+  const local = digits.startsWith("972") ? digits.slice(3) : digits.replace(/^0+/, "");
+  return local.length === 9;
 }
