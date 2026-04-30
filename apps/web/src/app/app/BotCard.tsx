@@ -181,15 +181,15 @@ function resolveState(bot: BotSnapshot): BotState {
     return { kind: "err", label: "שגיאה", cta: null };
   }
   if (bot.pairingStatus === "paired" && bot.hasWhatsappCreds) {
-    const everSeen = bot.lastSeenAt !== null;
-    if (bot.status === "degraded" || bot.status === "unhealthy") {
-      // First degraded/unhealthy with no lastSeenAt is post-pair cold-start, not an outage.
-      if (!everSeen) {
-        return { kind: "info", label: "מתחבר ל-WhatsApp… (עד 2 דקות)", cta: null, pulse: true };
-      }
-      if (bot.status === "degraded") {
-        return { kind: "warn", label: "חיבור לא יציב — מנסה להתאושש", cta: null, pulse: true };
-      }
+    // lastSeenAt stays null until the gateway healthcheck passes at least once;
+    // until then the bot can't reliably handle a first message.
+    if (bot.lastSeenAt === null) {
+      return { kind: "info", label: "מתחבר ל-WhatsApp… (עד 2 דקות)", cta: null, pulse: true };
+    }
+    if (bot.status === "degraded") {
+      return { kind: "warn", label: "חיבור לא יציב — מנסה להתאושש", cta: null, pulse: true };
+    }
+    if (bot.status === "unhealthy") {
       return { kind: "err", label: "הסוכן לא מגיב — מנסים לתקן", cta: null, pulse: true };
     }
     return { kind: "ok", label: "מחובר ופעיל", cta: null };
