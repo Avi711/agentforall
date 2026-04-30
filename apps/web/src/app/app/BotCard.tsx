@@ -3,21 +3,12 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Instance } from "@/lib/orchestrator/types";
 import { DeleteBotDialog } from "./DeleteBotDialog";
+import { useBotStatus, type BotSnapshot } from "./useBotStatus";
 
-type BotSnapshot = Pick<
-  Instance,
-  | "id"
-  | "displayName"
-  | "status"
-  | "pairingStatus"
-  | "whatsappAccountId"
-  | "hasWhatsappCreds"
-> & { lastSeenAt: string | null };
-
-export function BotCard({ bot }: { bot: BotSnapshot }) {
+export function BotCard({ bot: initialBot }: { bot: BotSnapshot }) {
   const router = useRouter();
+  const bot = useBotStatus(initialBot);
   const [menuOpen, setMenuOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -39,12 +30,6 @@ export function BotCard({ bot }: { bot: BotSnapshot }) {
       document.removeEventListener("keydown", onKey);
     };
   }, [menuOpen]);
-
-  useEffect(() => {
-    if (bot.status !== "provisioning" && bot.status !== "degraded") return;
-    const id = setInterval(() => router.refresh(), 5000);
-    return () => clearInterval(id);
-  }, [bot.status, router]);
 
   async function handleDelete() {
     const res = await fetch(`/api/bot/${bot.id}`, { method: "DELETE" });
@@ -196,11 +181,16 @@ function resolveState(bot: BotSnapshot): BotState {
     return { kind: "err", label: "שגיאה", cta: null };
   }
   if (bot.pairingStatus === "paired" && bot.hasWhatsappCreds) {
-    if (bot.status === "degraded") {
-      return { kind: "info", label: "מאתחל את הסוכן…", cta: null, pulse: true };
-    }
-    if (bot.status === "unhealthy") {
-      return { kind: "err", label: "הסוכן לא מגיב — מנסים לתקן", cta: null };
+    const everSeen = bot.lastSeenAt !== null;
+    if (bot.status === "degraded" || bot.status === "unhealthy") {
+      // First degraded/unhealthy with no lastSeenAt is post-pair cold-start, not an outage.
+      if (!everSeen) {
+        return { kind: "info", label: "מתחבר ל-WhatsApp… (עד 2 דקות)", cta: null, pulse: true };
+      }
+      if (bot.status === "degraded") {
+        return { kind: "warn", label: "חיבור לא יציב — מנסה להתאושש", cta: null, pulse: true };
+      }
+      return { kind: "err", label: "הסוכן לא מגיב — מנסים לתקן", cta: null, pulse: true };
     }
     return { kind: "ok", label: "מחובר ופעיל", cta: null };
   }
