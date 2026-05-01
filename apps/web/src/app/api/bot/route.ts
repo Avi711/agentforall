@@ -3,6 +3,10 @@ import { z } from "zod";
 import { authenticatedHandler } from "@/lib/auth/api";
 import { getOrchestratorClient } from "@/lib/orchestrator/client";
 
+// Provision is synchronous in the orchestrator; on the prod VM it takes ~12s
+// to create + start the tenant container. Vercel default of 10s would 504.
+export const maxDuration = 60;
+
 const CreateBotBody = z.object({
   displayName: z.string().min(1, "שם הבוט חובה").max(60),
 });
