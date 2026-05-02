@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
+import { MonogramDisc } from "./Marks";
 
 const LOADING_STEPS = [
   "מכין את הסוכן…",
@@ -86,26 +87,30 @@ function CreatingPanel({ name }: { name: string }) {
   }, []);
 
   return (
-    <div className="rounded-2xl border border-sand-light bg-cream/40 p-8 text-center">
-      <div className="relative mx-auto mb-5 h-16 w-16">
-        <span className="absolute inset-0 rounded-full bg-terra-pale animate-ping opacity-60" />
-        <span className="relative flex h-16 w-16 items-center justify-center rounded-full bg-white border border-sand-light text-3xl">
-          🤖
+    <div className="relative rounded-[20px] border border-sand-light bg-cream/50 px-8 py-10 text-center overflow-hidden">
+      <span aria-hidden className="absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-sand-light to-transparent" />
+      <div className="relative mx-auto mb-6 inline-flex">
+        <span aria-hidden className="absolute inset-0 rounded-full bg-terra-pale/70 blur-[2px] animate-pulse" />
+        <span className="relative">
+          <MonogramDisc letter={name || "א"} size="lg" />
         </span>
       </div>
-      <h3 className="font-display text-xl text-espresso mb-1">
+      <p className="text-[11px] uppercase tracking-[0.22em] text-terra mb-2">
+        בעלייה
+      </p>
+      <h3 className="font-display text-2xl text-espresso mb-2 leading-tight">
         {name ? `מקים את ${name}` : "מקים את הסוכן"}
       </h3>
-      <p className="text-sm text-espresso-light mb-6">
+      <p className="text-sm text-espresso-light mb-7 italic">
         זה לוקח כדקה — אנחנו מכינים הכל ברקע.
       </p>
-      <ol className="space-y-2 text-right max-w-xs mx-auto">
+      <ol className="space-y-2.5 text-right max-w-xs mx-auto">
         {LOADING_STEPS.map((label, i) => {
           const state = i < step ? "done" : i === step ? "active" : "pending";
           return (
             <li
               key={label}
-              className={`flex items-center gap-3 text-sm transition ${
+              className={`flex items-center gap-3 text-sm transition-colors duration-500 ${
                 state === "pending" ? "text-sand" : "text-espresso"
               }`}
             >

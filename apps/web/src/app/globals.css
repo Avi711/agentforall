@@ -70,6 +70,13 @@ body {
   letter-spacing: -0.02em;
 }
 
+/* Slow, steady ember pulse for status dots — restrained, no bounce */
+@keyframes ember {
+  0%, 100% { box-shadow: 0 0 0 0 currentColor; opacity: 1; }
+  50%      { box-shadow: 0 0 0 6px rgba(199, 82, 42, 0); opacity: 0.92; }
+}
+.animate-ember { animation: ember 2.4s ease-in-out infinite; }
+
 /* Subtle reveal on scroll */
 @keyframes reveal-up {
   from { opacity: 0; transform: translateY(24px); }
@@ -134,6 +141,7 @@ body {
   html { scroll-behavior: auto; }
   .animate-fade-up,
   .animate-float,
+  .animate-ember,
   .reveal,
   .reveal.in-view,
   .bar-fill-active,
@@ -169,6 +177,7 @@ html[data-high-contrast] {
 html[data-reduced-motion] { scroll-behavior: auto; }
 html[data-reduced-motion] .animate-fade-up,
 html[data-reduced-motion] .animate-float,
+html[data-reduced-motion] .animate-ember,
 html[data-reduced-motion] .reveal,
 html[data-reduced-motion] .reveal.in-view,
 html[data-reduced-motion] .bar-fill-active,

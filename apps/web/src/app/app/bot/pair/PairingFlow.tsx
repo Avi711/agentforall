@@ -220,11 +220,15 @@ export function PairingFlow({ botId }: Props) {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-2xl shadow-sm border border-sand-light p-6 sm:p-8">
-        <h1 className="font-display text-2xl text-espresso mb-2">
+      <div className="relative bg-white rounded-[24px] border border-sand-light shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)] p-6 sm:p-8 overflow-hidden">
+        <span aria-hidden className="absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-sand-light to-transparent" />
+        <p className="text-[11px] uppercase tracking-[0.22em] text-terra mb-2">
+          חיבור
+        </p>
+        <h1 className="font-display text-2xl text-espresso mb-2 leading-tight">
           חיבור WhatsApp לבוט שלכם
         </h1>
-        <p className="text-espresso-light mb-6">
+        <p className="text-espresso-light mb-6 italic">
           סרקו את הקוד בטלפון, או בקשו קוד בן 8 תווים אם סריקה לא נוחה.
         </p>
 
@@ -413,8 +417,13 @@ function CodePanel({
           מספר הטלפון של WhatsApp
         </span>
         <div dir="ltr" className="flex items-stretch rounded-xl border border-sand bg-white focus-within:border-terra focus-within:ring-2 focus-within:ring-terra-pale">
-          <span className="px-3 flex items-center gap-1.5 border-e border-sand text-espresso-light text-sm select-none">
-            <span aria-hidden>🇮🇱</span>
+          <span className="px-3 flex items-center gap-2 border-e border-sand text-espresso-light text-sm select-none">
+            <span
+              aria-hidden
+              className="inline-flex items-center justify-center text-[10px] font-medium tracking-[0.08em] px-1.5 py-0.5 rounded-sm bg-cream-dark text-espresso border border-sand-light"
+            >
+              IL
+            </span>
             <span className="font-mono">+972</span>
           </span>
           <input

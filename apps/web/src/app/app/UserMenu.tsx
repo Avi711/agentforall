@@ -77,7 +77,7 @@ export function UserMenu({ user }: { user: MenuUser }) {
       {open ? (
         <div
           role="menu"
-          className="absolute top-full mt-2 end-0 w-64 origin-top-left rtl:origin-top-left ltr:origin-top-right rounded-xl border border-sand-light bg-white shadow-[0_8px_24px_rgba(44,24,16,0.08)] overflow-hidden animate-menu"
+          className="absolute top-full mt-2 end-0 w-64 origin-top-left rtl:origin-top-left ltr:origin-top-right rounded-xl border border-sand-light bg-white shadow-[0_12px_40px_rgba(44,24,16,0.12)] overflow-hidden animate-menu z-50"
         >
           <div className="px-4 py-3 bg-cream-dark/40 border-b border-sand-light">
             <div className="flex items-center gap-3">
@@ -169,7 +169,7 @@ function Avatar({
   return (
     <span
       aria-hidden="true"
-      className={`${dim} rounded-full bg-gradient-to-br from-terra to-terra-light text-white font-medium flex items-center justify-center select-none`}
+      className={`${dim} rounded-full bg-cream-dark border border-sand-light text-espresso font-display flex items-center justify-center select-none shadow-[inset_0_-2px_4px_rgba(44,24,16,0.04)]`}
     >
       {initial}
     </span>
@@ -225,13 +225,12 @@ function IconSettings() {
       className="w-[18px] h-[18px]"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.6"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
     >
-      <circle cx="10" cy="10" r="2.5" />
-      <path
-        d="M10 1.5v2.5M10 16v2.5M1.5 10h2.5M16 10h2.5M3.8 3.8l1.8 1.8M14.4 14.4l1.8 1.8M3.8 16.2l1.8-1.8M14.4 5.6l1.8-1.8"
-        strokeLinecap="round"
-      />
+      <path d="M10 13.25a3.25 3.25 0 1 0 0-6.5 3.25 3.25 0 0 0 0 6.5z" />
+      <path d="M16.4 11.66a1 1 0 0 0 .2 1.1l.07.07a1.4 1.4 0 1 1-1.98 1.98l-.07-.07a1 1 0 0 0-1.1-.2 1 1 0 0 0-.6.92V15.7a1.4 1.4 0 1 1-2.8 0v-.1a1 1 0 0 0-.65-.91 1 1 0 0 0-1.1.2l-.07.07a1.4 1.4 0 1 1-1.98-1.98l.07-.07a1 1 0 0 0 .2-1.1 1 1 0 0 0-.92-.6H5.5a1.4 1.4 0 1 1 0-2.8h.1a1 1 0 0 0 .91-.65 1 1 0 0 0-.2-1.1l-.07-.07a1.4 1.4 0 1 1 1.98-1.98l.07.07a1 1 0 0 0 1.1.2H9.5a1 1 0 0 0 .6-.92V4.3a1.4 1.4 0 1 1 2.8 0v.1a1 1 0 0 0 .6.92 1 1 0 0 0 1.1-.2l.07-.07a1.4 1.4 0 1 1 1.98 1.98l-.07.07a1 1 0 0 0-.2 1.1V8.5a1 1 0 0 0 .92.6H17.7a1.4 1.4 0 1 1 0 2.8h-.1a1 1 0 0 0-.92.6z" />
     </svg>
   );
 }
