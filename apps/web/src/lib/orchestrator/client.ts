@@ -63,6 +63,7 @@ export class OrchestratorClient {
       userId,
       body,
       schema: InstanceSchema,
+      timeoutMs: 30_000,
     });
   }
 
@@ -163,6 +164,7 @@ export class OrchestratorClient {
     body?: unknown;
     schema: z.ZodType<T>;
     allowEmptyBody?: boolean;
+    timeoutMs?: number;
   }): Promise<T> {
     const url = `${this.env.baseUrl}${opts.path}`;
     const headers: Record<string, string> = {
@@ -181,7 +183,7 @@ export class OrchestratorClient {
         method: opts.method,
         headers,
         body,
-        signal: AbortSignal.timeout(this.env.requestTimeoutMs),
+        signal: AbortSignal.timeout(opts.timeoutMs ?? this.env.requestTimeoutMs),
         cache: "no-store",
       });
     } catch (err) {
