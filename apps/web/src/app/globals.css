@@ -77,6 +77,18 @@ body {
 }
 .animate-ember { animation: ember 2.4s ease-in-out infinite; }
 
+/* Slow rotation for setup-panel decorative arcs */
+@keyframes spin-slow { to { transform: rotate(360deg); } }
+.animate-spin-slow { animation: spin-slow 14s linear infinite; }
+.animate-spin-slow-reverse { animation: spin-slow 22s linear infinite reverse; }
+
+/* Soft drift for the halo behind the monogram */
+@keyframes halo-breathe {
+  0%, 100% { opacity: 0.45; transform: scale(1); }
+  50%      { opacity: 0.85; transform: scale(1.08); }
+}
+.animate-halo { animation: halo-breathe 2.8s ease-in-out infinite; }
+
 /* Subtle reveal on scroll */
 @keyframes reveal-up {
   from { opacity: 0; transform: translateY(24px); }
@@ -142,6 +154,9 @@ body {
   .animate-fade-up,
   .animate-float,
   .animate-ember,
+  .animate-spin-slow,
+  .animate-spin-slow-reverse,
+  .animate-halo,
   .reveal,
   .reveal.in-view,
   .bar-fill-active,
@@ -178,6 +193,9 @@ html[data-reduced-motion] { scroll-behavior: auto; }
 html[data-reduced-motion] .animate-fade-up,
 html[data-reduced-motion] .animate-float,
 html[data-reduced-motion] .animate-ember,
+html[data-reduced-motion] .animate-spin-slow,
+html[data-reduced-motion] .animate-spin-slow-reverse,
+html[data-reduced-motion] .animate-halo,
 html[data-reduced-motion] .reveal,
 html[data-reduced-motion] .reveal.in-view,
 html[data-reduced-motion] .bar-fill-active,
