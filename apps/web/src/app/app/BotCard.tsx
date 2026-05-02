@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { DeleteBotDialog } from "./DeleteBotDialog";
 import { useBotStatus, type BotSnapshot } from "./useBotStatus";
 import { BotAvatar, type AvatarTone } from "./Marks";
+import { CreatingPanel } from "./CreatingPanel";
 
 export function BotCard({ bot: initialBot }: { bot: BotSnapshot }) {
   const router = useRouter();
@@ -40,6 +41,10 @@ export function BotCard({ bot: initialBot }: { bot: BotSnapshot }) {
     }
     setDialogOpen(false);
     router.refresh();
+  }
+
+  if (bot.status === "provisioning") {
+    return <CreatingPanel name={bot.displayName} />;
   }
 
   return (
