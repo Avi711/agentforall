@@ -107,7 +107,7 @@ export function BotCard({ bot: initialBot }: { bot: BotSnapshot }) {
             </div>
           </div>
 
-          {bot.whatsappAccountId ? (
+          {bot.whatsappAccountId && state.kind === "ok" ? (
             <PhoneRow accountId={bot.whatsappAccountId} />
           ) : null}
 
@@ -287,6 +287,12 @@ function resolveState(bot: BotSnapshot): BotState {
     return { kind: "err", label: "שגיאה", cta: null };
   }
   if (bot.pairingStatus === "paired" && bot.hasWhatsappCreds) {
+    if (bot.status === "degraded") {
+      return { kind: "warn", label: "חיבור WhatsApp לא יציב — בודקים", cta: null, pulse: true };
+    }
+    if (bot.status === "unhealthy") {
+      return { kind: "err", label: "WhatsApp מנותק — צריך לחבר מחדש", cta: null, pulse: true };
+    }
     if (bot.lastSeenAt === null) {
       return { kind: "info", label: "מתחבר ל-WhatsApp… (עד 2 דקות)", cta: null, pulse: true };
     }
