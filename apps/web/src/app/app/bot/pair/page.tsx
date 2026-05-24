@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth/session";
 import { getConsentStatus } from "@/lib/consent/service";
-import { getOrchestratorClient } from "@/lib/orchestrator/client";
+import { botService } from "@/lib/bots/service";
 import { ConsentGate } from "./ConsentGate";
 import { PairingFlow } from "./PairingFlow";
 
@@ -15,14 +15,10 @@ export const dynamic = "force-dynamic";
 
 export default async function PairPage() {
   const session = await requireSession("/login");
-  const [consent, bots] = await Promise.all([
+  const [consent, bot] = await Promise.all([
     getConsentStatus(session.user.id),
-    getOrchestratorClient().listBots(session.user.id),
+    botService.findActiveBot(session.user.id),
   ]);
-
-  const bot = bots.find(
-    (b) => b.status !== "destroyed" && b.status !== "error",
-  );
 
   if (!bot) {
     redirect("/app");

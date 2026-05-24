@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { requireSession } from "@/lib/auth/session";
-import { getOrchestratorClient } from "@/lib/orchestrator/client";
+import { botService } from "@/lib/bots/service";
 import { CreateBotForm } from "./CreateBotForm";
 import { BotCard } from "./BotCard";
 import { PairedToast } from "./PairedToast";
@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 export default async function AppHome() {
   const session = await requireSession("/login");
   const firstName = session.user.name?.split(" ")[0] ?? "";
-  const bot = await getOrchestratorClient().findActiveBot(session.user.id);
+  const bot = await botService.findActiveBot(session.user.id);
 
   return (
     <div className="relative">

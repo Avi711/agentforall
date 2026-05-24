@@ -14,6 +14,28 @@ import {
   type CreateInstanceInput,
 } from "./types";
 
+const BackupUploadSessionSchema = z.object({
+  uploadUrl: z.string().url(),
+  restoreToken: z.string().min(1),
+  expiresAt: z.string(),
+});
+export type BackupUploadSession = z.infer<typeof BackupUploadSessionSchema>;
+
+const BackupExportJobSchema = z.discriminatedUnion("status", [
+  z.object({ id: z.string().uuid(), status: z.literal("pending") }),
+  z.object({
+    id: z.string().uuid(),
+    status: z.literal("ready"),
+    downloadUrl: z.string().url(),
+  }),
+  z.object({
+    id: z.string().uuid(),
+    status: z.literal("error"),
+    message: z.string(),
+  }),
+]);
+export type BackupExportJob = z.infer<typeof BackupExportJobSchema>;
+
 export class OrchestratorError extends Error {
   constructor(
     message: string,
@@ -81,16 +103,10 @@ export class OrchestratorClient {
     return result.data;
   }
 
-  // "destroyed" and "error" are tombstones; anything else is fair game.
-  async findActiveBot(userId: string): Promise<Instance | null> {
-    const bots = await this.listBots(userId);
-    return bots.find((b) => b.status !== "destroyed" && b.status !== "error") ?? null;
-  }
-
   async getBot(userId: string, id: string): Promise<Instance> {
     return this.call({
       method: "GET",
-      path: `/api/v1/instances/${id}`,
+      path: instancePath(id),
       userId,
       schema: InstanceSchema,
     });
@@ -99,17 +115,73 @@ export class OrchestratorClient {
   async deleteBot(userId: string, id: string): Promise<void> {
     await this.call({
       method: "DELETE",
-      path: `/api/v1/instances/${id}`,
+      path: instancePath(id),
       userId,
       schema: z.unknown(),
       allowEmptyBody: true,
+      timeoutMs: 60_000,
+    });
+  }
+
+  startBotBackupExport(userId: string, id: string): Promise<BackupExportJob> {
+    return this.call({
+      method: "POST",
+      path: instancePath(id, "/exports"),
+      userId,
+      schema: BackupExportJobSchema,
+      timeoutMs: 10_000,
+    });
+  }
+
+  getBotBackupExport(
+    userId: string,
+    id: string,
+    jobId: string,
+  ): Promise<BackupExportJob> {
+    return this.call({
+      method: "GET",
+      path: instancePath(id, `/exports/${encodeURIComponent(jobId)}`),
+      userId,
+      schema: BackupExportJobSchema,
+      timeoutMs: 10_000,
+    });
+  }
+
+  async createBackupUploadSession(
+    userId: string,
+    input: {
+      displayName: string;
+      contentLength: number;
+      contentType?: string;
+    },
+  ): Promise<BackupUploadSession> {
+    return this.call({
+      method: "POST",
+      path: "/api/v1/backup-imports",
+      userId,
+      body: input,
+      schema: BackupUploadSessionSchema,
+    });
+  }
+
+  async restoreBackupUpload(
+    userId: string,
+    restoreToken: string,
+  ): Promise<Instance> {
+    return this.call({
+      method: "POST",
+      path: "/api/v1/backup-imports/restore",
+      userId,
+      body: { restoreToken },
+      schema: InstanceSchema,
+      timeoutMs: 120_000,
     });
   }
 
   async startPairing(userId: string, id: string): Promise<StartPairingResult> {
     return this.call({
       method: "POST",
-      path: `/api/v1/instances/${id}/pair`,
+      path: instancePath(id, "/pair"),
       userId,
       schema: StartPairingResultSchema,
     });
@@ -118,7 +190,7 @@ export class OrchestratorClient {
   async cancelPairing(userId: string, id: string): Promise<void> {
     await this.call({
       method: "POST",
-      path: `/api/v1/instances/${id}/pair/cancel`,
+      path: instancePath(id, "/pair/cancel"),
       userId,
       schema: z.unknown(),
       allowEmptyBody: true,
@@ -128,7 +200,7 @@ export class OrchestratorClient {
   async getPairQr(userId: string, id: string): Promise<PairQr> {
     return this.call({
       method: "GET",
-      path: `/api/v1/instances/${id}/pair/qr`,
+      path: instancePath(id, "/pair/qr"),
       userId,
       schema: PairQrSchema,
     });
@@ -141,7 +213,7 @@ export class OrchestratorClient {
   ): Promise<PairCode> {
     return this.call({
       method: "POST",
-      path: `/api/v1/instances/${id}/pair/code`,
+      path: instancePath(id, "/pair/code"),
       userId,
       body: { phone },
       schema: PairCodeSchema,
@@ -151,7 +223,7 @@ export class OrchestratorClient {
   async getPairStatus(userId: string, id: string): Promise<PairStatus> {
     return this.call({
       method: "GET",
-      path: `/api/v1/instances/${id}/pair/status`,
+      path: instancePath(id, "/pair/status"),
       userId,
       schema: PairStatusSchema,
     });
@@ -177,21 +249,12 @@ export class OrchestratorClient {
       body = JSON.stringify(opts.body);
     }
 
-    let res: Response;
-    try {
-      res = await fetch(url, {
-        method: opts.method,
-        headers,
-        body,
-        signal: AbortSignal.timeout(opts.timeoutMs ?? this.env.requestTimeoutMs),
-        cache: "no-store",
-      });
-    } catch (err) {
-      throw new OrchestratorError(
-        `orchestrator request failed: ${err instanceof Error ? err.message : "unknown"}`,
-        0,
-      );
-    }
+    const res = await this.fetchWithRetry(url, {
+      method: opts.method,
+      headers,
+      body,
+      timeoutMs: opts.timeoutMs ?? this.env.requestTimeoutMs,
+    });
 
     if (res.status === 204) {
       if (opts.allowEmptyBody) return opts.schema.parse(undefined);
@@ -226,6 +289,44 @@ export class OrchestratorClient {
     }
     return result.data;
   }
+
+  private async fetchWithRetry(
+    url: string,
+    opts: {
+      method: "GET" | "POST" | "DELETE" | "PATCH";
+      headers: Record<string, string>;
+      body: BodyInit | undefined;
+      timeoutMs: number;
+    },
+  ): Promise<Response> {
+    const maxAttempts = opts.method === "GET" || opts.method === "DELETE" ? 3 : 1;
+    let lastError: unknown;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        const res = await fetch(url, {
+          method: opts.method,
+          headers: opts.headers,
+          body: opts.body,
+          signal: AbortSignal.timeout(opts.timeoutMs),
+          cache: "no-store",
+        });
+        if (!isTransient(res.status) || attempt === maxAttempts) return res;
+        await res.text().catch(() => undefined);
+        lastError = new Error(`orchestrator returned ${res.status}`);
+      } catch (err) {
+        lastError = err;
+        if (attempt === maxAttempts) break;
+      }
+      await sleep(150 * 2 ** (attempt - 1));
+    }
+
+    throw new OrchestratorError(
+      `orchestrator request failed: ${lastError instanceof Error ? lastError.message : "unknown"}`,
+      0,
+    );
+  }
+
 }
 
 let cached: OrchestratorClient | undefined;
@@ -233,4 +334,16 @@ let cached: OrchestratorClient | undefined;
 export function getOrchestratorClient(): OrchestratorClient {
   if (!cached) cached = new OrchestratorClient();
   return cached;
+}
+
+function instancePath(id: string, suffix = ""): string {
+  return `/api/v1/instances/${encodeURIComponent(id)}${suffix}`;
+}
+
+function isTransient(status: number): boolean {
+  return status === 429 || status === 503;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

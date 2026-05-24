@@ -4,7 +4,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { magicLink } from "better-auth/plugins";
 import { Resend } from "resend";
 import { getDb } from "../db";
-import { getOrchestratorClient } from "../orchestrator/client";
+import { botService } from "../bots/service";
 
 const RESEND_FROM = process.env.AUTH_EMAIL_FROM ?? "login@agentforall.co.il";
 
@@ -22,7 +22,9 @@ const resend = process.env.RESEND_API_KEY
 
 async function sendMagicLinkEmail(email: string, url: string): Promise<void> {
   if (!resend) {
-    // In dev without RESEND_API_KEY, log so developer can click it manually.
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("RESEND_API_KEY is required to send auth email");
+    }
     console.log(`[auth] magic link for ${email}: ${url}`);
     return;
   }
@@ -43,6 +45,9 @@ async function sendMagicLinkEmail(email: string, url: string): Promise<void> {
 
 async function sendDeleteAccountEmail(email: string, url: string): Promise<void> {
   if (!resend) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("RESEND_API_KEY is required to send delete-account email");
+    }
     console.log(`[auth] delete-account link for ${email}: ${url}`);
     return;
   }
@@ -98,12 +103,7 @@ export const auth = betterAuth({
         await sendDeleteAccountEmail(user.email, url);
       },
       beforeDelete: async (user) => {
-        const client = getOrchestratorClient();
-        const bots = await client.listBots(user.id);
-        for (const bot of bots) {
-          if (bot.status === "destroyed") continue;
-          await client.deleteBot(user.id, bot.id);
-        }
+        await botService.deleteAllForUser(user.id);
       },
     },
     additionalFields: {

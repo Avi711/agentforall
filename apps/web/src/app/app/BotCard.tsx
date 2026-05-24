@@ -13,6 +13,8 @@ export function BotCard({ bot: initialBot }: { bot: BotSnapshot }) {
   const bot = useBotStatus(initialBot);
   const [menuOpen, setMenuOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [downloadPending, setDownloadPending] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const state = resolveState(bot);
@@ -43,6 +45,35 @@ export function BotCard({ bot: initialBot }: { bot: BotSnapshot }) {
     router.refresh();
   }
 
+  async function handleExport() {
+    if (downloadPending) return;
+
+    setDownloadPending(true);
+    setDownloadError(null);
+
+    try {
+      const res = await fetch(`/api/bot/${bot.id}/export`, {
+        method: "POST",
+        cache: "no-store",
+      });
+      const body: unknown = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error("\u05d4\u05d5\u05e8\u05d3\u05ea \u05d4\u05d2\u05d9\u05d1\u05d5\u05d9 \u05e0\u05db\u05e9\u05dc\u05d4");
+      }
+      const downloadUrl = await waitForExportDownloadUrl(bot.id, body);
+
+      setDownloadPending(false);
+      window.location.assign(downloadUrl);
+    } catch (err) {
+      setDownloadPending(false);
+      setDownloadError(
+        err instanceof Error
+          ? err.message
+          : "\u05d4\u05d5\u05e8\u05d3\u05ea \u05d4\u05d2\u05d9\u05d1\u05d5\u05d9 \u05e0\u05db\u05e9\u05dc\u05d4",
+      );
+    }
+  }
+
   if (bot.status === "provisioning") {
     return <CreatingPanel name={bot.displayName} />;
   }
@@ -51,6 +82,9 @@ export function BotCard({ bot: initialBot }: { bot: BotSnapshot }) {
     <>
       <article className="relative bg-white rounded-[28px] border border-sand-light shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)] overflow-hidden">
         <span aria-hidden className="absolute top-0 inset-x-12 h-px bg-gradient-to-r from-transparent via-sand-light to-transparent" />
+        {downloadPending ? (
+          <span aria-hidden className="download-card-progress" />
+        ) : null}
 
         <div className="p-8 sm:p-10">
           <div className="flex items-start justify-between gap-6 mb-7">
@@ -93,6 +127,20 @@ export function BotCard({ bot: initialBot }: { bot: BotSnapshot }) {
                   <button
                     type="button"
                     role="menuitem"
+                    aria-busy={downloadPending}
+                    disabled={downloadPending}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      handleExport();
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-espresso hover:bg-cream-dark transition disabled:cursor-wait disabled:bg-terra-pale disabled:text-terra"
+                  >
+                    {downloadPending ? <DownloadSpinner /> : <DownloadIcon />}
+                    <span>הורדת גיבוי</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
                     onClick={() => {
                       setMenuOpen(false);
                       setDialogOpen(true);
@@ -106,6 +154,38 @@ export function BotCard({ bot: initialBot }: { bot: BotSnapshot }) {
               ) : null}
             </div>
           </div>
+
+          {downloadPending ? (
+            <div
+              role="status"
+              aria-live="polite"
+              className="mb-6 flex items-center gap-3 rounded-xl border border-terra-light/30 bg-terra-pale/70 px-4 py-3 text-sm text-terra shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
+            >
+              <DownloadSpinner />
+              <div className="min-w-0">
+                <p className="font-medium leading-tight">
+                  {"\u05d0\u05e0\u05d7\u05e0\u05d5 \u05de\u05db\u05d9\u05e0\u05d9\u05dd \u05d0\u05ea \u05e7\u05d1\u05e6\u05d9 \u05d4\u05d2\u05d9\u05d1\u05d5\u05d9 \u05e9\u05dc \u05d4\u05d1\u05d5\u05d8."}
+                </p>
+                <p className="mt-1 text-xs text-espresso-light/75">
+                  {"\u05d6\u05d4 \u05dc\u05d5\u05e7\u05d7 \u05d1\u05d3\u05e8\u05da \u05db\u05dc\u05dc \u05e2\u05d3 \u05d3\u05e7\u05d4."}
+                </p>
+              </div>
+              <span aria-hidden className="ms-auto flex gap-1">
+                <span className="download-dot" />
+                <span className="download-dot [animation-delay:120ms]" />
+                <span className="download-dot [animation-delay:240ms]" />
+              </span>
+            </div>
+          ) : null}
+
+          {downloadError ? (
+            <div
+              role="alert"
+              className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+            >
+              {downloadError}
+            </div>
+          ) : null}
 
           {bot.whatsappAccountId && state.kind === "ok" ? (
             <PhoneRow accountId={bot.whatsappAccountId} />
@@ -133,6 +213,59 @@ export function BotCard({ bot: initialBot }: { bot: BotSnapshot }) {
       />
     </>
   );
+}
+
+async function waitForExportDownloadUrl(
+  botId: string,
+  firstBody: unknown,
+): Promise<string> {
+  let job = readExportJob(firstBody);
+  for (let attempt = 0; attempt < 36; attempt += 1) {
+    if (job.status === "ready") return job.downloadUrl;
+    if (job.status === "error") {
+      throw new Error("\u05d4\u05d5\u05e8\u05d3\u05ea \u05d4\u05d2\u05d9\u05d1\u05d5\u05d9 \u05e0\u05db\u05e9\u05dc\u05d4");
+    }
+
+    await sleep(5000);
+    const res = await fetch(
+      `/api/bot/${botId}/export?jobId=${encodeURIComponent(job.id)}`,
+      { method: "GET", cache: "no-store" },
+    );
+    const body: unknown = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error("\u05d4\u05d5\u05e8\u05d3\u05ea \u05d4\u05d2\u05d9\u05d1\u05d5\u05d9 \u05e0\u05db\u05e9\u05dc\u05d4");
+    }
+    job = readExportJob(body);
+  }
+
+  throw new Error("\u05d4\u05d5\u05e8\u05d3\u05ea \u05d4\u05d2\u05d9\u05d1\u05d5\u05d9 \u05dc\u05d0 \u05d4\u05e1\u05ea\u05d9\u05d9\u05de\u05d4 \u05d1\u05d6\u05de\u05df.");
+}
+
+type ExportJob =
+  | { id: string; status: "pending" }
+  | { id: string; status: "ready"; downloadUrl: string }
+  | { id: string; status: "error" };
+
+function readExportJob(body: unknown): ExportJob {
+  if (
+    typeof body === "object" &&
+    body !== null &&
+    "id" in body &&
+    typeof (body as { id?: unknown }).id === "string" &&
+    "status" in body
+  ) {
+    const raw = body as { id: string; status?: unknown; downloadUrl?: unknown };
+    if (raw.status === "pending") return { id: raw.id, status: "pending" };
+    if (raw.status === "error") return { id: raw.id, status: "error" };
+    if (raw.status === "ready" && typeof raw.downloadUrl === "string") {
+      return { id: raw.id, status: "ready", downloadUrl: raw.downloadUrl };
+    }
+  }
+  throw new Error("\u05d4\u05d5\u05e8\u05d3\u05ea \u05d4\u05d2\u05d9\u05d1\u05d5\u05d9 \u05e0\u05db\u05e9\u05dc\u05d4");
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 function PhoneRow({ accountId }: { accountId: string }) {
@@ -201,6 +334,22 @@ function TrashIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.6">
       <path d="M4 6h12M8 6V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2M6 6v10a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+function DownloadIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path d="M10 3v9M6.5 8.5 10 12l3.5-3.5M4 16h12" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+function DownloadSpinner() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" className="download-spinner w-4 h-4" fill="none">
+      <circle cx="10" cy="10" r="7" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" />
+      <path d="M17 10a7 7 0 0 0-7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M10 7v5M7.8 10.2 10 12.4l2.2-2.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

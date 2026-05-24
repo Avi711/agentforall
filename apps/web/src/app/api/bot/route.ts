@@ -1,31 +1,24 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { authenticatedHandler } from "@/lib/auth/api";
-import { getOrchestratorClient } from "@/lib/orchestrator/client";
+import { botService } from "@/lib/bots/service";
+import { CreateBotBodySchema } from "@/lib/bots/schemas";
 
 // Orchestrator returns the row after reserve, before container start; the
 // 60s budget is now headroom for a slow round-trip, not the provision itself.
 export const maxDuration = 60;
 
-const CreateBotBody = z.object({
-  displayName: z.string().min(1, "שם הבוט חובה").max(60),
-});
-
 export const GET = authenticatedHandler({}, async ({ userId }) => {
-  const bot = await getOrchestratorClient().findActiveBot(userId);
+  const bot = await botService.findActiveBot(userId);
   return NextResponse.json({ bot });
 });
 
 export const POST = authenticatedHandler(
-  { bodySchema: CreateBotBody },
+  { bodySchema: CreateBotBodySchema },
   async ({ userId, body }) => {
-    const client = getOrchestratorClient();
-    const active = await client.findActiveBot(userId);
-    if (active) return NextResponse.json({ bot: active });
-
-    const bot = await client.createBot(userId, {
-      displayName: body.displayName,
-    });
-    return NextResponse.json({ bot }, { status: 201 });
+    const result = await botService.createBot(userId, body);
+    return NextResponse.json(
+      { bot: result.bot },
+      { status: result.created ? 201 : 200 },
+    );
   },
 );

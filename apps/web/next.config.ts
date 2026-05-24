@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const isDev = process.env.NODE_ENV !== "production";
+const orchestratorOrigin = readOrigin(
+  process.env.ORCHESTRATOR_BASE_URL ?? "https://api.agentforall.co.il",
+);
 
 const csp = [
   "default-src 'self'",
@@ -8,7 +11,8 @@ const csp = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' data: https://fonts.gstatic.com",
   "img-src 'self' https: data:",
-  "connect-src 'self' https://*.supabase.co https://www.facebook.com https://connect.facebook.net",
+  `connect-src 'self' ${orchestratorOrigin} https://storage.googleapis.com https://*.supabase.co https://www.facebook.com https://connect.facebook.net`,
+  `frame-src 'self' ${orchestratorOrigin}`,
   "frame-ancestors 'none'",
 ].join("; ");
 
@@ -27,5 +31,13 @@ const nextConfig: NextConfig = {
     },
   ],
 };
+
+function readOrigin(url: string): string {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return "https://api.agentforall.co.il";
+  }
+}
 
 export default nextConfig;

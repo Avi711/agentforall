@@ -8,7 +8,7 @@ import { getConsentStatus } from "../consent/service";
 type Handler<Body> = (ctx: {
   userId: string;
   body: Body;
-}) => Promise<NextResponse> | NextResponse;
+}) => Promise<Response> | Response;
 
 export interface HandlerOptions<Body> {
   bodySchema?: z.ZodType<Body>;

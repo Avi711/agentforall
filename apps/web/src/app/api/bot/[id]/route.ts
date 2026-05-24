@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server";
-import { authenticatedHandler } from "@/lib/auth/api";
-import { getOrchestratorClient } from "@/lib/orchestrator/client";
+import { authenticatedHandler, errorJson } from "@/lib/auth/api";
+import { botService } from "@/lib/bots/service";
+import { BotIdParamsSchema } from "@/lib/bots/schemas";
 
 export async function GET(
   req: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  const { id } = await ctx.params;
+  const parsed = BotIdParamsSchema.safeParse(await ctx.params);
+  if (!parsed.success) return errorJson("invalid_params", 400, parsed.error.flatten());
+
   return authenticatedHandler({}, async ({ userId }) => {
-    const client = getOrchestratorClient();
-    const bot = await client.getBot(userId, id);
+    const bot = await botService.getBot(userId, parsed.data.id);
     return NextResponse.json({ bot });
   })(req);
 }
@@ -18,10 +20,11 @@ export async function DELETE(
   req: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  const { id } = await ctx.params;
+  const parsed = BotIdParamsSchema.safeParse(await ctx.params);
+  if (!parsed.success) return errorJson("invalid_params", 400, parsed.error.flatten());
+
   return authenticatedHandler({}, async ({ userId }) => {
-    const client = getOrchestratorClient();
-    await client.deleteBot(userId, id);
+    await botService.deleteBot(userId, parsed.data.id);
     return new NextResponse(null, { status: 204 });
   })(req);
 }

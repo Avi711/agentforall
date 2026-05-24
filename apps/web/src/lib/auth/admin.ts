@@ -10,6 +10,8 @@ export function verifyAdminAuth(authorizationHeader: string | null): boolean {
   if (!ADMIN_PASSWORD) return false;
   const auth = authorizationHeader ?? "";
   const expected = `Bearer ${ADMIN_PASSWORD}`;
-  if (auth.length !== expected.length) return false;
-  return timingSafeEqual(Buffer.from(auth), Buffer.from(expected));
+  const candidate = Buffer.from(auth, "utf8");
+  const secret = Buffer.from(expected, "utf8");
+  if (candidate.length !== secret.length) return false;
+  return timingSafeEqual(candidate, secret);
 }
