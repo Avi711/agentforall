@@ -123,6 +123,17 @@ export class OrchestratorClient {
     });
   }
 
+  async restartBot(userId: string, id: string): Promise<void> {
+    await this.call({
+      method: "POST",
+      path: instancePath(id, "/restart"),
+      userId,
+      schema: z.unknown(),
+      allowEmptyBody: true,
+      timeoutMs: 60_000,
+    });
+  }
+
   startBotBackupExport(userId: string, id: string): Promise<BackupExportJob> {
     return this.call({
       method: "POST",

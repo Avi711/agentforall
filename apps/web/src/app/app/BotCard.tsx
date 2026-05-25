@@ -15,6 +15,8 @@ export function BotCard({ bot: initialBot }: { bot: BotSnapshot }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [downloadPending, setDownloadPending] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [restartPending, setRestartPending] = useState(false);
+  const [restartError, setRestartError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const state = resolveState(bot);
@@ -71,6 +73,28 @@ export function BotCard({ bot: initialBot }: { bot: BotSnapshot }) {
           ? err.message
           : "\u05d4\u05d5\u05e8\u05d3\u05ea \u05d4\u05d2\u05d9\u05d1\u05d5\u05d9 \u05e0\u05db\u05e9\u05dc\u05d4",
       );
+    }
+  }
+
+  async function handleRestart() {
+    if (restartPending) return;
+    setRestartPending(true);
+    setRestartError(null);
+    try {
+      const res = await fetch(`/api/bot/${bot.id}/restart`, {
+        method: "POST",
+        cache: "no-store",
+      });
+      if (!res.ok && res.status !== 204) {
+        throw new Error("הפעלת הבוט מחדש נכשלה");
+      }
+      router.refresh();
+    } catch (err) {
+      setRestartError(
+        err instanceof Error ? err.message : "הפעלת הבוט מחדש נכשלה",
+      );
+    } finally {
+      setRestartPending(false);
     }
   }
 
@@ -187,12 +211,31 @@ export function BotCard({ bot: initialBot }: { bot: BotSnapshot }) {
             </div>
           ) : null}
 
+          {restartError ? (
+            <div
+              role="alert"
+              className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+            >
+              {restartError}
+            </div>
+          ) : null}
+
           {bot.whatsappAccountId && state.kind === "ok" ? (
             <PhoneRow accountId={bot.whatsappAccountId} />
           ) : null}
 
           {state.kind === "ok" && bot.whatsappAccountId ? (
             <ReadyActions accountId={bot.whatsappAccountId} />
+          ) : state.restart ? (
+            <button
+              type="button"
+              onClick={handleRestart}
+              disabled={restartPending}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-terra text-white font-medium hover:bg-terra-light transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-60 disabled:cursor-wait"
+            >
+              {restartPending ? <DownloadSpinner /> : null}
+              <span>{restartPending ? "מפעיל מחדש…" : "הפעלת הבוט מחדש"}</span>
+            </button>
           ) : state.cta ? (
             <Link
               href={state.cta.href}
@@ -419,6 +462,7 @@ interface BotState {
   kind: "ok" | "warn" | "err" | "info";
   label: string;
   cta: { href: string; label: string } | null;
+  restart?: boolean;
   pulse?: boolean;
 }
 
@@ -440,7 +484,13 @@ function resolveState(bot: BotSnapshot): BotState {
       return { kind: "warn", label: "חיבור WhatsApp לא יציב — בודקים", cta: null, pulse: true };
     }
     if (bot.status === "unhealthy") {
-      return { kind: "err", label: "WhatsApp מנותק — צריך לחבר מחדש", cta: null, pulse: true };
+      return {
+        kind: "err",
+        label: "הבוט לא מגיב — אפשר להפעיל מחדש",
+        cta: null,
+        restart: true,
+        pulse: true,
+      };
     }
     if (bot.lastSeenAt === null) {
       return { kind: "info", label: "מתחבר ל-WhatsApp… (עד 2 דקות)", cta: null, pulse: true };
@@ -449,7 +499,13 @@ function resolveState(bot: BotSnapshot): BotState {
       return { kind: "warn", label: "חיבור לא יציב — מנסה להתאושש", cta: null, pulse: true };
     }
     if (bot.status === "unhealthy") {
-      return { kind: "err", label: "הסוכן לא מגיב — מנסים לתקן", cta: null, pulse: true };
+      return {
+        kind: "err",
+        label: "הסוכן לא מגיב — אפשר להפעיל מחדש",
+        cta: null,
+        restart: true,
+        pulse: true,
+      };
     }
     return { kind: "ok", label: "מחובר ופעיל", cta: null };
   }

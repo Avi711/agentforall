@@ -26,6 +26,7 @@ export interface BotOrchestratorPort {
   ): Promise<Instance>;
   getBot(userId: string, id: string): Promise<Instance>;
   deleteBot(userId: string, id: string): Promise<void>;
+  restartBot(userId: string, id: string): Promise<void>;
   startBotBackupExport(userId: string, id: string): Promise<BackupExportJob>;
   getBotBackupExport(
     userId: string,
@@ -78,6 +79,10 @@ export class BotService {
 
   deleteBot(userId: string, id: string): Promise<void> {
     return this.orchestrator.deleteBot(userId, id);
+  }
+
+  restartBot(userId: string, id: string): Promise<void> {
+    return this.orchestrator.restartBot(userId, id);
   }
 
   startBackupExport(userId: string, id: string): Promise<BackupExportJob> {
