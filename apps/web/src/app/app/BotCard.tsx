@@ -9,6 +9,8 @@ import { BotAvatar, type AvatarTone } from "./Marks";
 import { CreatingPanel } from "./CreatingPanel";
 import type { BotUsage } from "@/lib/orchestrator/types";
 
+const USD_TO_ILS_RATE = 3;
+
 export function BotCard({
   bot: initialBot,
   usage,
@@ -276,17 +278,17 @@ function UsageSection({ usage }: { usage: Extract<BotUsage, { supported: true }>
     <section className="mb-7 border-t border-sand-light/70 pt-7">
       <div className="flex items-end justify-between gap-4 mb-3">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.22em] text-espresso-light/70 mb-1">
-            Usage
+          <p className="text-[11px] uppercase tracking-[0.22em] text-espresso-light/70 mb-1 text-start">
+            ׳ ׳•׳¦׳
           </p>
           <p className="text-2xl font-medium text-espresso tabular-nums" dir="ltr">
-            {formatMoney(usage.spendCents)}
+            {formatShekels(usage.spendCents)}
           </p>
         </div>
         <div className="text-end text-sm text-espresso-light">
-          <p className="text-[11px] uppercase tracking-[0.18em] mb-1">Limit</p>
+          <p className="text-[11px] uppercase tracking-[0.18em] mb-1">׳×׳§׳¨׳”</p>
           <p className="font-medium text-espresso tabular-nums" dir="ltr">
-            {usage.maxBudgetCents === null ? "No limit" : formatMoney(usage.maxBudgetCents)}
+            {usage.maxBudgetCents === null ? "׳׳׳ ׳×׳§׳¨׳”" : formatShekels(usage.maxBudgetCents)}
           </p>
         </div>
       </div>
@@ -303,20 +305,24 @@ function UsageSection({ usage }: { usage: Extract<BotUsage, { supported: true }>
         />
       </div>
       <div className="mt-2 flex items-center justify-between gap-4 text-xs text-espresso-light">
-        <span>{usage.budgetDuration ? `Period ${usage.budgetDuration}` : "Current period"}</span>
+        <span>{usage.budgetDuration ? `׳×׳§׳•׳₪׳”: ${formatBudgetDuration(usage.budgetDuration)}` : "׳×׳§׳•׳₪׳” ׳ ׳•׳›׳—׳™׳×"}</span>
         {percent === null ? null : <span dir="ltr">{percent}%</span>}
       </div>
     </section>
   );
 }
 
-function formatMoney(cents: number): string {
-  return new Intl.NumberFormat("en-US", {
+function formatShekels(usdCents: number): string {
+  return new Intl.NumberFormat("he-IL", {
     style: "currency",
-    currency: "USD",
-    minimumFractionDigits: cents === 0 ? 0 : 2,
-    maximumFractionDigits: 2,
-  }).format(cents / 100);
+    currency: "ILS",
+    maximumFractionDigits: 0,
+  }).format((usdCents / 100) * USD_TO_ILS_RATE);
+}
+
+function formatBudgetDuration(duration: string): string {
+  if (duration === "30d") return "30 ׳™׳׳™׳";
+  return duration;
 }
 
 async function waitForExportDownloadUrl(
