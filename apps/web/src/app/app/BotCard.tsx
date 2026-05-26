@@ -282,26 +282,27 @@ function UsageSection({ usage }: { usage: Extract<BotUsage, { supported: true }>
       : null;
   return (
     <section className="mb-7 border-t border-sand-light/70 pt-7">
-      <div className="flex items-end justify-between gap-4 mb-3">
-        <div className="text-start">
+      <div className="grid grid-cols-2 items-end gap-4 mb-3" dir="ltr">
+        <div className="text-left">
           <p className="text-[11px] tracking-[0.16em] text-espresso-light/70 mb-1">
             {LIMIT_LABEL}
           </p>
-          <p className="font-medium text-espresso tabular-nums" dir="ltr">
+          <p className="font-medium text-espresso tabular-nums">
             {usage.maxBudgetCents === null ? NO_LIMIT_LABEL : formatShekels(usage.maxBudgetCents)}
           </p>
         </div>
-        <div className="text-end">
+        <div className="text-right">
           <p className="text-[11px] tracking-[0.16em] text-espresso-light/70 mb-1">
             {USAGE_LABEL}
           </p>
-          <p className="text-2xl font-medium text-espresso tabular-nums" dir="ltr">
+          <p className="text-2xl font-medium text-espresso tabular-nums">
             {formatShekels(usage.spendCents)}
           </p>
         </div>
       </div>
       <div
         className="h-2 rounded-full bg-cream-dark overflow-hidden"
+        dir="rtl"
         role={percent === null ? undefined : "meter"}
         aria-valuemin={percent === null ? undefined : 0}
         aria-valuemax={percent === null ? undefined : 100}
