@@ -279,16 +279,16 @@ function UsageSection({ usage }: { usage: Extract<BotUsage, { supported: true }>
       <div className="flex items-end justify-between gap-4 mb-3">
         <div>
           <p className="text-[11px] uppercase tracking-[0.22em] text-espresso-light/70 mb-1 text-start">
-            ׳ ׳•׳¦׳
+            USED
           </p>
           <p className="text-2xl font-medium text-espresso tabular-nums" dir="ltr">
             {formatShekels(usage.spendCents)}
           </p>
         </div>
         <div className="text-end text-sm text-espresso-light">
-          <p className="text-[11px] uppercase tracking-[0.18em] mb-1">׳×׳§׳¨׳”</p>
+          <p className="text-[11px] uppercase tracking-[0.18em] mb-1">LIMIT</p>
           <p className="font-medium text-espresso tabular-nums" dir="ltr">
-            {usage.maxBudgetCents === null ? "׳׳׳ ׳×׳§׳¨׳”" : formatShekels(usage.maxBudgetCents)}
+            {usage.maxBudgetCents === null ? "No limit" : formatShekels(usage.maxBudgetCents)}
           </p>
         </div>
       </div>
@@ -305,7 +305,7 @@ function UsageSection({ usage }: { usage: Extract<BotUsage, { supported: true }>
         />
       </div>
       <div className="mt-2 flex items-center justify-between gap-4 text-xs text-espresso-light">
-        <span>{usage.budgetDuration ? `׳×׳§׳•׳₪׳”: ${formatBudgetDuration(usage.budgetDuration)}` : "׳×׳§׳•׳₪׳” ׳ ׳•׳›׳—׳™׳×"}</span>
+        <span>{usage.budgetDuration ? `Period: ${formatBudgetDuration(usage.budgetDuration)}` : "Current period"}</span>
         {percent === null ? null : <span dir="ltr">{percent}%</span>}
       </div>
     </section>
@@ -313,15 +313,14 @@ function UsageSection({ usage }: { usage: Extract<BotUsage, { supported: true }>
 }
 
 function formatShekels(usdCents: number): string {
-  return new Intl.NumberFormat("he-IL", {
-    style: "currency",
-    currency: "ILS",
+  const amount = new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 0,
   }).format((usdCents / 100) * USD_TO_ILS_RATE);
+  return `₪${amount}`;
 }
 
 function formatBudgetDuration(duration: string): string {
-  if (duration === "30d") return "30 ׳™׳׳™׳";
+  if (duration === "30d") return "30 days";
   return duration;
 }
 
