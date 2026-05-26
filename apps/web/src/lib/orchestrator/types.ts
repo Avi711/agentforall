@@ -50,6 +50,23 @@ export const InstanceSchema = z.object({
 
 export type Instance = z.infer<typeof InstanceSchema>;
 
+export const BotUsageSchema = z.discriminatedUnion("supported", [
+  z.object({
+    supported: z.literal(true),
+    spendCents: z.number().int().min(0),
+    maxBudgetCents: z.number().int().min(0).nullable(),
+    budgetDuration: z.string().nullable(),
+    keyAlias: z.string().nullable(),
+    models: z.array(z.string()),
+    updatedAt: IsoDate,
+  }),
+  z.object({
+    supported: z.literal(false),
+    reason: z.literal("not_litellm"),
+  }),
+]);
+export type BotUsage = z.infer<typeof BotUsageSchema>;
+
 export const StartPairingResultSchema = z.object({
   status: z.enum(["started", "already_active"]),
   expiresInMs: z.number().int(),

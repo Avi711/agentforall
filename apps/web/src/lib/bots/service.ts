@@ -6,6 +6,7 @@ import {
 } from "../orchestrator/client";
 import type {
   Instance,
+  BotUsage,
   PairCode,
   PairQr,
   PairStatus,
@@ -25,6 +26,7 @@ export interface BotOrchestratorPort {
     input: { displayName: string },
   ): Promise<Instance>;
   getBot(userId: string, id: string): Promise<Instance>;
+  getBotUsage(userId: string, id: string): Promise<BotUsage>;
   deleteBot(userId: string, id: string): Promise<void>;
   restartBot(userId: string, id: string): Promise<void>;
   startBotBackupExport(userId: string, id: string): Promise<BackupExportJob>;
@@ -75,6 +77,10 @@ export class BotService {
 
   getBot(userId: string, id: string): Promise<Instance> {
     return this.orchestrator.getBot(userId, id);
+  }
+
+  getBotUsage(userId: string, id: string): Promise<BotUsage> {
+    return this.orchestrator.getBotUsage(userId, id);
   }
 
   deleteBot(userId: string, id: string): Promise<void> {

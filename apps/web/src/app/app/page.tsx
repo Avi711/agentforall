@@ -18,6 +18,9 @@ export default async function AppHome() {
   const session = await requireSession("/login");
   const firstName = session.user.name?.split(" ")[0] ?? "";
   const bot = await botService.findActiveBot(session.user.id);
+  const usage = bot
+    ? await botService.getBotUsage(session.user.id, bot.id).catch(() => null)
+    : null;
 
   return (
     <div className="relative">
@@ -53,6 +56,7 @@ export default async function AppHome() {
               hasWhatsappCreds: bot.hasWhatsappCreds,
               lastSeenAt: bot.lastSeenAt ?? null,
             }}
+            usage={usage}
           />
         ) : (
           <EmptyState />

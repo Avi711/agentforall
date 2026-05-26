@@ -7,8 +7,15 @@ import { DeleteBotDialog } from "./DeleteBotDialog";
 import { useBotStatus, type BotSnapshot } from "./useBotStatus";
 import { BotAvatar, type AvatarTone } from "./Marks";
 import { CreatingPanel } from "./CreatingPanel";
+import type { BotUsage } from "@/lib/orchestrator/types";
 
-export function BotCard({ bot: initialBot }: { bot: BotSnapshot }) {
+export function BotCard({
+  bot: initialBot,
+  usage,
+}: {
+  bot: BotSnapshot;
+  usage: BotUsage | null;
+}) {
   const router = useRouter();
   const bot = useBotStatus(initialBot);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -224,6 +231,8 @@ export function BotCard({ bot: initialBot }: { bot: BotSnapshot }) {
             <PhoneRow accountId={bot.whatsappAccountId} />
           ) : null}
 
+          {usage?.supported ? <UsageSection usage={usage} /> : null}
+
           {state.kind === "ok" && bot.whatsappAccountId ? (
             <ReadyActions accountId={bot.whatsappAccountId} />
           ) : state.restart ? (
@@ -256,6 +265,58 @@ export function BotCard({ bot: initialBot }: { bot: BotSnapshot }) {
       />
     </>
   );
+}
+
+function UsageSection({ usage }: { usage: Extract<BotUsage, { supported: true }> }) {
+  const percent =
+    usage.maxBudgetCents && usage.maxBudgetCents > 0
+      ? Math.min(100, Math.round((usage.spendCents / usage.maxBudgetCents) * 100))
+      : null;
+  return (
+    <section className="mb-7 border-t border-sand-light/70 pt-7">
+      <div className="flex items-end justify-between gap-4 mb-3">
+        <div>
+          <p className="text-[11px] uppercase tracking-[0.22em] text-espresso-light/70 mb-1">
+            Usage
+          </p>
+          <p className="text-2xl font-medium text-espresso tabular-nums" dir="ltr">
+            {formatMoney(usage.spendCents)}
+          </p>
+        </div>
+        <div className="text-end text-sm text-espresso-light">
+          <p className="text-[11px] uppercase tracking-[0.18em] mb-1">Limit</p>
+          <p className="font-medium text-espresso tabular-nums" dir="ltr">
+            {usage.maxBudgetCents === null ? "No limit" : formatMoney(usage.maxBudgetCents)}
+          </p>
+        </div>
+      </div>
+      <div
+        className="h-2 rounded-full bg-cream-dark overflow-hidden"
+        role={percent === null ? undefined : "meter"}
+        aria-valuemin={percent === null ? undefined : 0}
+        aria-valuemax={percent === null ? undefined : 100}
+        aria-valuenow={percent === null ? undefined : percent}
+      >
+        <div
+          className="h-full rounded-full bg-terra transition-[width]"
+          style={{ width: `${percent ?? 0}%` }}
+        />
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-4 text-xs text-espresso-light">
+        <span>{usage.budgetDuration ? `Period ${usage.budgetDuration}` : "Current period"}</span>
+        {percent === null ? null : <span dir="ltr">{percent}%</span>}
+      </div>
+    </section>
+  );
+}
+
+function formatMoney(cents: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: cents === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(cents / 100);
 }
 
 async function waitForExportDownloadUrl(

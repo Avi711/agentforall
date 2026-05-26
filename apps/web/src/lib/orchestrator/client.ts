@@ -6,11 +6,13 @@ import {
   PairQrSchema,
   PairCodeSchema,
   PairStatusSchema,
+  BotUsageSchema,
   type Instance,
   type StartPairingResult,
   type PairQr,
   type PairCode,
   type PairStatus,
+  type BotUsage,
   type CreateInstanceInput,
 } from "./types";
 
@@ -131,6 +133,15 @@ export class OrchestratorClient {
       schema: z.unknown(),
       allowEmptyBody: true,
       timeoutMs: 60_000,
+    });
+  }
+
+  getBotUsage(userId: string, id: string): Promise<BotUsage> {
+    return this.call({
+      method: "GET",
+      path: instancePath(id, "/usage"),
+      userId,
+      schema: BotUsageSchema,
     });
   }
 
