@@ -10,6 +10,12 @@ import { CreatingPanel } from "./CreatingPanel";
 import type { BotUsage } from "@/lib/orchestrator/types";
 
 const USD_TO_ILS_RATE = 3;
+const USAGE_LABEL = "\u05e0\u05d5\u05e6\u05dc";
+const LIMIT_LABEL = "\u05de\u05e1\u05d2\u05e8\u05ea";
+const NO_LIMIT_LABEL = "\u05dc\u05dc\u05d0 \u05de\u05e1\u05d2\u05e8\u05ea";
+const CURRENT_PERIOD_LABEL = "\u05d4\u05ea\u05e7\u05d5\u05e4\u05d4 \u05d4\u05e0\u05d5\u05db\u05d7\u05d9\u05ea";
+const PERIOD_LABEL = "\u05ea\u05e7\u05d5\u05e4\u05d4";
+const THIRTY_DAYS_LABEL = "30 \u05d9\u05d5\u05dd";
 
 export function BotCard({
   bot: initialBot,
@@ -277,18 +283,20 @@ function UsageSection({ usage }: { usage: Extract<BotUsage, { supported: true }>
   return (
     <section className="mb-7 border-t border-sand-light/70 pt-7">
       <div className="flex items-end justify-between gap-4 mb-3">
-        <div>
-          <p className="text-[11px] uppercase tracking-[0.22em] text-espresso-light/70 mb-1 text-start">
-            USED
+        <div className="text-start">
+          <p className="text-[11px] tracking-[0.16em] text-espresso-light/70 mb-1">
+            {LIMIT_LABEL}
+          </p>
+          <p className="font-medium text-espresso tabular-nums" dir="ltr">
+            {usage.maxBudgetCents === null ? NO_LIMIT_LABEL : formatShekels(usage.maxBudgetCents)}
+          </p>
+        </div>
+        <div className="text-end">
+          <p className="text-[11px] tracking-[0.16em] text-espresso-light/70 mb-1">
+            {USAGE_LABEL}
           </p>
           <p className="text-2xl font-medium text-espresso tabular-nums" dir="ltr">
             {formatShekels(usage.spendCents)}
-          </p>
-        </div>
-        <div className="text-end text-sm text-espresso-light">
-          <p className="text-[11px] uppercase tracking-[0.18em] mb-1">LIMIT</p>
-          <p className="font-medium text-espresso tabular-nums" dir="ltr">
-            {usage.maxBudgetCents === null ? "No limit" : formatShekels(usage.maxBudgetCents)}
           </p>
         </div>
       </div>
@@ -305,7 +313,7 @@ function UsageSection({ usage }: { usage: Extract<BotUsage, { supported: true }>
         />
       </div>
       <div className="mt-2 flex items-center justify-between gap-4 text-xs text-espresso-light">
-        <span>{usage.budgetDuration ? `Period: ${formatBudgetDuration(usage.budgetDuration)}` : "Current period"}</span>
+        <span>{usage.budgetDuration ? `${PERIOD_LABEL}: ${formatBudgetDuration(usage.budgetDuration)}` : CURRENT_PERIOD_LABEL}</span>
         {percent === null ? null : <span dir="ltr">{percent}%</span>}
       </div>
     </section>
@@ -316,11 +324,11 @@ function formatShekels(usdCents: number): string {
   const amount = new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 0,
   }).format((usdCents / 100) * USD_TO_ILS_RATE);
-  return `₪${amount}`;
+  return `${amount} ₪`;
 }
 
 function formatBudgetDuration(duration: string): string {
-  if (duration === "30d") return "30 days";
+  if (duration === "30d") return THIRTY_DAYS_LABEL;
   return duration;
 }
 
