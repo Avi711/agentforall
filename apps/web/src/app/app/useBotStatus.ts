@@ -1,6 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { Instance } from "@/lib/orchestrator/types";
+
+export interface TelegramSnapshot {
+  linked: boolean;
+  botUsername: string | null;
+}
 
 export interface BotSnapshot {
   id: string;
@@ -9,7 +15,34 @@ export interface BotSnapshot {
   pairingStatus: string;
   whatsappAccountId: string | null;
   hasWhatsappCreds: boolean;
+  hasWhatsappChannel: boolean;
+  telegram: TelegramSnapshot | null;
   lastSeenAt: string | null;
+}
+
+export function toBotSnapshot(bot: Instance): BotSnapshot {
+  return {
+    id: bot.id,
+    displayName: bot.displayName,
+    status: bot.status,
+    pairingStatus: bot.pairingStatus,
+    whatsappAccountId: bot.whatsappAccountId,
+    hasWhatsappCreds: bot.hasWhatsappCreds,
+    hasWhatsappChannel: bot.config.channels.some((ch) => ch.type === "whatsapp"),
+    telegram: telegramSnapshot(bot.config.channels),
+    lastSeenAt: bot.lastSeenAt ?? null,
+  };
+}
+
+function telegramSnapshot(
+  channels: Instance["config"]["channels"],
+): TelegramSnapshot | null {
+  const ch = channels.find((c) => c.type === "telegram");
+  if (!ch) return null;
+  return {
+    linked: typeof ch.botToken === "string",
+    botUsername: typeof ch.botUsername === "string" ? ch.botUsername : null,
+  };
 }
 
 const TRANSITIONAL = new Set([
@@ -48,8 +81,8 @@ export function useBotStatus(initial: BotSnapshot): BotSnapshot {
         });
         if (cancelled) return;
         if (!res.ok) throw new Error(`status ${res.status}`);
-        const data = (await res.json()) as { bot?: BotSnapshot };
-        if (data.bot) setBot(data.bot);
+        const data = (await res.json()) as { bot?: Instance };
+        if (data.bot) setBot(toBotSnapshot(data.bot));
         consecutiveErrors = 0;
       } catch {
         // Best-effort poll; failures drive the consecutiveErrors backoff below.

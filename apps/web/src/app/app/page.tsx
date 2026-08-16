@@ -4,6 +4,7 @@ import { requireSession } from "@/lib/auth/session";
 import { botService } from "@/lib/bots/service";
 import { CreateBotForm } from "./CreateBotForm";
 import { BotCard } from "./BotCard";
+import { toBotSnapshot } from "./useBotStatus";
 import { PairedToast } from "./PairedToast";
 import { OrnamentDivider } from "./Marks";
 
@@ -46,18 +47,7 @@ export default async function AppHome() {
         </header>
 
         {bot ? (
-          <BotCard
-            bot={{
-              id: bot.id,
-              displayName: bot.displayName,
-              status: bot.status,
-              pairingStatus: bot.pairingStatus,
-              whatsappAccountId: bot.whatsappAccountId,
-              hasWhatsappCreds: bot.hasWhatsappCreds,
-              lastSeenAt: bot.lastSeenAt ?? null,
-            }}
-            usage={usage}
-          />
+          <BotCard bot={toBotSnapshot(bot)} usage={usage} />
         ) : (
           <EmptyState />
         )}
@@ -77,8 +67,8 @@ function EmptyState() {
         בואו ניצור לכם סוכן
       </h2>
       <p className="text-espresso-light max-w-md mb-8 leading-relaxed">
-        תוך דקות יהיה לכם עוזר אישי בוואטסאפ — שמכיר אתכם, זוכר את התזכורות,
-        ומגיב 24/7.
+        תוך דקות יהיה לכם עוזר אישי בטלגרם או בוואטסאפ — שמכיר אתכם, זוכר את
+        התזכורות, ומגיב 24/7.
       </p>
       <CreateBotForm />
     </section>

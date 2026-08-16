@@ -7,6 +7,8 @@ import {
   PairCodeSchema,
   PairStatusSchema,
   BotUsageSchema,
+  TelegramLinkSchema,
+  TelegramLinkStatusSchema,
   type Instance,
   type StartPairingResult,
   type PairQr,
@@ -14,6 +16,8 @@ import {
   type PairStatus,
   type BotUsage,
   type CreateInstanceInput,
+  type TelegramLink,
+  type TelegramLinkStatus,
 } from "./types";
 
 const BackupUploadSessionSchema = z.object({
@@ -79,7 +83,7 @@ export class OrchestratorClient {
   async createBot(userId: string, input: CreateInstanceInput): Promise<Instance> {
     const body = {
       displayName: input.displayName,
-      channels: [{ type: "whatsapp" }],
+      channels: [{ type: input.channel }],
     };
     return this.call({
       method: "POST",
@@ -239,6 +243,27 @@ export class OrchestratorClient {
       userId,
       body: { phone },
       schema: PairCodeSchema,
+    });
+  }
+
+  async startTelegramLink(userId: string, id: string): Promise<TelegramLink> {
+    return this.call({
+      method: "POST",
+      path: instancePath(id, "/telegram/link"),
+      userId,
+      schema: TelegramLinkSchema,
+    });
+  }
+
+  async getTelegramLinkStatus(
+    userId: string,
+    id: string,
+  ): Promise<TelegramLinkStatus> {
+    return this.call({
+      method: "GET",
+      path: instancePath(id, "/telegram/status"),
+      userId,
+      schema: TelegramLinkStatusSchema,
     });
   }
 

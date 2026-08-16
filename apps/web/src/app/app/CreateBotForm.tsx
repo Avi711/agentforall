@@ -10,9 +10,12 @@ const DEFAULT_BACKUP_CONTENT_TYPE = "application/gzip";
 const BACKUP_UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024;
 const MAX_UPLOAD_ATTEMPTS = 3;
 
+type BotChannel = "telegram" | "whatsapp";
+
 export function CreateBotForm() {
   const router = useRouter();
   const [displayName, setDisplayName] = useState("");
+  const [channel, setChannel] = useState<BotChannel>("telegram");
   const [backupFile, setBackupFile] = useState<File | null>(null);
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [dragActive, setDragActive] = useState(false);
@@ -28,10 +31,10 @@ export function CreateBotForm() {
       if (backupFile) {
         await createBotFromBackup(trimmedName, backupFile);
       } else {
-        await createBot(trimmedName);
+        await createBot(trimmedName, channel);
       }
       router.refresh();
-      router.push("/app");
+      router.push(!backupFile && channel === "telegram" ? "/app/bot/telegram" : "/app");
     } catch (err) {
       setError(err instanceof Error ? err.message : UNEXPECTED_ERROR_HE);
       setBusy(false);
@@ -86,6 +89,35 @@ export function CreateBotForm() {
           className="w-full px-4 py-3 rounded-xl border border-sand bg-white text-espresso placeholder:text-sand focus:outline-none focus:border-terra focus:ring-2 focus:ring-terra-pale"
         />
       </label>
+
+      {backupFile ? null : (
+        <fieldset>
+          <legend className="block text-sm text-espresso-light mb-1.5">
+            איפה תדברו עם הסוכן?
+          </legend>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <ChannelOption
+              selected={channel === "telegram"}
+              onSelect={() => setChannel("telegram")}
+              title="טלגרם"
+              badge="מומלץ"
+              description="חיבור מיידי בשתי לחיצות — בלי מספר טלפון"
+            />
+            <ChannelOption
+              selected={channel === "whatsapp"}
+              onSelect={() => setChannel("whatsapp")}
+              title="וואטסאפ"
+              description="דורש מספר טלפון ייעודי לסוכן"
+            />
+          </div>
+          {channel === "whatsapp" ? (
+            <p className="mt-2 text-xs text-espresso-light leading-relaxed">
+              חשוב: אל תחברו את המספר האישי שלכם. וואטסאפ עלולה לחסום מספרים
+              שמריצים בוטים, לכן צריך מספר נפרד (SIM נוסף או מספר וירטואלי).
+            </p>
+          ) : null}
+        </fieldset>
+      )}
 
       <div className="rounded-2xl border border-sand-light/80 bg-cream/55 overflow-hidden">
         <button
@@ -182,11 +214,11 @@ export function CreateBotForm() {
   );
 }
 
-async function createBot(displayName: string): Promise<void> {
+async function createBot(displayName: string, channel: BotChannel): Promise<void> {
   const res = await fetch("/api/bot", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ displayName }),
+    body: JSON.stringify({ displayName, channel }),
   });
   const data: unknown = await res.json().catch(() => null);
   if (!res.ok) {
@@ -347,6 +379,49 @@ function codeToHe(code: string | undefined): string | undefined {
     default:
       return undefined;
   }
+}
+
+function ChannelOption({
+  selected,
+  onSelect,
+  title,
+  description,
+  badge,
+}: {
+  selected: boolean;
+  onSelect: () => void;
+  title: string;
+  description: string;
+  badge?: string;
+}) {
+  return (
+    <label
+      className={`flex flex-col gap-1 rounded-2xl border px-4 py-3.5 cursor-pointer transition ${
+        selected
+          ? "border-terra bg-terra-pale/60 shadow-[inset_0_0_0_1px_var(--tw-shadow-color)] shadow-terra/40"
+          : "border-sand bg-white hover:border-terra-light"
+      }`}
+    >
+      <input
+        type="radio"
+        name="channel"
+        checked={selected}
+        onChange={onSelect}
+        className="sr-only"
+      />
+      <span className="flex items-center gap-2">
+        <span className="text-sm font-medium text-espresso">{title}</span>
+        {badge ? (
+          <span className="rounded-full bg-terra text-white text-[10px] font-medium px-2 py-0.5">
+            {badge}
+          </span>
+        ) : null}
+      </span>
+      <span className="text-xs text-espresso-light leading-relaxed">
+        {description}
+      </span>
+    </label>
+  );
 }
 
 function ChevronDownIcon({ open }: { open: boolean }) {

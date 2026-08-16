@@ -6,11 +6,14 @@ import {
 } from "../orchestrator/client";
 import type {
   Instance,
+  BotChannel,
   BotUsage,
   PairCode,
   PairQr,
   PairStatus,
   StartPairingResult,
+  TelegramLink,
+  TelegramLinkStatus,
 } from "../orchestrator/types";
 import type { CreateBotBody, PhoneBody } from "./schemas";
 
@@ -23,7 +26,7 @@ export interface BotOrchestratorPort {
   listBots(userId: string): Promise<Instance[]>;
   createBot(
     userId: string,
-    input: { displayName: string },
+    input: { displayName: string; channel: BotChannel },
   ): Promise<Instance>;
   getBot(userId: string, id: string): Promise<Instance>;
   getBotUsage(userId: string, id: string): Promise<BotUsage>;
@@ -49,6 +52,8 @@ export interface BotOrchestratorPort {
   getPairQr(userId: string, id: string): Promise<PairQr>;
   requestPairCode(userId: string, id: string, phone: string): Promise<PairCode>;
   getPairStatus(userId: string, id: string): Promise<PairStatus>;
+  startTelegramLink(userId: string, id: string): Promise<TelegramLink>;
+  getTelegramLinkStatus(userId: string, id: string): Promise<TelegramLinkStatus>;
 }
 
 export class BotService {
@@ -71,6 +76,7 @@ export class BotService {
     if (active) return { bot: active, created: false };
     const bot = await this.orchestrator.createBot(userId, {
       displayName: input.displayName,
+      channel: input.channel,
     });
     return { bot, created: true };
   }
@@ -152,6 +158,14 @@ export class BotService {
 
   getPairStatus(userId: string, id: string): Promise<PairStatus> {
     return this.orchestrator.getPairStatus(userId, id);
+  }
+
+  startTelegramLink(userId: string, id: string): Promise<TelegramLink> {
+    return this.orchestrator.startTelegramLink(userId, id);
+  }
+
+  getTelegramLinkStatus(userId: string, id: string): Promise<TelegramLinkStatus> {
+    return this.orchestrator.getTelegramLinkStatus(userId, id);
   }
 }
 

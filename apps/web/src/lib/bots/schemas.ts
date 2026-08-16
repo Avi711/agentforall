@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BOT_CHANNELS } from "../orchestrator/types";
 
 export const BotIdParamsSchema = z.object({
   id: z.string().uuid(),
@@ -6,6 +7,7 @@ export const BotIdParamsSchema = z.object({
 
 export const CreateBotBodySchema = z.object({
   displayName: z.string().min(1, "bot name is required").max(60),
+  channel: z.enum(BOT_CHANNELS),
 }).strict();
 
 export const BackupUploadSessionBodySchema = z.object({

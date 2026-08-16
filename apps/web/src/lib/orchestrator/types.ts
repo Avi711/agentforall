@@ -114,6 +114,24 @@ export const PairStatusSchema = z.object({
 });
 export type PairStatus = z.infer<typeof PairStatusSchema>;
 
+export const TelegramLinkSchema = z.object({
+  deepLink: z.string().url(),
+  botUsername: z.string(),
+  expiresAt: IsoDate,
+});
+export type TelegramLink = z.infer<typeof TelegramLinkSchema>;
+
+export const TelegramLinkStatusSchema = z.object({
+  status: z.enum(["none", "pending", "connected"]),
+  botUsername: z.string().nullable(),
+  deepLink: z.string().url().nullable(),
+});
+export type TelegramLinkStatus = z.infer<typeof TelegramLinkStatusSchema>;
+
+export const BOT_CHANNELS = ["telegram", "whatsapp"] as const;
+export type BotChannel = (typeof BOT_CHANNELS)[number];
+
 export interface CreateInstanceInput {
   displayName: string;
+  channel: BotChannel;
 }
