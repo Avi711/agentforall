@@ -141,6 +141,10 @@ export function TelegramConnectFlow({ botId }: { botId: string }) {
               לחצו על האישור בטלגרם. אל תשנו את שם המשתמש המוצע — כך נזהה את
               הבוט שלכם.
             </StepItem>
+            <StepItem number={3} title="שלחו שלום לבוט">
+              אפשר לשלוח הודעה מיד — הסוכן מתעורר תוך כחצי דקה ויענה ברגע
+              שיהיה מוכן. אין צורך לחזור לכאן.
+            </StepItem>
           </ol>
 
           {phase.kind === "pending" ? (

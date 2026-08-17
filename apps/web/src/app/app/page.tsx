@@ -4,7 +4,7 @@ import { requireSession } from "@/lib/auth/session";
 import { botService } from "@/lib/bots/service";
 import { CreateBotForm } from "./CreateBotForm";
 import { BotCard } from "./BotCard";
-import { toBotSnapshot } from "./useBotStatus";
+import { toBotSnapshot } from "@/lib/bots/snapshot";
 import { PairedToast } from "./PairedToast";
 import { OrnamentDivider } from "./Marks";
 
