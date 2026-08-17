@@ -66,27 +66,30 @@ export function useBotStatus(initial: BotSnapshot): BotSnapshot {
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let inFlight = false;
     let consecutiveErrors = 0;
 
     const tick = async () => {
       timer = null;
-      if (cancelled) return;
+      if (cancelled || inFlight) return;
       if (document.visibilityState === "hidden") {
         timer = setTimeout(tick, SLOW_INTERVAL_MS);
         return;
       }
+      inFlight = true;
       try {
         const res = await fetch(`/api/bot/${botRef.current.id}`, {
           cache: "no-store",
         });
-        if (cancelled) return;
         if (!res.ok) throw new Error(`status ${res.status}`);
         const data = (await res.json()) as { bot?: Instance };
-        if (data.bot) setBot(toBotSnapshot(data.bot));
+        if (!cancelled && data.bot) setBot(toBotSnapshot(data.bot));
         consecutiveErrors = 0;
       } catch {
         // Best-effort poll; failures drive the consecutiveErrors backoff below.
         consecutiveErrors++;
+      } finally {
+        inFlight = false;
       }
       if (cancelled) return;
       const baseInterval = TRANSITIONAL.has(botRef.current.status)
@@ -105,7 +108,7 @@ export function useBotStatus(initial: BotSnapshot): BotSnapshot {
     timer = setTimeout(tick, initialDelay);
 
     const onVisibility = () => {
-      if (document.visibilityState === "visible" && !timer) tick();
+      if (document.visibilityState === "visible" && !timer && !inFlight) tick();
     };
     document.addEventListener("visibilitychange", onVisibility);
 

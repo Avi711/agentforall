@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 
 const STATUS_POLL_INTERVAL_MS = 2000;
+const LINK_LOST_HE =
+  "החיבור לא הושלם או שפג תוקף הקישור. נסו שוב — ניצור קישור חדש.";
 
 type Phase =
   | { kind: "starting" }
@@ -20,8 +22,19 @@ export function TelegramConnectFlow({ botId }: { botId: string }) {
   useEffect(() => {
     let cancelled = false;
 
-    async function startLink() {
+    async function start() {
       try {
+        // Status first: skip creating a link when the bot is already connected.
+        const statusRes = await fetch(`/api/bot/${botId}/telegram/status`, {
+          cache: "no-store",
+        });
+        const status: unknown = await statusRes.json().catch(() => null);
+        if (cancelled) return;
+        if (statusRes.ok && isStatusResponse(status) && status.status === "connected") {
+          setPhase({ kind: "connected", botUsername: status.botUsername });
+          return;
+        }
+
         const res = await fetch(`/api/bot/${botId}/telegram/link`, {
           method: "POST",
           cache: "no-store",
@@ -46,7 +59,7 @@ export function TelegramConnectFlow({ botId }: { botId: string }) {
       }
     }
 
-    startLink();
+    start();
     return () => {
       cancelled = true;
     };
@@ -66,6 +79,9 @@ export function TelegramConnectFlow({ botId }: { botId: string }) {
         if (cancelled || !isStatusResponse(data)) return;
         if (data.status === "connected") {
           setPhase({ kind: "connected", botUsername: data.botUsername });
+        } else if (data.status === "none") {
+          // Pending link is gone (expired, failed, or orchestrator restarted) — offer a retry.
+          setPhase({ kind: "error", message: LINK_LOST_HE });
         }
       } catch {
         // Best-effort poll; the next tick retries.
