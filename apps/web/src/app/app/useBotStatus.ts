@@ -15,6 +15,14 @@ const FAST_INTERVAL_MS = 2000;
 const SLOW_INTERVAL_MS = 30_000;
 const MAX_BACKOFF_MS = 60_000;
 
+// An unlinked telegram channel means the user is mid-connect in another tab.
+function isTransitional(bot: BotSnapshot): boolean {
+  return (
+    TRANSITIONAL.has(bot.status) ||
+    (bot.telegram !== null && !bot.telegram.linked)
+  );
+}
+
 export function useBotStatus(initial: BotSnapshot): BotSnapshot {
   const [bot, setBot] = useState(initial);
   const botRef = useRef(bot);
@@ -53,7 +61,7 @@ export function useBotStatus(initial: BotSnapshot): BotSnapshot {
         inFlight = false;
       }
       if (cancelled) return;
-      const baseInterval = TRANSITIONAL.has(botRef.current.status)
+      const baseInterval = isTransitional(botRef.current)
         ? FAST_INTERVAL_MS
         : SLOW_INTERVAL_MS;
       const delay = Math.min(
@@ -63,7 +71,7 @@ export function useBotStatus(initial: BotSnapshot): BotSnapshot {
       timer = setTimeout(tick, delay);
     };
 
-    const initialDelay = TRANSITIONAL.has(botRef.current.status)
+    const initialDelay = isTransitional(botRef.current)
       ? FAST_INTERVAL_MS
       : SLOW_INTERVAL_MS;
     timer = setTimeout(tick, initialDelay);

@@ -58,7 +58,7 @@ export default async function AppHome() {
 
 function EmptyState() {
   return (
-    <section className="relative bg-white rounded-[28px] border border-sand-light p-10 sm:p-12 shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)]">
+    <section className="relative bg-white rounded-[28px] border border-sand-light p-6 sm:p-12 shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)]">
       <div className="absolute top-0 inset-x-12 h-px bg-gradient-to-r from-transparent via-sand-light to-transparent" />
       <p className="text-xs uppercase tracking-[0.22em] text-terra mb-3">
         התחלה

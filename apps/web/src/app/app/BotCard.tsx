@@ -125,7 +125,7 @@ export function BotCard({
           <span aria-hidden className="download-card-progress" />
         ) : null}
 
-        <div className="p-8 sm:p-10">
+        <div className="p-6 sm:p-10">
           <div className="flex items-start justify-between gap-6 mb-7">
             <div className="flex items-start gap-5 min-w-0">
               <BotAvatar
@@ -435,7 +435,7 @@ function TelegramRow({ botUsername }: { botUsername: string }) {
         target="_blank"
         rel="noopener noreferrer"
         dir="ltr"
-        className="font-mono text-lg text-espresso hover:text-terra transition"
+        className="font-mono text-lg text-espresso hover:text-terra transition break-all"
       >
         @{botUsername}
       </a>

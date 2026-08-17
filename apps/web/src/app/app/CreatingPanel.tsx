@@ -69,8 +69,8 @@ export function CreatingPanel({ name }: { name: string }) {
       </ol>
 
       <div className="border-y border-sand-light/75 py-6 text-right">
-        <div className="flex items-start justify-between gap-5 mb-5">
-          <div className="min-w-0">
+        <div className="flex flex-wrap items-start justify-between gap-x-5 gap-y-3 mb-5">
+          <div className="min-w-0 flex-1 basis-56">
             <div className="flex items-center gap-2.5 mb-2">
               <StepIcon state="active" />
               <p className="text-[11px] uppercase tracking-[0.18em] text-terra">
@@ -116,7 +116,7 @@ export function CreatingPanel({ name }: { name: string }) {
       </div>
 
       <p className="mt-5 text-xs text-espresso-light/80 leading-relaxed">
-        כשהסוכן יהיה מוכן נעבור אוטומטית למסך חיבור WhatsApp.
+        כשהסוכן יהיה מוכן נציג כאן את שלב החיבור.
       </p>
 
       <span className="sr-only">טוען</span>

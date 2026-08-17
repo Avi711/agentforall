@@ -189,10 +189,15 @@ function ConnectedPanel({ botUsername }: { botUsername: string | null }) {
       <h2 className="font-display text-2xl text-espresso mb-3">
         הסוכן שלכם מחובר לטלגרם 🎉
       </h2>
-      <p className="text-espresso-light leading-relaxed mb-8 max-w-md">
+      <p className="text-espresso-light leading-relaxed mb-3 max-w-md">
         נשאר רק לומר שלום. ההודעה הראשונה עשויה להגיע אחרי כ-30–40 שניות —
         הסוכן עולה ברגעים אלו.
       </p>
+      {botUsername ? (
+        <p dir="ltr" className="font-mono text-sm text-espresso-light break-all mb-8">
+          @{botUsername}
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-center gap-4">
         {botUsername ? (
           <a
@@ -202,7 +207,7 @@ function ConnectedPanel({ botUsername }: { botUsername: string | null }) {
             className="inline-flex items-center gap-2.5 px-6 py-3 rounded-xl bg-terra text-white font-medium hover:bg-terra-light transition"
           >
             <TelegramGlyph />
-            <span>פתחו את @{botUsername} ושלחו הודעה</span>
+            <span>פתחו את הבוט ושלחו הודעה</span>
           </a>
         ) : null}
         <Link
