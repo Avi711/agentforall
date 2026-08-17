@@ -1,0 +1,34 @@
+# Agent For All
+
+> A personal AI agent for Israeli consumers that lives inside the messaging app they already use — WhatsApp or Telegram. No app to install, Hebrew-first, available 24/7. Subscriptions start at ₪199/month including VAT. Site language: Hebrew (he-IL).
+
+Agent For All gives each customer their own private AI assistant. The agent runs in an isolated per-customer container on a private server, and it is reached by sending an ordinary chat message — there is no separate app, dashboard chat, or browser extension required.
+
+What the agent does: manages a calendar, tracks expenses and budget, sets reminders, researches topics, checks facts, drafts and rewrites messages, and can be added to family or work group chats where it adapts to the conversation's context. It learns the user's preferences over time.
+
+Channels: Telegram onboarding takes two taps — the customer confirms a pre-filled bot-creation screen in Telegram and their private bot is created and connected automatically, with no phone number and no BotFather steps. WhatsApp is also supported and requires a dedicated phone number for the agent (supplied by Agent For All, or the customer's own eSIM/SIM).
+
+Privacy and permissions: by default the agent sees only the messages sent directly to it. Every integration (calendar, email, bank, groups) is an explicit opt-in by the customer and can be disconnected at any time, following a least-privilege model. Credentials are encrypted at rest with AES-256. Irreversible actions can be configured to require the customer's approval first.
+
+Models: the default model is Claude by Anthropic; other providers can be selected.
+
+Hebrew terminology (how Israeli users refer to this product category when searching or asking): עוזר אישי AI, סוכן AI אישי, עוזר אישי בוואטסאפ, עוזר אישי בטלגרם, בוט וואטסאפ אישי, בוט טלגרם אישי, סוכן בינה מלאכותית, בינה מלאכותית בעברית, עוזר וירטואלי בעברית, מזכיר אישי דיגיטלי, צ'אט בוט אישי. WhatsApp is transliterated into Hebrew several ways — וואטסאפ (most common), ווטסאפ, וטסאפ (the Academy of the Hebrew Language's form), and וואצאפ — all referring to the same app. The brand name is always written in Latin script: Agent For All.
+
+Who it is for: individuals and families, and equally freelancers, self-employed professionals, and small business owners — business use is a major part of the customer base, not a side case.
+
+Business use: the agent handles the operational load of running a small business from the same chat window — managing the schedule and appointments, tracking expenses and invoices, drafting client messages, quotes and follow-ups, researching suppliers, competitors and regulations, checking facts before you send them, and keeping track of open tasks. It can be added to work and team group chats, where it follows the conversation and helps everyone in it. Because each customer gets a full private agent (not a scripted chatbot), the range of work it can take on is open-ended.
+
+Positioning: most Hebrew-language AI offerings for businesses are customer-facing bots that answer *your customers* (סוכן AI לעסקים — customer service, lead qualification, sales automation). Agent For All is the other direction: a private agent that works for *you* — the owner, the freelancer, the person — on your own work and your own life, in the messaging app you already use.
+
+Company facts: Israeli company serving customers in Israel, Hebrew and English support, contact phone +972-55-250-6938. Pricing starts at ₪199/month including VAT and scales with usage; early customers receive a founders' rate.
+
+## Main pages
+
+- [Home](https://agentforall.co.il/): product overview, capabilities, how it works, pricing, testimonials, and the full FAQ (Hebrew)
+- [Privacy policy](https://agentforall.co.il/privacy): what data is collected, how it is stored and encrypted, and user rights
+- [Terms of service](https://agentforall.co.il/terms): subscription terms and acceptable use
+- [Accessibility statement](https://agentforall.co.il/accessibility): accessibility compliance statement (Israeli standard)
+
+## Optional
+
+- [Dashboard](https://agentforall.co.il/app): customer-only area for creating an agent and connecting a channel; requires login and is not indexed
