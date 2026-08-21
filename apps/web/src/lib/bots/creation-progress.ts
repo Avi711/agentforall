@@ -43,6 +43,13 @@ const RESTORE_STEPS: CreationStepSpec[] = [
 // The active step never reads as more than this much done; only the real milestone completes it.
 export const IN_STEP_CAP = 0.9;
 
+// Union by stage, ascending: a poll can only add knowledge, never take it away.
+export function mergeHistory(known: ProvisioningEvent[], incoming: ProvisioningEvent[]): ProvisioningEvent[] {
+  const byStage = new Map(known.map((e) => [e.stage, e] as const));
+  for (const event of incoming) if (!byStage.has(event.stage)) byStage.set(event.stage, event);
+  return [...byStage.values()].sort((a, b) => a.at - b.at);
+}
+
 export function creationSteps(restoring: boolean): CreationStepSpec[] {
   return restoring ? RESTORE_STEPS : FRESH_STEPS;
 }

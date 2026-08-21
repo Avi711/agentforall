@@ -4,8 +4,22 @@ import {
   IN_STEP_CAP,
   buildTimeline,
   creationSteps,
+  mergeHistory,
   resolvePercent,
 } from "../src/lib/bots/creation-progress";
+
+test("mergeHistory never drops a known stage and keeps ascending order", () => {
+  const known = [
+    { stage: "reserved" as const, at: 10 },
+    { stage: "container_created" as const, at: 20 },
+  ];
+  assert.deepEqual(mergeHistory(known, []), known);
+  assert.deepEqual(
+    mergeHistory(known, [{ stage: "running", at: 40 }, { stage: "started", at: 30 }]).map((e) => e.stage),
+    ["reserved", "container_created", "started", "running"],
+  );
+  assert.deepEqual(mergeHistory([], known), known);
+});
 
 test("step weights sum to 100 for both flows", () => {
   for (const restoring of [false, true]) {

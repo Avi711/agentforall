@@ -10,6 +10,7 @@ import { InstanceSchema } from "@/lib/orchestrator/types";
 import { toBotSnapshot, type BotSnapshot } from "@/lib/bots/snapshot";
 import {
   buildTimeline,
+  mergeHistory,
   type CreationStep,
   type CreationTimelineEntry,
   type ProvisioningEvent,
@@ -120,7 +121,8 @@ export function CreateBotForm() {
       });
       const ready = await waitUntilReady(botId, {
         cancelled: () => unmounted.current,
-        onProgress: (bot) => patch((prev) => ({ ...prev, history: bot.provisioningHistory })),
+        onProgress: (bot) =>
+          patch((prev) => ({ ...prev, history: mergeHistory(prev.history, bot.provisioningHistory) })),
       });
       if (unmounted.current) return;
       if (ready === "error") throw new Error(PROVISION_FAILED_HE);

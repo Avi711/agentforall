@@ -174,11 +174,11 @@ export class InstanceManager {
     return this.requireOwnedInstance(id, userId);
   }
 
-  // Detail view: while provisioning, surface the recorded stages so clients can show real progress.
+  // Detail view: the recorded provisioning stages let clients show real progress, and the
+  // final poll (already `running`) must still carry them so step timings survive.
   async describe(id: string, userId: string): Promise<InstanceDetails> {
     const inst = await this.requireOwnedInstance(id, userId);
-    const provisioningHistory =
-      inst.status === "provisioning" ? await this.eventLog.provisioningHistory(id) : [];
+    const provisioningHistory = await this.eventLog.provisioningHistory(id);
     return {
       ...inst,
       provisioningStage: provisioningHistory.at(-1)?.stage ?? null,
