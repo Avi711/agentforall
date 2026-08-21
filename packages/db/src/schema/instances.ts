@@ -33,6 +33,14 @@ export const PAIRING_STATUSES = [
   "failed",
 ] as const;
 
+export const BACKUP_IMPORT_STATUSES = [
+  "none",
+  "pending",
+  "restored",
+] as const;
+
+export const AGENT_RUNTIME_KINDS = ["openclaw", "hermes"] as const;
+
 const bytea = customType<{ data: Buffer; notNull: false; default: false }>({
   dataType() {
     return "bytea";
@@ -46,7 +54,14 @@ export const instances = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+    hostId: text("host_id").notNull(),
     displayName: varchar("display_name", { length: 255 }).notNull(),
+    runtimeKind: varchar("runtime_kind", {
+      length: 32,
+      enum: AGENT_RUNTIME_KINDS,
+    })
+      .notNull()
+      .default("openclaw"),
     status: varchar("status", { length: 32, enum: INSTANCE_STATUSES })
       .notNull()
       .default("provisioning"),
@@ -68,6 +83,23 @@ export const instances = pgTable(
     whatsappCreds: bytea("whatsapp_creds"),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
 
+    backupImportStatus: varchar("backup_import_status", {
+      length: 32,
+      enum: BACKUP_IMPORT_STATUSES,
+    })
+      .notNull()
+      .default("none"),
+    backupImportObjectName: text("backup_import_object_name"),
+    backupImportContentLength: integer("backup_import_content_length"),
+    backupImportContentType: varchar("backup_import_content_type", {
+      length: 128,
+    }),
+
+    litellmKeyAlias: varchar("litellm_key_alias", { length: 128 }),
+    litellmKeyHash: varchar("litellm_key_hash", { length: 128 }),
+    litellmBudgetCents: integer("litellm_budget_cents"),
+    litellmBudgetDuration: varchar("litellm_budget_duration", { length: 32 }),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -79,9 +111,11 @@ export const instances = pgTable(
   },
   (table) => [
     uniqueIndex("idx_instances_gateway_port_active")
-      .on(table.gatewayPort)
+      .on(table.hostId, table.gatewayPort)
       .where(sql`${table.status} NOT IN ('destroyed', 'error')`),
     index("idx_instances_user_id").on(table.userId),
+    index("idx_instances_host_id").on(table.hostId),
+    index("idx_instances_host_status").on(table.hostId, table.status),
     index("idx_instances_status").on(table.status),
     index("idx_instances_pairing_status").on(table.pairingStatus),
   ],

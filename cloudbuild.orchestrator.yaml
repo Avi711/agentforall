@@ -1,0 +1,13 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - apps/orchestrator/Dockerfile
+      - -t
+      - europe-west4-docker.pkg.dev/agent-for-all/agent-forall/orchestrator:latest
+      - .
+images:
+  - europe-west4-docker.pkg.dev/agent-for-all/agent-forall/orchestrator:latest
+options:
+  machineType: E2_HIGHCPU_8

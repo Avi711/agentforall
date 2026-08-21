@@ -13,8 +13,14 @@
     "dev:orchestrator": "npm run build --workspace=packages/db && npm run dev --workspace=apps/orchestrator",
     "build": "npm run build --workspace=packages/db && npm run build --workspace=apps/orchestrator && npm run build --workspace=apps/whatsapp-pairing && npm run build --workspace=apps/web",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run build --workspace=packages/db && npm run test --workspaces --if-present",
     "db:generate": "npm run db:generate --workspace=packages/db",
     "db:migrate": "npm run db:migrate --workspace=packages/db",
     "db:studio": "npm run db:studio --workspace=packages/db"
+  },
+  "overrides": {
+    "fast-uri": "3.1.2",
+    "ws": "8.20.1",
+    "uuid": "11.1.1"
   }
 }

@@ -1,0 +1,65 @@
+name: build-and-push
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/orchestrator/**"
+      - "apps/whatsapp-pairing/**"
+      - "infra/litellm/**"
+      - "packages/db/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/build-and-push.yml"
+  workflow_dispatch:
+
+env:
+  REGION: europe-west4
+  PROJECT_ID: agent-for-all
+  REPO: agent-forall
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: orchestrator
+            dockerfile: apps/orchestrator/Dockerfile
+            context: .
+          - name: whatsapp-pairing
+            dockerfile: apps/whatsapp-pairing/Dockerfile
+            context: .
+          - name: litellm-gateway
+            dockerfile: Dockerfile
+            context: infra/litellm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_EMAIL }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Configure docker for GAR
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build + push ${{ matrix.image.name }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.dockerfile }}
+          push: true
+          tags: |
+            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ matrix.image.name }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.image.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}

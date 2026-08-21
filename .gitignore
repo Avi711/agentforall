@@ -13,3 +13,10 @@ infra/.terraform/
 infra/terraform.tfstate*
 infra/terraform.tfvars
 infra/.terraform.lock.hcl
+
+.vercel
+
+# local artifacts
+*.tfplan
+/backups/
+/outputs/

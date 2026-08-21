@@ -1,0 +1,13 @@
+.git
+.codex-run/
+backups/
+node_modules/
+**/node_modules/
+**/.next/
+**/dist/
+*.mp4
+*.jpg
+*.tfplan
+.env
+.env.*
+**/.env

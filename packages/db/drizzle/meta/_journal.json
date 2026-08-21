@@ -36,6 +36,41 @@
       "when": 1777023434632,
       "tag": "0004_reflective_sentry",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1777588054701,
+      "tag": "0005_host_id_scoping",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779547137165,
+      "tag": "0006_host_scoped_ports",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1779650000000,
+      "tag": "0007_backup_import_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1779814800000,
+      "tag": "0008_agent_runtime_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1779897600000,
+      "tag": "0009_litellm_key_metadata",
+      "breakpoints": true
     }
   ]
 }

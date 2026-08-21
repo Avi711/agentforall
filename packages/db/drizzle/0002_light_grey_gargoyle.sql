@@ -1,4 +1,4 @@
-CREATE TABLE "instances" (
+CREATE TABLE IF NOT EXISTS "instances" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"user_id" varchar(255) NOT NULL,
 	"display_name" varchar(255) NOT NULL,
@@ -27,8 +27,8 @@ CREATE TABLE "leads" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX "idx_instances_gateway_port_active" ON "instances" USING btree ("gateway_port") WHERE "instances"."status" NOT IN ('destroyed', 'error');--> statement-breakpoint
-CREATE INDEX "idx_instances_user_id" ON "instances" USING btree ("user_id");--> statement-breakpoint
-CREATE INDEX "idx_instances_status" ON "instances" USING btree ("status");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_instances_gateway_port_active" ON "instances" USING btree ("gateway_port") WHERE "instances"."status" NOT IN ('destroyed', 'error');--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_instances_user_id" ON "instances" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_instances_status" ON "instances" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "idx_leads_email" ON "leads" USING btree ("email");--> statement-breakpoint
 CREATE INDEX "idx_leads_created_at" ON "leads" USING btree ("created_at");

@@ -13,13 +13,14 @@ DEPLOY_DIR="/home/deploy/agent-forall"
 BOOTSTRAP_SENTINEL="/var/lib/agent-forall/bootstrap.done"
 DOMAIN="${domain}"
 
-# Image refs — orchestrator + pairing live in GAR (auth via VM service account).
-# OpenClaw browser image stays on GHCR public so we don't need creds for it.
+# Image refs — all three images live in GAR (auth via VM service account).
 GAR_HOST="${region}-docker.pkg.dev"
 GAR_REPO="$GAR_HOST/${project_id}/agent-forall"
-ORCHESTRATOR_IMAGE="$GAR_REPO/orchestrator:latest"
-PAIRING_IMAGE="$GAR_REPO/whatsapp-pairing:latest"
-OPENCLAW_IMAGE="ghcr.io/avi711/openclaw-browser:latest"
+ORCHESTRATOR_IMAGE="${orchestrator_image}"
+PAIRING_IMAGE="${pairing_image}"
+AGENT_RUNTIME_KIND="openclaw"
+AGENT_RUNTIME_IMAGE="${agent_runtime_image}"
+HERMES_RUNTIME_IMAGE="${hermes_runtime_image}"
 
 mkdir -p /var/lib/agent-forall
 
@@ -48,11 +49,48 @@ echo "Waiting for Docker..."
 until docker info >/dev/null 2>&1; do sleep 2; done
 echo "Docker ready."
 
+if ! command -v cron >/dev/null 2>&1; then
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -y
+  apt-get install -y cron
+fi
+systemctl enable --now cron
+
+if ! systemctl is-active --quiet google-cloud-ops-agent; then
+  curl -fsS -o /tmp/add-google-cloud-ops-agent-repo.sh https://dl.google.com/cloudagents/add-google-cloud-ops-agent-repo.sh
+  bash /tmp/add-google-cloud-ops-agent-repo.sh --also-install
+  rm -f /tmp/add-google-cloud-ops-agent-repo.sh
+fi
+
+cat > /usr/local/sbin/agent-forall-docker-housekeeping <<'HOUSEKEEPINGEOF'
+#!/bin/bash
+set -euo pipefail
+
+DISK_USED=$(df --output=pcent / | tail -1 | tr -dc '0-9')
+if [ "$DISK_USED" -ge 75 ]; then
+  logger -p daemon.warning "agent-forall disk usage warning: root filesystem $${DISK_USED}% used"
+fi
+
+docker image prune -af --filter "until=168h" >/dev/null
+docker builder prune -af --filter "until=168h" >/dev/null
+HOUSEKEEPINGEOF
+chmod 0755 /usr/local/sbin/agent-forall-docker-housekeeping
+
+cat > /etc/cron.d/agent-forall-docker-housekeeping <<'CRONEOF'
+17 3 * * * root /usr/local/sbin/agent-forall-docker-housekeeping >> /var/log/agent-forall-docker-housekeeping.log 2>&1
+CRONEOF
+chmod 0644 /etc/cron.d/agent-forall-docker-housekeeping
+
 # Deploy user directory (created by Terraform; ensure ownership for cron logs).
 id -u deploy >/dev/null 2>&1 || useradd -m -s /bin/bash deploy
 mkdir -p "$DEPLOY_DIR"
 chown -R deploy:deploy /home/deploy
 cd "$DEPLOY_DIR"
+
+cat > .env <<COMPOSEENV
+ORCHESTRATOR_IMAGE=$ORCHESTRATOR_IMAGE
+COMPOSEENV
+chmod 600 .env
 
 # ── Fetch shared secrets from Secret Manager (idempotent — runs every boot). ──
 # Secrets must be populated out-of-band: gcloud secrets versions add <name> --data-file=-
@@ -60,6 +98,9 @@ DATABASE_URL=$(gcloud secrets versions access latest --secret=database-url --pro
 ENCRYPTION_KEY=$(gcloud secrets versions access latest --secret=encryption-key --project=${project_id})
 DASHBOARD_SERVICE_TOKEN=$(gcloud secrets versions access latest --secret=dashboard-service-token --project=${project_id})
 DEFAULT_PROVIDER_API_KEY=$(gcloud secrets versions access latest --secret=default-provider-api-key --project=${project_id})
+LITELLM_MASTER_KEY=$(gcloud secrets versions access latest --secret=litellm-master-key --project=${project_id})
+LITELLM_GATEWAY_URL="${litellm_gateway_url}"
+DEFAULT_PROVIDER_BASE_URL="$LITELLM_GATEWAY_URL/v1"
 
 # ── First-boot-only work (write env files, cron install) ──
 if [ ! -f "$BOOTSTRAP_SENTINEL" ]; then
@@ -70,12 +111,16 @@ NODE_ENV=production
 PORT=3000
 HOST=0.0.0.0
 TRUST_PROXY=true
+ORCHESTRATOR_HOST_ID=agent-forall-vm
 DATABASE_URL=$DATABASE_URL
 ENCRYPTION_KEY=$ENCRYPTION_KEY
 API_KEYS={}
 SERVICE_TOKENS=$DASHBOARD_SERVICE_TOKEN
-OPENCLAW_IMAGE=$OPENCLAW_IMAGE
+AGENT_RUNTIME_KIND=$AGENT_RUNTIME_KIND
+AGENT_RUNTIME_IMAGE=$AGENT_RUNTIME_IMAGE
+HERMES_RUNTIME_IMAGE=$HERMES_RUNTIME_IMAGE
 PAIRING_IMAGE=$PAIRING_IMAGE
+PULL_IMAGES_ON_STARTUP=false
 DOCKER_HOST=docker-socket-proxy
 DOCKER_PORT=2375
 DOCKER_NETWORK=tenant-net
@@ -86,6 +131,9 @@ RECONCILE_INTERVAL_MS=60000
 RATE_LIMIT_MAX=100
 RATE_LIMIT_WINDOW_MS=60000
 MAX_INSTANCES_PER_USER=1
+BACKUP_IMPORT_BUCKET=agent-forall-backup-imports
+BACKUP_IMPORT_UPLOAD_ORIGIN=https://agentforall.co.il
+BACKUP_IMPORT_TTL_SECONDS=3600
 SHUTDOWN_TIMEOUT_MS=10000
 RECONCILE_ON_STARTUP=true
 MAX_PROVISION_RETRIES=3
@@ -95,9 +143,16 @@ PAIRING_REQUEST_TIMEOUT_MS=5000
 PAIRING_STALE_THRESHOLD_MS=900000
 PAIRING_LOG_LEVEL=info
 ORCHESTRATOR_INTERNAL_URL=http://orchestrator:3000
-DEFAULT_PROVIDER_NAME=anthropic
+DEFAULT_PROVIDER_NAME=litellm
+DEFAULT_PROVIDER_ID=litellm
 DEFAULT_PROVIDER_API_KEY=$DEFAULT_PROVIDER_API_KEY
-DEFAULT_PROVIDER_MODEL=claude-opus-4-7
+DEFAULT_PROVIDER_MODEL=gemini-agentforall
+DEFAULT_PROVIDER_BASE_URL=$DEFAULT_PROVIDER_BASE_URL
+DEFAULT_PROVIDER_INPUT=text,image
+DEFAULT_PROVIDER_MEDIA=image,audio,video,pdf
+LITELLM_MASTER_KEY=$LITELLM_MASTER_KEY
+LITELLM_DEFAULT_BUDGET_CENTS=5000
+LITELLM_DEFAULT_BUDGET_DURATION=30d
 RUNTIMEEOF
   chmod 600 .env.runtime
 
@@ -111,9 +166,52 @@ else
   sed -e "s|^DATABASE_URL=.*|DATABASE_URL=$DATABASE_URL|" \
       -e "s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=$ENCRYPTION_KEY|" \
       -e "s|^SERVICE_TOKENS=.*|SERVICE_TOKENS=$DASHBOARD_SERVICE_TOKEN|" \
+      -e "s|^DEFAULT_PROVIDER_NAME=.*|DEFAULT_PROVIDER_NAME=litellm|" \
       -e "s|^DEFAULT_PROVIDER_API_KEY=.*|DEFAULT_PROVIDER_API_KEY=$DEFAULT_PROVIDER_API_KEY|" \
+      -e "s|^DEFAULT_PROVIDER_MODEL=.*|DEFAULT_PROVIDER_MODEL=gemini-agentforall|" \
+      -e "s|^LITELLM_MASTER_KEY=.*|LITELLM_MASTER_KEY=$LITELLM_MASTER_KEY|" \
       .env.runtime > "$TMP_RUNTIME"
   mv "$TMP_RUNTIME" .env.runtime
+
+  set_runtime_env() {
+    local key="$1"
+    local value="$2"
+    if grep -q "^$key=" .env.runtime; then
+      sed -i "s|^$key=.*|$key=$value|" .env.runtime
+    else
+      echo "$key=$value" >> .env.runtime
+    fi
+  }
+
+  set_runtime_env DEFAULT_PROVIDER_ID litellm
+  set_runtime_env AGENT_RUNTIME_KIND "$AGENT_RUNTIME_KIND"
+  set_runtime_env AGENT_RUNTIME_IMAGE "$AGENT_RUNTIME_IMAGE"
+  set_runtime_env HERMES_RUNTIME_IMAGE "$HERMES_RUNTIME_IMAGE"
+  set_runtime_env PAIRING_IMAGE "$PAIRING_IMAGE"
+  set_runtime_env DEFAULT_PROVIDER_BASE_URL "$DEFAULT_PROVIDER_BASE_URL"
+  set_runtime_env DEFAULT_PROVIDER_INPUT text,image
+  set_runtime_env DEFAULT_PROVIDER_MEDIA image,audio,video,pdf
+  set_runtime_env LITELLM_MASTER_KEY "$LITELLM_MASTER_KEY"
+  set_runtime_env LITELLM_DEFAULT_BUDGET_CENTS 5000
+  set_runtime_env LITELLM_DEFAULT_BUDGET_DURATION 30d
+
+  # Self-heal: ensure host id is present on VMs bootstrapped before this var existed.
+  if ! grep -q '^ORCHESTRATOR_HOST_ID=' .env.runtime; then
+    echo "ORCHESTRATOR_HOST_ID=agent-forall-vm" >> .env.runtime
+  fi
+  if ! grep -q '^BACKUP_IMPORT_BUCKET=' .env.runtime; then
+    echo "BACKUP_IMPORT_BUCKET=agent-forall-backup-imports" >> .env.runtime
+  fi
+  if ! grep -q '^BACKUP_IMPORT_UPLOAD_ORIGIN=' .env.runtime; then
+    echo "BACKUP_IMPORT_UPLOAD_ORIGIN=https://agentforall.co.il" >> .env.runtime
+  fi
+  if ! grep -q '^BACKUP_IMPORT_TTL_SECONDS=' .env.runtime; then
+    echo "BACKUP_IMPORT_TTL_SECONDS=3600" >> .env.runtime
+  fi
+  if ! grep -q '^PULL_IMAGES_ON_STARTUP=' .env.runtime; then
+    echo "PULL_IMAGES_ON_STARTUP=false" >> .env.runtime
+  fi
+
   chmod 600 .env.runtime
 fi
 
@@ -190,6 +288,7 @@ services:
       NETWORKS: 1
       IMAGES: 1
       VOLUMES: 1
+      EXEC: 1
       POST: 1
       DELETE: 1
       PING: 1
@@ -266,12 +365,13 @@ if ! grep -q "$GAR_HOST" /root/.docker/config.json 2>/dev/null; then
 fi
 
 # ── Warm the image cache. Non-fatal: may already be cached. ──
-docker pull "$OPENCLAW_IMAGE" 2>/dev/null || echo "warn: could not pull $OPENCLAW_IMAGE"
+docker pull "$AGENT_RUNTIME_IMAGE" 2>/dev/null || echo "warn: could not pull $AGENT_RUNTIME_IMAGE"
+docker pull "$HERMES_RUNTIME_IMAGE" 2>/dev/null || echo "warn: could not pull $HERMES_RUNTIME_IMAGE"
 docker pull "$PAIRING_IMAGE" 2>/dev/null || echo "warn: could not pull $PAIRING_IMAGE"
 docker pull "$ORCHESTRATOR_IMAGE" 2>/dev/null || echo "warn: could not pull $ORCHESTRATOR_IMAGE"
 
 # ── Pull and start with retry. `--no-recreate` on up preserves running containers. ──
-# Compose reads $ORCHESTRATOR_IMAGE from the env (no .env file needed).
+# Compose reads ORCHESTRATOR_IMAGE from both the exported env and generated .env.
 export ORCHESTRATOR_IMAGE
 MAX_RETRIES=5
 for i in $(seq 1 $MAX_RETRIES); do

@@ -1,0 +1,48 @@
+# Version control + developer scratch
+.git
+.gitignore
+.github
+.vscode
+.idea
+.claude
+.playwright-mcp
+
+# Dependencies (installed fresh inside builder)
+**/node_modules
+
+# Build outputs (produced inside builder)
+**/dist
+**/.next
+**/.turbo
+apps/web/.next
+apps/web/out
+
+# Secrets + local config
+**/.env
+**/.env.local
+**/.env.*.local
+!**/.env.example
+
+# OS noise
+**/.DS_Store
+**/Thumbs.db
+
+# Logs
+**/*.log
+**/npm-debug.log*
+
+# Terraform state and plan artifacts
+infra/.terraform
+infra/*.tfstate
+infra/*.tfstate.*
+infra/*.tfplan
+
+# Project assets not needed in images
+SESSION_SUMMARY.md
+brand
+Makefile
+docker-compose.yml
+*.mp4
+*.png
+*.jpg
+!apps/web/public/**

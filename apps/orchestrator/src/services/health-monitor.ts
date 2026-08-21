@@ -1,6 +1,8 @@
 import type { FastifyBaseLogger } from "fastify";
 import type { InstanceRepository } from "../storage/instance-repository.js";
 import type { Instance, InstanceStatus } from "../domain/types.js";
+import type { ContainerRuntime } from "./container-runtime.js";
+import type { AgentRuntimeRegistry } from "./agent-runtime/registry.js";
 
 interface HealthMonitorConfig {
   pollIntervalMs: number;
@@ -8,6 +10,12 @@ interface HealthMonitorConfig {
   unhealthyThreshold: number;
   requestTimeoutMs: number;
   useDockerNetwork: boolean;
+  maxConcurrentChecks: number;
+}
+
+interface HealthResult {
+  healthy: boolean;
+  whatsappDisconnected: boolean;
 }
 
 export class HealthMonitor {
@@ -16,6 +24,8 @@ export class HealthMonitor {
 
   constructor(
     private readonly repo: InstanceRepository,
+    private readonly runtime: ContainerRuntime,
+    private readonly runtimes: AgentRuntimeRegistry,
     private readonly logger: FastifyBaseLogger,
     private readonly config: HealthMonitorConfig,
   ) {}
@@ -52,17 +62,22 @@ export class HealthMonitor {
         "unhealthy",
       ]);
 
-      const results = await Promise.allSettled(
-        active.map((inst) => this.checkOne(inst)),
+      const results = await mapWithConcurrency(
+        active,
+        this.config.maxConcurrentChecks,
+        (inst) => this.checkOne(inst),
       );
 
       for (let i = 0; i < active.length; i++) {
         const inst = active[i]!;
         const result = results[i]!;
-        const healthy = result.status === "fulfilled" && result.value;
+        const health =
+          result.status === "fulfilled"
+            ? result.value
+            : { healthy: false, whatsappDisconnected: false };
 
         try {
-          await this.processResult(inst, healthy);
+          await this.processResult(inst, health);
         } catch (err) {
           this.logger.error(
             { instanceId: inst.id, err },
@@ -79,11 +94,14 @@ export class HealthMonitor {
 
   private async processResult(
     inst: Instance,
-    healthy: boolean,
+    result: HealthResult,
   ): Promise<void> {
-    if (healthy) {
+    if (result.healthy) {
+      await this.repo.updateHealth(inst.id, 0, "running", { markSeen: true });
+      if (inst.pairingStatus === "expired" && this.needsWhatsappProbe(inst)) {
+        await this.repo.updatePairing(inst.id, { pairingStatus: "paired" });
+      }
       if (inst.status !== "running" || inst.healthFailures > 0) {
-        await this.repo.updateHealth(inst.id, 0, "running");
         this.logger.info({ instanceId: inst.id }, "instance recovered");
       }
       return;
@@ -100,6 +118,21 @@ export class HealthMonitor {
 
     await this.repo.updateHealth(inst.id, failures, newStatus);
 
+    if (
+      newStatus === "unhealthy" &&
+      result.whatsappDisconnected &&
+      inst.pairingStatus === "paired"
+    ) {
+      await this.repo.updatePairing(inst.id, {
+        pairingStatus: "expired",
+        whatsappAccountId: null,
+      });
+      this.logger.warn(
+        { instanceId: inst.id },
+        "whatsapp channel disconnected",
+      );
+    }
+
     if (newStatus !== inst.status) {
       this.logger.warn(
         { instanceId: inst.id, failures, newStatus },
@@ -108,21 +141,85 @@ export class HealthMonitor {
     }
   }
 
-  private async checkOne(instance: Instance): Promise<boolean> {
-    const host = this.config.useDockerNetwork
-      ? instance.containerName
-      : "127.0.0.1";
-    const port = this.config.useDockerNetwork
-      ? 18789
-      : instance.gatewayPort;
-
-    try {
-      const resp = await fetch(`http://${host}:${port}/healthz`, {
-        signal: AbortSignal.timeout(this.config.requestTimeoutMs),
+  private async checkOne(instance: Instance): Promise<HealthResult> {
+    const containerId = await this.resolveContainerId(instance);
+    const resolved = containerId ? { ...instance, containerId } : instance;
+    const result = await this.runtimes
+      .get(resolved.runtimeKind)
+      .probe(
+        resolved,
+        this.config.requestTimeoutMs,
+        this.config.useDockerNetwork,
+      )
+      .catch((err) => {
+        this.logger.warn(
+          { instanceId: instance.id, err },
+          "agent runtime probe failed",
+        );
+        return { gatewayHealthy: false, whatsappState: "unknown" as const };
       });
-      return resp.ok;
-    } catch {
-      return false;
+
+    if (!result.gatewayHealthy) {
+      return { healthy: false, whatsappDisconnected: false };
+    }
+    if (!this.needsWhatsappProbe(resolved)) {
+      return { healthy: true, whatsappDisconnected: false };
+    }
+
+    if (result.whatsappState === "connected") {
+      return { healthy: true, whatsappDisconnected: false };
+    }
+    return {
+      healthy: false,
+      whatsappDisconnected: result.whatsappState === "disconnected",
+    };
+  }
+
+  private needsWhatsappProbe(instance: Instance): boolean {
+    return (
+      Boolean(instance.containerId) &&
+      instance.hasWhatsappCreds &&
+      instance.config.channels.some((ch) => ch.type === "whatsapp")
+    );
+  }
+
+  private async resolveContainerId(instance: Instance): Promise<string | null> {
+    if (instance.containerId) {
+      const current = await this.runtime.inspect(instance.containerId);
+      if (current?.State.Running) return instance.containerId;
+    }
+
+    const byName = await this.runtime.findContainerByName(instance.containerName);
+    if (!byName) return null;
+    await this.repo.updateContainerId(instance.id, byName);
+    return byName;
+  }
+}
+
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>,
+): Promise<PromiseSettledResult<R>[]> {
+  const results: PromiseSettledResult<R>[] = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker(): Promise<void> {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      try {
+        results[index] = {
+          status: "fulfilled",
+          value: await fn(items[index]!),
+        };
+      } catch (reason) {
+        results[index] = { status: "rejected", reason };
+      }
     }
   }
+
+  const workerCount = Math.min(Math.max(1, concurrency), items.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
 }

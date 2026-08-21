@@ -1,9 +1,9 @@
 services:
-  agent-forall:
+  orchestrator:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: agent-forall
+    container_name: orchestrator
     restart: unless-stopped
     ports:
       - "${PORT:-3000}:3000"
@@ -16,7 +16,7 @@ services:
         condition: service_started
     networks:
       - internal
-      - agent-forall-net
+      - tenant-net
     deploy:
       resources:
         limits:
@@ -63,7 +63,7 @@ services:
       retries: 5
 
   docker-socket-proxy:
-    image: tecnativa/docker-socket-proxy:latest
+    image: tecnativa/docker-socket-proxy:0.3
     container_name: agent-forall-docker-proxy
     restart: unless-stopped
     volumes:
@@ -72,7 +72,10 @@ services:
       CONTAINERS: 1
       NETWORKS: 1
       IMAGES: 1
+      VOLUMES: 1
+      EXEC: 1
       POST: 1
+      DELETE: 1
       PING: 1
       LOG_LEVEL: warning
     networks:
@@ -94,6 +97,6 @@ volumes:
 networks:
   internal:
     driver: bridge
-  agent-forall-net:
+  tenant-net:
     driver: bridge
-    name: agent-forall-net
+    name: tenant-net

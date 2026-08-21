@@ -21,6 +21,11 @@ export class NotFoundError extends DomainError {
   }
 }
 
+export class ValidationError extends DomainError {
+  readonly statusCode = 400;
+  readonly code = "VALIDATION_ERROR";
+}
+
 export class InvalidStateError extends DomainError {
   readonly statusCode = 409;
   readonly code = "INVALID_STATE";
@@ -39,12 +44,12 @@ export class PortExhaustedError extends DomainError {
   }
 }
 
-export class ProvisioningError extends DomainError {
-  readonly statusCode = 500;
-  readonly code = "PROVISIONING_FAILED";
+export class QuotaExceededError extends DomainError {
+  readonly statusCode = 429;
+  readonly code = "QUOTA_EXCEEDED";
 
-  constructor(instanceId: string, cause: string) {
-    super(`provisioning failed for '${instanceId}': ${cause}`);
+  constructor(resource: string, limit: number) {
+    super(`${resource} limit of ${limit} reached`);
   }
 }
 
@@ -57,12 +62,40 @@ export class AuthenticationError extends DomainError {
   }
 }
 
-export class AuthorizationError extends DomainError {
-  readonly statusCode = 403;
-  readonly code = "FORBIDDEN";
+export class FeatureUnavailableError extends DomainError {
+  readonly statusCode = 503;
+  readonly code = "FEATURE_UNAVAILABLE";
 
-  constructor() {
-    super("you do not have access to this resource");
+  constructor(feature: string) {
+    super(`${feature} is not configured on this host`);
+  }
+}
+
+export class UpstreamUnavailableError extends DomainError {
+  readonly statusCode = 502;
+  readonly code = "UPSTREAM_UNAVAILABLE";
+
+  constructor(service: string) {
+    super(`${service} unavailable`);
+  }
+}
+
+export class InvalidBackupError extends DomainError {
+  readonly statusCode = 400;
+  readonly code = "INVALID_BACKUP";
+
+  constructor(message: string) {
+    super(message);
+  }
+}
+
+// Usually means ENCRYPTION_KEY was rotated without re-encrypting, or row was tampered with.
+export class CorruptedRowError extends DomainError {
+  readonly statusCode = 500;
+  readonly code = "CORRUPTED_ROW";
+
+  constructor(entity: string, id: string, cause: string) {
+    super(`corrupted ${entity} '${id}': ${cause}`);
   }
 }
 

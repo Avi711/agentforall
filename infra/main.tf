@@ -6,6 +6,10 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 5.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
   }
 
   backend "gcs" {
@@ -56,6 +60,39 @@ resource "google_artifact_registry_repository_iam_member" "vm_pull" {
   member     = "serviceAccount:${google_service_account.platform.email}"
 }
 
+resource "google_storage_bucket" "backup_imports" {
+  name                        = "agent-forall-backup-imports"
+  location                    = var.region
+  uniform_bucket_level_access = true
+  public_access_prevention    = "enforced"
+
+  cors {
+    origin          = ["https://agentforall.co.il"]
+    method          = ["PUT"]
+    response_header = ["Content-Type", "Content-Range", "Range", "X-Upload-Content-Type", "X-Upload-Content-Length", "x-goog-resumable"]
+    max_age_seconds = 3600
+  }
+
+  lifecycle_rule {
+    action {
+      type = "Delete"
+    }
+    condition {
+      age = 1
+    }
+  }
+
+  labels = {
+    app = "agent-forall"
+  }
+}
+
+resource "google_storage_bucket_iam_member" "backup_imports_vm_object_admin" {
+  bucket = google_storage_bucket.backup_imports.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.platform.email}"
+}
+
 # ── GitHub Actions image push via Workload Identity Federation (no JSON keys) ──
 resource "google_service_account" "ci_pusher" {
   account_id   = "agent-forall-ci"
@@ -95,28 +132,29 @@ resource "google_service_account_iam_member" "ci_pusher_wif_bind" {
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.github_repo}"
 }
 
-# ── Secret Manager — survives VM recreation; populated out-of-band by operator ──
+# ── Secret Manager — referenced, NOT owned by Terraform.
+# Operator must create each secret out-of-band before `terraform apply`:
+#   gcloud secrets create <name> --data-file=- --project=agent-for-all <<<"<value>"
+# Terraform owns only the IAM bindings that grant the VM service account read access.
+# Rationale: keeps secret values out of Terraform state; rotating a secret is just
+# `gcloud secrets versions add ...` with no Terraform involvement.
 locals {
-  vm_secrets = {
-    "database-url"             = "Supabase / Cloud SQL DATABASE_URL connection string"
-    "encryption-key"           = "AES-256-GCM key (32 bytes hex) — encrypts tenant tokens + WhatsApp creds in DB"
-    "dashboard-service-token"  = "Bearer token shared with Vercel to call orchestrator on user's behalf"
-    "default-provider-api-key" = "LLM provider API key (Anthropic/OpenAI/Gemini/OpenRouter) injected into every new tenant bot"
-  }
+  vm_secret_ids = [
+    "database-url",
+    "encryption-key",
+    "dashboard-service-token",
+    "default-provider-api-key",
+    "litellm-master-key",
+  ]
 }
 
-resource "google_secret_manager_secret" "vm_secrets" {
-  for_each  = local.vm_secrets
+data "google_secret_manager_secret" "vm_secrets" {
+  for_each  = toset(local.vm_secret_ids)
   secret_id = each.key
-  labels    = { app = "agent-forall" }
-
-  replication {
-    auto {}
-  }
 }
 
 resource "google_secret_manager_secret_iam_member" "vm_secret_access" {
-  for_each  = google_secret_manager_secret.vm_secrets
+  for_each  = data.google_secret_manager_secret.vm_secrets
   secret_id = each.value.id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.platform.email}"
@@ -179,7 +217,7 @@ resource "google_compute_instance" "platform" {
     initialize_params {
       image = "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64"
       size  = var.disk_size_gb
-      type  = "pd-ssd"
+      type  = "pd-balanced"
     }
   }
 
@@ -202,9 +240,14 @@ resource "google_compute_instance" "platform" {
   }
 
   metadata_startup_script = templatefile("${path.module}/startup.sh", {
-    domain     = var.domain
-    region     = var.region
-    project_id = var.project_id
+    domain               = var.domain
+    region               = var.region
+    project_id           = var.project_id
+    orchestrator_image   = var.orchestrator_image
+    pairing_image        = var.pairing_image
+    agent_runtime_image  = var.agent_runtime_image
+    hermes_runtime_image = var.hermes_runtime_image
+    litellm_gateway_url  = google_cloud_run_v2_service.litellm.uri
   })
 
   labels = {
@@ -218,4 +261,48 @@ resource "google_compute_disk_resource_policy_attachment" "snapshot" {
   name = google_compute_resource_policy.daily_snapshot.name
   disk = google_compute_instance.platform.name
   zone = var.zone
+}
+
+resource "google_monitoring_alert_policy" "vm_disk_warning" {
+  display_name          = "agent-forall VM disk usage warning"
+  combiner              = "OR"
+  enabled               = true
+  notification_channels = var.monitoring_notification_channel_ids
+
+  conditions {
+    display_name = "Disk used above 75 percent"
+    condition_threshold {
+      filter          = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${google_compute_instance.platform.instance_id}\" AND metric.type=\"agent.googleapis.com/disk/percent_used\" AND metric.labels.state=\"used\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 75
+      duration        = "300s"
+
+      aggregations {
+        alignment_period   = "60s"
+        per_series_aligner = "ALIGN_MEAN"
+      }
+    }
+  }
+}
+
+resource "google_monitoring_alert_policy" "vm_disk_critical" {
+  display_name          = "agent-forall VM disk usage critical"
+  combiner              = "OR"
+  enabled               = true
+  notification_channels = var.monitoring_notification_channel_ids
+
+  conditions {
+    display_name = "Disk used above 85 percent"
+    condition_threshold {
+      filter          = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${google_compute_instance.platform.instance_id}\" AND metric.type=\"agent.googleapis.com/disk/percent_used\" AND metric.labels.state=\"used\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 85
+      duration        = "300s"
+
+      aggregations {
+        alignment_period   = "60s"
+        per_series_aligner = "ALIGN_MEAN"
+      }
+    }
+  }
 }

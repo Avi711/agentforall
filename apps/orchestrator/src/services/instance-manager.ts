@@ -1,16 +1,23 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import type { Readable } from "node:stream";
 import type { FastifyBaseLogger } from "fastify";
 import type { InstanceRepository } from "../storage/instance-repository.js";
 import type { ContainerRuntime } from "./container-runtime.js";
-import type { ConfigGenerator } from "./config-generator.js";
 import type { PortAllocator } from "./port-allocator.js";
 import type { EventRepository } from "../storage/event-repository.js";
 import type { PairingManager } from "./pairing-manager.js";
 import type { AppConfig } from "../config.js";
+import type { AgentRuntimeRegistry } from "./agent-runtime/registry.js";
+import type {
+  LlmKeyProvisioner,
+  LiteLlmProvisionResult,
+} from "./litellm-key-manager.js";
 import {
   NotFoundError,
   InvalidStateError,
   QuotaExceededError,
+  InvalidBackupError,
+  UpstreamUnavailableError,
   errorMessage,
 } from "../domain/errors.js";
 import {
@@ -22,54 +29,86 @@ import {
   type InstanceStatus,
   type ConfigPatch,
   type CreateInstanceInput,
+  type AgentRuntimeKind,
+  type BotUsage,
+  type ChannelConfig,
+  type TelegramChannelConfig,
+  isContainerUp,
 } from "../domain/types.js";
+import { InstanceOperationLock } from "./instance-operation-lock.js";
+import type { TelegramBotApi } from "./telegram/bot-api.js";
 import {
-  WHATSAPP_SESSION_DIR,
-  WHATSAPP_SESSION_PARENT,
-} from "../domain/constants.js";
+  applyChannelDefaults,
+  findTelegramChannel,
+  findWhatsappChannel,
+} from "../domain/channels.js";
+
+export interface AgentBackupRestoreStorage {
+  openObjectStream(
+    objectName: string,
+    maxBytes: number,
+  ): Promise<{ body: Readable; contentLength: number; contentType: string | null }>;
+  deleteObject(objectName: string): Promise<void>;
+}
+
+export interface AgentBackupStream {
+  stdout: Readable;
+  contentLength: number;
+  done: Promise<void>;
+}
 
 export class InstanceManager {
   constructor(
     private readonly repo: InstanceRepository,
     private readonly runtime: ContainerRuntime,
-    private readonly configGen: ConfigGenerator,
+    private readonly runtimes: AgentRuntimeRegistry,
     private readonly portAllocator: PortAllocator,
     private readonly appConfig: AppConfig,
     private readonly eventLog: EventRepository,
     private readonly pairingManager: PairingManager,
+    private readonly llmKeys: LlmKeyProvisioner,
     private readonly logger: FastifyBaseLogger,
+    private readonly backupRestoreStorage: AgentBackupRestoreStorage | null = null,
+    private readonly operationLock = new InstanceOperationLock(),
+    private readonly telegramApi: TelegramBotApi | null = null,
   ) {}
 
-  async create(userId: string, input: CreateInstanceInput): Promise<Instance> {
+  async create(userId: string, rawInput: CreateInstanceInput): Promise<Instance> {
     this.validateUserId(userId);
 
-    const activeCount = await this.repo.countByUserId(userId);
-    if (activeCount >= this.appConfig.maxInstancesPerUser) {
-      throw new QuotaExceededError("instances", this.appConfig.maxInstancesPerUser);
-    }
-
-    const provider = input.provider ?? this.resolveDefaultProvider();
-    const config: InstanceConfig = {
-      displayName: input.displayName,
-      provider,
-      channels: input.channels,
-      resources: {
-        memoryMb: input.resources?.memoryMb ?? DEFAULT_RESOURCE_LIMITS.memoryMb,
-        cpuShares:
-          input.resources?.cpuShares ?? DEFAULT_RESOURCE_LIMITS.cpuShares,
-      },
+    const input: CreateInstanceInput = {
+      ...rawInput,
+      channels: applyChannelDefaults(rawInput.channels),
     };
-
-    const reserved = await this.reserveIdentity(userId, config);
+    const reserved = await this.reserveIdentity(userId, input);
     await this.eventLog.append(reserved.id, "provision.requested", {
       actor: userId,
     });
 
-    return this.resumeProvisioning(reserved.id);
+    // Provisioning is idempotent; the reconciler resumes escaped failures.
+    if (input.backupImport) {
+      await this.resumeProvisioning(reserved.id);
+      return this.requireInstance(reserved.id);
+    }
+
+    void this.resumeProvisioning(reserved.id).catch((err) => {
+      this.logger.error(
+        { instanceId: reserved.id, err },
+        "background provisioning failed",
+      );
+    });
+
+    return reserved;
   }
 
-  // Idempotent — reconciler calls this to recover from mid-provision crashes.
-  async resumeProvisioning(id: string): Promise<Instance> {
+  // Reconciler calls this to recover from mid-provision crashes.
+  async resumeProvisioning(
+    id: string,
+  ): Promise<Instance> {
+    return this.operationLock.run(id, () => this.resumeProvisioningLocked(id));
+  }
+
+  private async resumeProvisioningLocked(id: string): Promise<Instance> {
     const inst = await this.requireInstance(id);
     if (inst.status === "running") return inst;
     if (inst.status !== "provisioning") {
@@ -83,6 +122,13 @@ export class InstanceManager {
         await this.eventLog.append(id, "provision.container_created", {
           payload: { containerId },
         });
+      }
+
+      if (inst.backupImport.status === "pending") {
+        await this.ensureContainerStarted(containerId);
+        await this.restoreAgentBackup(inst, containerId);
+        await this.eventLog.append(id, "provision.backup_restored");
+        await this.runtime.restart(containerId);
       }
 
       await this.ensureContainerStarted(containerId);
@@ -105,7 +151,7 @@ export class InstanceManager {
       await this.eventLog.append(id, "provision.failed", {
         payload: { error: errorMessage(err) },
       });
-      await this.cleanupPartial(inst.containerName);
+      await this.cleanupPartial(inst);
       throw err;
     }
   }
@@ -123,6 +169,10 @@ export class InstanceManager {
   }
 
   async start(id: string, userId: string): Promise<void> {
+    return this.operationLock.run(id, () => this.startLocked(id, userId));
+  }
+
+  private async startLocked(id: string, userId: string): Promise<void> {
     const inst = await this.requireOwnedInstance(id, userId);
     this.assertTransition(inst.status, "running");
 
@@ -136,12 +186,15 @@ export class InstanceManager {
     if (!updated) throw new InvalidStateError(inst.status, "running");
 
     try {
+      await this.refreshRuntimeConfig(inst);
       if (inst.hasWhatsappCreds) {
         await this.injectWhatsappCreds(id, inst.containerId);
       }
       await this.runtime.start(inst.containerId);
     } catch (err) {
-      await this.repo.updateStatus(id, inst.status);
+      await this.repo.updateStatus(id, inst.status, {
+        expectedStatus: "running",
+      });
       throw err;
     }
 
@@ -149,6 +202,83 @@ export class InstanceManager {
   }
 
   async stop(id: string, userId: string): Promise<void> {
+    return this.operationLock.run(id, () => this.stopLocked(id, userId));
+  }
+
+  async restart(id: string, userId: string): Promise<void> {
+    return this.operationLock.run(id, () => this.restartLocked(id, userId));
+  }
+
+  private async restartLocked(id: string, userId: string): Promise<void> {
+    const inst = await this.requireOwnedInstance(id, userId);
+    if (!["running", "degraded", "unhealthy"].includes(inst.status)) {
+      throw new InvalidStateError(inst.status, "running");
+    }
+    if (!inst.containerId) {
+      throw new InvalidStateError(inst.status, "running");
+    }
+
+    await this.refreshRuntimeConfig(inst);
+    if (inst.hasWhatsappCreds) {
+      await this.injectWhatsappCreds(id, inst.containerId);
+    }
+    await this.runtime.restart(inst.containerId);
+    await this.repo.updateStatus(id, "running", {
+      expectedStatus: inst.status,
+    });
+    this.logger.info({ instanceId: id }, "instance restarted");
+  }
+
+  async recreate(id: string, userId: string): Promise<void> {
+    return this.operationLock.run(id, () => this.recreateLocked(id, userId));
+  }
+
+  // Rebuilds the container from the currently configured runtime image; state volume persists.
+  private async recreateLocked(id: string, userId: string): Promise<void> {
+    const inst = await this.requireOwnedInstance(id, userId);
+    if (!["running", "degraded", "unhealthy", "error"].includes(inst.status)) {
+      throw new InvalidStateError(inst.status, "running");
+    }
+
+    const existing =
+      inst.containerId ??
+      (await this.runtime.findContainerByName(inst.containerName));
+    if (existing) {
+      if (await this.runtime.isRunning(existing)) {
+        await this.runtime.stop(existing);
+      }
+      await this.runtime.remove(existing);
+    }
+
+    try {
+      // buildContainerOptions bakes fresh config at create; no refresh needed (readConfig requires a running container).
+      const containerId = await this.ensureContainerExists({
+        ...inst,
+        containerId: null,
+      });
+      await this.repo.updateContainerId(id, containerId);
+      if (inst.hasWhatsappCreds) {
+        await this.injectWhatsappCreds(id, containerId);
+      }
+      await this.runtime.start(containerId);
+      await this.repo.updateStatus(id, "running", {
+        expectedStatus: inst.status,
+      });
+      await this.eventLog.append(id, "instance.recreated", {
+        actor: userId,
+        payload: { containerId },
+      });
+    } catch (err) {
+      await this.repo.updateStatus(id, "error", {
+        errorMessage: errorMessage(err),
+      });
+      throw err;
+    }
+
+    this.logger.info({ instanceId: id }, "instance recreated");
+  }
+
+  private async stopLocked(id: string, userId: string): Promise<void> {
     const inst = await this.requireOwnedInstance(id, userId);
     this.assertTransition(inst.status, "stopped");
 
@@ -164,7 +294,9 @@ export class InstanceManager {
     try {
       await this.runtime.stop(inst.containerId);
     } catch (err) {
-      await this.repo.updateStatus(id, inst.status);
+      await this.repo.updateStatus(id, inst.status, {
+        expectedStatus: "stopped",
+      });
       throw err;
     }
 
@@ -172,39 +304,54 @@ export class InstanceManager {
   }
 
   async destroy(id: string, userId: string): Promise<void> {
+    return this.operationLock.run(id, () => this.destroyLocked(id, userId));
+  }
+
+  private async destroyLocked(id: string, userId: string): Promise<void> {
     const inst = await this.requireOwnedInstance(id, userId);
-    this.assertTransition(inst.status, "destroying");
+    if (inst.status === "destroyed") return;
 
-    const updated = await this.repo.updateStatus(id, "destroying", {
-      expectedStatus: inst.status,
-    });
-    if (!updated) throw new InvalidStateError(inst.status, "destroying");
+    if (inst.status !== "destroying") {
+      this.assertTransition(inst.status, "destroying");
 
-    // Tell WhatsApp to drop the linked-device entry while the main container
-    // is still alive — uses OpenClaw's own CLI via `docker exec`.
+      const updated = await this.repo.updateStatus(id, "destroying", {
+        expectedStatus: inst.status,
+      });
+      if (!updated) throw new InvalidStateError(inst.status, "destroying");
+    }
+
+    // The runtime must drop the linked-device entry while the container is alive.
     if (inst.hasWhatsappCreds && inst.containerId) {
       await this.pairingManager.logoutWhatsapp(id, inst.containerId);
     }
 
-    // Wipe creds so a failed container removal still honors "delete everything".
+    // Failed container removal must still honor "delete everything".
     await this.repo.updatePairing(id, {
       whatsappCreds: null,
       whatsappAccountId: null,
       pairingStatus: "none",
     });
 
-    // Tear down sidecar before main container so a mid-pair destroy doesn't leak a Baileys socket.
+    // Stop the sidecar before removing the main container.
     await this.pairingManager.teardownSidecar(id, "destroy");
+    await this.llmKeys.revoke(inst).catch((err) =>
+      this.logger.warn({ instanceId: id, err }, "failed to revoke LiteLLM key"),
+    );
+    await this.revokeTelegramBot(inst);
 
     try {
       if (inst.containerId) {
         await this.runtime.remove(inst.containerId);
       }
+      await this.runtime.removeVolume(
+        this.runtimes.get(inst.runtimeKind).stateVolumeName(inst.id),
+      );
       await this.repo.updateStatus(id, "destroyed");
       this.logger.info({ instanceId: id }, "instance destroyed");
     } catch (err) {
       this.logger.error({ instanceId: id, err }, "destroy failed");
       await this.repo.updateStatus(id, "error", {
+        expectedStatus: "destroying",
         errorMessage: errorMessage(err),
       });
       throw err;
@@ -212,6 +359,79 @@ export class InstanceManager {
   }
 
   async updateConfig(
+    id: string,
+    userId: string,
+    patch: ConfigPatch,
+  ): Promise<Instance> {
+    return this.operationLock.run(id, () =>
+      this.updateConfigLocked(id, userId, patch),
+    );
+  }
+
+  // Read-modify-write under the instance lock so concurrent channel writers can't lose updates.
+  // Returning the same array from `mutate` means "no change": nothing is written or restarted.
+  async updateChannels(
+    id: string,
+    userId: string,
+    mutate: (channels: ChannelConfig[]) => ChannelConfig[],
+  ): Promise<{ instance: Instance; changed: boolean }> {
+    return this.operationLock.run(id, async () => {
+      const inst = await this.requireOwnedInstance(id, userId);
+      const next = mutate(inst.config.channels);
+      if (next === inst.config.channels) return { instance: inst, changed: false };
+      const instance = await this.updateConfigLocked(id, userId, { channels: next });
+      return { instance, changed: true };
+    });
+  }
+
+  async updateLiteLlmBudget(
+    id: string,
+    userId: string,
+    budgetCents: number,
+  ): Promise<Instance> {
+    return this.operationLock.run(id, async () => {
+      const inst = await this.requireOwnedInstance(id, userId);
+      await this.llmKeys.updateBudget(inst, budgetCents);
+      await this.repo.updateLiteLlmKey(id, {
+        keyAlias: inst.litellm.keyAlias ?? `agentforall-${id.slice(0, 8)}`,
+        keyHash: inst.litellm.keyHash,
+        budgetCents,
+        budgetDuration:
+          inst.litellm.budgetDuration ??
+          this.appConfig.litellmDefaultBudgetDuration,
+      });
+      await this.eventLog.append(id, "litellm.budget_updated", {
+        actor: userId,
+        payload: { budgetCents },
+      });
+      return this.requireOwnedInstance(id, userId);
+    });
+  }
+
+  async getUsage(id: string, userId: string): Promise<BotUsage> {
+    const inst = await this.requireOwnedInstance(id, userId);
+    if (inst.config.provider.name !== "litellm") {
+      return { supported: false, reason: "not_litellm" };
+    }
+    try {
+      const usage = await this.llmKeys.getUsage(inst);
+      return {
+        supported: true,
+        spendCents: usage.spendCents,
+        maxBudgetCents: usage.maxBudgetCents,
+        budgetDuration: usage.budgetDuration,
+        budgetResetAt: usage.budgetResetAt,
+        keyAlias: usage.keyAlias ?? inst.litellm.keyAlias,
+        models: usage.models,
+        updatedAt: new Date().toISOString(),
+      };
+    } catch (err) {
+      this.logger.warn({ instanceId: id, err }, "LiteLLM usage lookup failed");
+      throw new UpstreamUnavailableError("LiteLLM");
+    }
+  }
+
+  private async updateConfigLocked(
     id: string,
     userId: string,
     patch: ConfigPatch,
@@ -235,15 +455,11 @@ export class InstanceManager {
 
     await this.repo.updateConfig(id, merged);
 
-    // putArchive works on stopped containers too; only restart if currently running.
+    // Config can be injected into stopped containers too.
     if (inst.containerId) {
-      const openclawJson = this.configGen.generateOpenclawConfig(
-        merged,
-        inst.gatewayToken,
-      );
-      const dotEnv = this.configGen.generateEnvFile(merged, inst.gatewayToken);
-      await this.runtime.injectConfig(inst.containerId, openclawJson, dotEnv);
-      if (["running", "degraded", "unhealthy"].includes(inst.status)) {
+      const adapter = this.runtimes.get(inst.runtimeKind);
+      await adapter.refreshConfig(inst.containerId, { ...inst, config: merged });
+      if (isContainerUp(inst.status)) {
         await this.runtime.restart(inst.containerId);
       }
     }
@@ -251,10 +467,140 @@ export class InstanceManager {
     return this.requireOwnedInstance(id, userId);
   }
 
+  // Invalidates the managed bot's token so the orphaned Telegram bot can't be reused,
+  // then strips the channel from the stored config. Best-effort: destroy must proceed.
+  private async revokeTelegramBot(inst: Instance): Promise<void> {
+    const telegram = findTelegramChannel(inst.config.channels);
+    if (!telegram) return;
+    await this.revokeTelegramToken(inst.id, telegram);
+    try {
+      await this.repo.updateConfig(inst.id, {
+        ...inst.config,
+        channels: inst.config.channels.filter((ch) => ch.type !== "telegram"),
+      });
+    } catch (err) {
+      this.logger.warn(
+        { instanceId: inst.id, err },
+        "failed to strip telegram channel from config",
+      );
+    }
+  }
+
+  private async revokeTelegramToken(
+    instanceId: string,
+    telegram: TelegramChannelConfig,
+  ): Promise<void> {
+    if (!this.telegramApi || !telegram.botId) return;
+    try {
+      await this.telegramApi.replaceManagedBotToken(telegram.botId);
+    } catch (err) {
+      this.logger.warn({ instanceId, err }, "failed to revoke telegram bot token");
+    }
+  }
+
+  // Adds the WhatsApp channel to bots created Telegram-first so pairing has a channel to land in.
+  async ensureWhatsappChannel(id: string, userId: string): Promise<Instance> {
+    const { instance } = await this.updateChannels(id, userId, (channels) =>
+      findWhatsappChannel(channels)
+        ? channels
+        : applyChannelDefaults([...channels, { type: "whatsapp" }]),
+    );
+    return instance;
+  }
+
+  // Unlinks the device and clears creds; channel + access settings stay so the user can re-pair.
+  async disconnectWhatsapp(id: string, userId: string): Promise<Instance> {
+    return this.operationLock.run(id, async () => {
+      const inst = await this.requireOwnedInstance(id, userId);
+      if (!findWhatsappChannel(inst.config.channels)) {
+        throw new NotFoundError("whatsapp channel", id);
+      }
+      if (inst.status === "provisioning" || inst.status === "destroying") {
+        throw new InvalidStateError(inst.status, "whatsapp disconnect");
+      }
+      const containerUp = inst.containerId !== null && isContainerUp(inst.status);
+      // Auth files on the volume can only be wiped via exec; otherwise they'd resurrect the session.
+      if (inst.hasWhatsappCreds && !containerUp) {
+        throw new InvalidStateError(inst.status, "whatsapp disconnect");
+      }
+
+      if (inst.pairingStatus === "awaiting_qr" || inst.pairingStatus === "awaiting_code") {
+        await this.pairingManager.cancelPairing(id, "user_disconnected");
+      }
+      if (inst.hasWhatsappCreds && inst.containerId) {
+        const cleared = await this.pairingManager.logoutWhatsapp(id, inst.containerId);
+        // Dropping DB creds while auth files remain would let the session resurrect on restart.
+        if (!cleared) throw new UpstreamUnavailableError("whatsapp logout");
+      }
+      await this.repo.updatePairing(id, {
+        whatsappCreds: null,
+        whatsappAccountId: null,
+        pairingStatus: "none",
+      });
+      await this.eventLog.append(id, "whatsapp.disconnected", { actor: userId });
+
+      // Restart so the runtime drops its in-memory socket; start() won't re-inject creds anymore.
+      if (inst.containerId && containerUp) {
+        await this.runtime.restart(inst.containerId);
+      }
+      return this.requireOwnedInstance(id, userId);
+    });
+  }
+
+  // Revokes the managed bot's token and removes the channel; the runtime reloads without it.
+  async disconnectTelegram(id: string, userId: string): Promise<Instance> {
+    return this.operationLock.run(id, async () => {
+      const inst = await this.requireOwnedInstance(id, userId);
+      const telegram = findTelegramChannel(inst.config.channels);
+      if (!telegram) throw new NotFoundError("telegram channel", id);
+      if (inst.status === "provisioning" || inst.status === "destroying") {
+        throw new InvalidStateError(inst.status, "telegram disconnect");
+      }
+
+      await this.revokeTelegramToken(id, telegram);
+      const updated = await this.updateConfigLocked(id, userId, {
+        channels: inst.config.channels.filter((ch) => ch.type !== "telegram"),
+      });
+      await this.eventLog.append(id, "telegram.disconnected", {
+        actor: userId,
+        payload: { botId: telegram.botId ?? null },
+      });
+      return updated;
+    });
+  }
+
+  async exportAgentBackupStream(
+    id: string,
+    userId: string,
+  ): Promise<AgentBackupStream> {
+    const inst = await this.requireOwnedInstance(id, userId);
+    const containerId = await this.resolveExportContainerId(inst);
+    const adapter = this.runtimes.get(inst.runtimeKind);
+
+    const archive = await adapter.exportState(containerId);
+    return {
+      stdout: archive.stdout,
+      contentLength: archive.contentLength,
+      done: archive.done.then(async (result) => {
+        if (result.exitCode !== 0) {
+          throw new Error(
+            `agent backup failed: ${result.stderr || result.exitCode}`,
+          );
+        }
+        await this.eventLog.append(id, "backup.exported", { actor: userId });
+      }),
+    };
+  }
+
+  async assertAgentBackupReadable(id: string, userId: string): Promise<void> {
+    const inst = await this.requireOwnedInstance(id, userId);
+    await this.resolveExportContainerId(inst);
+  }
+
   // Retry on port-allocation race; container creation happens later in resumeProvisioning.
   private async reserveIdentity(
     userId: string,
-    config: InstanceConfig,
+    input: CreateInstanceInput,
   ): Promise<Instance> {
     let lastError: Error | null = null;
 
@@ -264,33 +610,83 @@ export class InstanceManager {
       attempt++
     ) {
       const id = randomUUID();
-      const shortId = id.slice(0, 12);
-      const containerName = `openclaw-${shortId}`;
+      const runtimeKind = this.appConfig.agentRuntimeKind as AgentRuntimeKind;
+      const containerName = this.runtimes.get(runtimeKind).containerName(id);
       const gatewayToken = randomBytes(32).toString("hex");
       const gatewayPort = await this.portAllocator.allocate();
+      let litellmProvision: LiteLlmProvisionResult | null = null;
 
       try {
-        return await this.repo.insert({
-          id,
-          userId,
-          displayName: config.displayName,
-          status: "provisioning",
-          config,
-          containerId: null,
-          containerName,
-          gatewayPort,
-          gatewayToken,
-          healthFailures: 0,
-          errorMessage: null,
-          stoppedAt: null,
-          destroyedAt: null,
-        });
+        const provision = input.provider
+          ? null
+          : await this.llmKeys.provisionProvider(
+              id,
+              userId,
+              input.displayName,
+            );
+        litellmProvision = provision;
+        const provider = input.provider ?? provision?.provider;
+        if (!provider) {
+          throw new Error("provider provisioning returned no provider");
+        }
+        const config: InstanceConfig = {
+          displayName: input.displayName,
+          provider,
+          channels: input.channels,
+          resources: {
+            memoryMb: input.resources?.memoryMb ?? DEFAULT_RESOURCE_LIMITS.memoryMb,
+            cpuShares:
+              input.resources?.cpuShares ?? DEFAULT_RESOURCE_LIMITS.cpuShares,
+          },
+        };
+        const inserted = await this.repo.insertIfUserActiveBelowLimit(
+          {
+            id,
+            userId,
+            displayName: config.displayName,
+            runtimeKind,
+            status: "provisioning",
+            config,
+            containerId: null,
+            containerName,
+            gatewayPort,
+            gatewayToken,
+            healthFailures: 0,
+            errorMessage: null,
+            stoppedAt: null,
+            destroyedAt: null,
+            backupImport: input.backupImport,
+            litellm: litellmProvision
+              ? {
+                  keyAlias: litellmProvision.keyAlias,
+                  keyHash: litellmProvision.keyHash,
+                  budgetCents: litellmProvision.budgetCents,
+                  budgetDuration: litellmProvision.budgetDuration,
+                }
+              : undefined,
+          },
+          this.appConfig.maxInstancesPerUser,
+        );
+        if (!inserted) {
+          throw new QuotaExceededError("instances", this.appConfig.maxInstancesPerUser);
+        }
+        return inserted;
       } catch (err: unknown) {
+        if (litellmProvision) {
+          await this.llmKeys
+            .revokeKey(litellmProvision.provider.apiKey)
+            .catch((revokeErr) =>
+              this.logger.warn(
+                { instanceId: id, err: revokeErr },
+                "failed to revoke unused LiteLLM key",
+              ),
+            );
+        }
         lastError = err instanceof Error ? err : new Error(String(err));
         if (isUniqueViolation(err)) {
           this.logger.warn(
             { port: gatewayPort, attempt },
-            "port conflict — retrying with new identity",
+            "port conflict; retrying with new identity",
           );
           continue;
         }
@@ -310,34 +706,96 @@ export class InstanceManager {
     const byName = await this.runtime.findContainerByName(inst.containerName);
     if (byName) return byName;
 
-    const openclawJson = this.configGen.generateOpenclawConfig(
-      inst.config,
-      inst.gatewayToken,
-    );
-    const dotEnv = this.configGen.generateEnvFile(
-      inst.config,
-      inst.gatewayToken,
-    );
+    const adapter = this.runtimes.get(inst.runtimeKind);
+    const stateVolume = adapter.stateVolumeName(inst.id);
+    await this.runtime.ensureVolumeExists(stateVolume);
 
-    return this.runtime.create({
-      name: inst.containerName,
-      image: this.appConfig.openclawImage,
-      hostPort: inst.gatewayPort,
-      envVars: ["OPENCLAW_HEADLESS=true"],
-      memoryBytes: inst.config.resources.memoryMb * 1024 * 1024,
-      cpuShares: inst.config.resources.cpuShares,
-      openclawConfig: openclawJson,
-      dotEnv,
-      labels: {
-        "agent-forall.instance-id": inst.id,
-        "agent-forall.user-id": inst.userId,
-      },
-    });
+    return this.runtime.create(await adapter.buildContainerOptions(inst));
   }
 
   private async ensureContainerStarted(containerId: string): Promise<void> {
     if (await this.runtime.isRunning(containerId)) return;
     await this.runtime.start(containerId);
+  }
+
+  private async restoreAgentBackup(
+    inst: Instance,
+    containerId: string,
+  ): Promise<void> {
+    const adapter = this.runtimes.get(inst.runtimeKind);
+    const backup = inst.backupImport;
+    if (!backup.objectName) throw new InvalidBackupError("backup object is missing");
+    if (!this.backupRestoreStorage) {
+      throw new UpstreamUnavailableError("backup storage");
+    }
+
+    let source: Awaited<
+      ReturnType<AgentBackupRestoreStorage["openObjectStream"]>
+    >;
+    try {
+      source = await this.backupRestoreStorage.openObjectStream(
+        backup.objectName,
+        adapter.maxBackupBytes,
+      );
+    } catch (err) {
+      throw new InvalidBackupError(errorMessage(err));
+    }
+    if (
+      backup.contentLength !== null &&
+      source.contentLength !== backup.contentLength
+    ) {
+      source.body.destroy();
+      throw new InvalidBackupError("backup archive size changed");
+    }
+    if (
+      backup.contentType &&
+      source.contentType &&
+      source.contentType !== backup.contentType
+    ) {
+      source.body.destroy();
+      throw new InvalidBackupError("backup content type changed");
+    }
+    try {
+      await adapter.restoreState(containerId, source.body);
+      await this.refreshRuntimeConfig({ ...inst, containerId });
+      await this.repo.updateBackupImport(inst.id, { status: "restored" });
+      await this.backupRestoreStorage
+        .deleteObject(backup.objectName)
+        .catch((err) =>
+          this.logger.warn(
+            { instanceId: inst.id, err },
+            "backup import object cleanup failed",
+          ),
+        );
+    } catch (err) {
+      source.body.destroy();
+      throw new InvalidBackupError(errorMessage(err));
+    }
+  }
+
+  private async resolveContainerId(inst: Instance): Promise<string | null> {
+    if (inst.containerId) {
+      const current = await this.runtime.inspect(inst.containerId);
+      if (current) return inst.containerId;
+    }
+    const byName = await this.runtime.findContainerByName(inst.containerName);
+    if (byName) await this.repo.updateContainerId(inst.id, byName);
+    return byName;
+  }
+
+  private async resolveExportContainerId(
+    inst: Instance,
+  ): Promise<string> {
+    const containerId = await this.resolveContainerId(inst);
+    if (!containerId) {
+      throw new InvalidStateError(inst.status, "export_backup");
+    }
+    return containerId;
+  }
+
+  private async refreshRuntimeConfig(inst: Instance): Promise<void> {
+    if (!inst.containerId) return;
+    await this.runtimes.get(inst.runtimeKind).refreshConfig(inst.containerId, inst);
   }
 
   private async injectWhatsappCreds(
@@ -346,20 +804,19 @@ export class InstanceManager {
   ): Promise<void> {
     const creds = await this.repo.getDecryptedWhatsappCreds(instanceId);
     if (!creds) return;
-    await this.runtime.putArchiveUnderDir(
-      containerId,
-      WHATSAPP_SESSION_PARENT,
-      WHATSAPP_SESSION_DIR,
-      creds,
-    );
+    const inst = await this.requireInstance(instanceId);
+    await this.runtimes.get(inst.runtimeKind).injectWhatsappSession(containerId, creds);
   }
 
-  private async cleanupPartial(containerName: string): Promise<void> {
+  private async cleanupPartial(inst: Instance): Promise<void> {
     try {
-      const id = await this.runtime.findContainerByName(containerName);
+      const id = await this.runtime.findContainerByName(inst.containerName);
       if (id) {
         await this.runtime.remove(id);
       }
+      await this.runtime.removeVolume(
+        this.runtimes.get(inst.runtimeKind).stateVolumeName(inst.id),
+      );
     } catch {
       // best-effort cleanup
     }
@@ -396,19 +853,6 @@ export class InstanceManager {
     }
   }
 
-  private resolveDefaultProvider() {
-    const apiKey = this.appConfig.defaultProviderApiKey;
-    if (!apiKey) {
-      throw new Error(
-        "no provider supplied and DEFAULT_PROVIDER_API_KEY is not configured",
-      );
-    }
-    return {
-      name: this.appConfig.defaultProviderName,
-      apiKey,
-      model: this.appConfig.defaultProviderModel,
-    };
-  }
 }
 
 function isUniqueViolation(err: unknown): boolean {
