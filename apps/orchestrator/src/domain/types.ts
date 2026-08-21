@@ -20,7 +20,7 @@ export const VALID_TRANSITIONS: Record<InstanceStatus, readonly InstanceStatus[]
   stopped: ["running", "destroying"],
   destroying: ["destroyed", "error"],
   destroyed: [],
-  error: ["destroying"],
+  error: ["destroyed"],
 };
 
 export function isValidTransition(from: InstanceStatus, to: InstanceStatus): boolean {

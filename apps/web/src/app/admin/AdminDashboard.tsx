@@ -8,8 +8,8 @@ import { UsersPanel } from "./UsersPanel";
 type View = "users" | "leads";
 
 const TABS: { id: View; label: string }[] = [
-  { id: "users", label: "משתמשים" },
-  { id: "leads", label: "לידים" },
+  { id: "users", label: "Users" },
+  { id: "leads", label: "Leads" },
 ];
 
 export function AdminDashboard({ adminEmail }: { adminEmail: string }) {
@@ -17,17 +17,17 @@ export function AdminDashboard({ adminEmail }: { adminEmail: string }) {
   const [reloadToken, setReloadToken] = useState(0);
 
   return (
-    <div dir="rtl" className="min-h-screen bg-cream" style={{ fontFamily: "Heebo, sans-serif" }}>
+    <div dir="ltr" lang="en" className="min-h-screen bg-cream text-left">
       <header className="border-b border-sand/30 bg-white/80 px-6 py-4 backdrop-blur-sm">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-4">
           <h1 className="text-xl font-black text-espresso">
             <span className="font-extrabold">Agent</span>
             <span className="font-normal text-espresso-light">for</span>
             <span className="font-extrabold text-terra">All</span>
-            <span className="mr-3 text-sm font-normal text-espresso-light">Admin</span>
+            <span className="ml-3 text-sm font-normal text-espresso-light">Admin</span>
           </h1>
 
-          <nav role="tablist" aria-label="אזורי ניהול" className="flex gap-1 rounded-xl bg-cream p-1">
+          <nav role="tablist" aria-label="Admin sections" className="flex gap-1 rounded-xl bg-cream p-1">
             {TABS.map((tab) => (
               <button
                 key={tab.id}
@@ -36,9 +36,7 @@ export function AdminDashboard({ adminEmail }: { adminEmail: string }) {
                 aria-selected={view === tab.id}
                 onClick={() => setView(tab.id)}
                 className={`rounded-lg px-4 py-1.5 text-sm font-bold transition-colors ${
-                  view === tab.id
-                    ? "bg-espresso text-cream"
-                    : "text-espresso-light hover:text-espresso"
+                  view === tab.id ? "bg-espresso text-cream" : "text-espresso-light hover:text-espresso"
                 }`}
               >
                 {tab.label}
@@ -46,33 +44,27 @@ export function AdminDashboard({ adminEmail }: { adminEmail: string }) {
             ))}
           </nav>
 
-          <div className="ms-auto flex items-center gap-3">
-            <span dir="ltr" className="hidden text-xs text-espresso-light sm:inline">
-              {adminEmail}
-            </span>
+          <div className="ml-auto flex items-center gap-3">
+            <span className="hidden text-xs text-espresso-light sm:inline">{adminEmail}</span>
             <button
               type="button"
               onClick={() => setReloadToken((t) => t + 1)}
               className="rounded-lg bg-espresso px-4 py-2 text-sm font-bold text-cream transition-colors hover:bg-terra"
             >
-              רענון
+              Refresh
             </button>
             <Link
               href="/app"
               className="rounded-lg px-4 py-2 text-sm font-medium text-espresso-light ring-1 ring-sand/50 transition-colors hover:bg-cream"
             >
-              לאפליקציה
+              Open app
             </Link>
           </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-7xl px-6 py-8">
-        {view === "users" ? (
-          <UsersPanel reloadToken={reloadToken} />
-        ) : (
-          <LeadsPanel reloadToken={reloadToken} />
-        )}
+        {view === "users" ? <UsersPanel reloadToken={reloadToken} /> : <LeadsPanel reloadToken={reloadToken} />}
       </main>
     </div>
   );

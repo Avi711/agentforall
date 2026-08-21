@@ -19,6 +19,8 @@ test("destroy removes the runtime state volume even for errored instances", asyn
   assert.deepEqual(runtime.removedContainers, ["container-1"]);
   assert.deepEqual(runtime.removedVolumes, ["oc-4b86fc8b-ef1-state"]);
   assert.equal(repo.instance.status, "destroyed");
+  // Errored rows already released their gateway port; passing through `destroying` re-claims it.
+  assert.deepEqual(repo.statusHistory, ["destroyed"]);
 });
 
 test("destroy completes cleanup when the row is already destroying", async () => {
@@ -82,6 +84,8 @@ test("reconciler removes state volume before resolving orphaned destroys", async
 });
 
 class FakeRepo {
+  readonly statusHistory: Instance["status"][] = [];
+
   constructor(public instance: Instance) {}
 
   async findById(id: string): Promise<Instance | null> {
@@ -93,6 +97,7 @@ class FakeRepo {
     status: Instance["status"],
     _options?: { expectedStatus?: Instance["status"]; errorMessage?: string },
   ): Promise<boolean> {
+    this.statusHistory.push(status);
     this.instance = {
       ...this.instance,
       status,

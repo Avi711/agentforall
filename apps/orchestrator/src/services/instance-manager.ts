@@ -319,7 +319,9 @@ export class InstanceManager {
     const inst = await this.requireOwnedInstance(id, userId);
     if (inst.status === "destroyed") return;
 
-    if (inst.status !== "destroying") {
+    // `error` already released the gateway port; re-entering `destroying` would
+    // re-claim it and can collide with a newer instance, so clean up from `error` directly.
+    if (inst.status !== "destroying" && inst.status !== "error") {
       this.assertTransition(inst.status, "destroying");
 
       const updated = await this.repo.updateStatus(id, "destroying", {
@@ -358,10 +360,7 @@ export class InstanceManager {
       this.logger.info({ instanceId: id }, "instance destroyed");
     } catch (err) {
       this.logger.error({ instanceId: id, err }, "destroy failed");
-      await this.repo.updateStatus(id, "error", {
-        expectedStatus: "destroying",
-        errorMessage: errorMessage(err),
-      });
+      await this.repo.updateStatus(id, "error", { errorMessage: errorMessage(err) });
       throw err;
     }
   }

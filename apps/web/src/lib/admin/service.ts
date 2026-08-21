@@ -39,7 +39,9 @@ export class AdminService {
       totals: {
         users: users.length,
         bots: allBots.length,
-        connectedBots: allBots.filter(isConnected).length,
+        liveBots: allBots.filter((b) => !isErrored(b)).length,
+        erroredBots: allBots.filter(isErrored).length,
+        connectedBots: allBots.filter((b) => !isErrored(b) && isConnected(b)).length,
         spendCents: sumSpend(allBots),
         usageUnavailable: allBots.filter((b) => b.usage === null).length,
       },
@@ -53,6 +55,9 @@ function groupBots(instances: AdminInstance[]): Map<string, AdminBot[]> {
   for (const row of instances) {
     const bot: AdminBot = {
       snapshot: toBotSnapshot(row.instance),
+      runtimeKind: row.instance.runtimeKind,
+      model: row.instance.config.provider.model || null,
+      errorMessage: row.instance.errorMessage,
       createdAt: row.instance.createdAt,
       usage: row.usage,
     };
@@ -77,6 +82,10 @@ function sumBudget(bots: AdminBot[]): number | null {
     .map((bot) => supportedUsage(bot)?.maxBudgetCents ?? null)
     .filter((value): value is number => value !== null);
   return budgets.length > 0 ? budgets.reduce((a, b) => a + b, 0) : null;
+}
+
+function isErrored(bot: AdminBot): boolean {
+  return bot.snapshot.status === "error";
 }
 
 function isConnected(bot: AdminBot): boolean {

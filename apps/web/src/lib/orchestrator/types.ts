@@ -6,6 +6,8 @@ export const InstanceSchema = z.object({
   id: z.string().uuid(),
   userId: z.string(),
   displayName: z.string(),
+  // Display-only on the web, so unknown future runtimes must not break parsing.
+  runtimeKind: z.string().min(1),
   status: z.enum([
     "provisioning",
     "running",

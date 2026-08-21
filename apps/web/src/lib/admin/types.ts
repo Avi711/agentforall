@@ -3,6 +3,9 @@ import type { BotUsage } from "../orchestrator/types";
 
 export interface AdminBot {
   snapshot: BotSnapshot;
+  runtimeKind: string;
+  model: string | null;
+  errorMessage: string | null;
   createdAt: string;
   // null = usage lookup failed for this bot.
   usage: BotUsage | null;
@@ -25,7 +28,10 @@ export interface AdminOverview {
   users: AdminUser[];
   totals: {
     users: number;
+    // Every non-destroyed bot, including errored ones.
     bots: number;
+    liveBots: number;
+    erroredBots: number;
     connectedBots: number;
     spendCents: number;
     usageUnavailable: number;
