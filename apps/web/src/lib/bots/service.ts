@@ -16,8 +16,15 @@ import type {
   TelegramLinkStatus,
   WhatsappAccess,
   WhatsappAccessUpdate,
+  OwnerIdentity,
+  OwnerIdentityUpdate,
 } from "../orchestrator/types";
-import type { CreateBotBody, PhoneBody, WhatsappAccessBody } from "./schemas";
+import type {
+  CreateBotBody,
+  OwnerIdentityBody,
+  PhoneBody,
+  WhatsappAccessBody,
+} from "./schemas";
 
 export interface CreateBotResult {
   bot: Instance;
@@ -62,6 +69,12 @@ export interface BotOrchestratorPort {
     id: string,
     patch: WhatsappAccessUpdate,
   ): Promise<WhatsappAccess>;
+  getOwnerIdentity(userId: string, id: string): Promise<OwnerIdentity>;
+  updateOwnerIdentity(
+    userId: string,
+    id: string,
+    patch: OwnerIdentityUpdate,
+  ): Promise<OwnerIdentity>;
   disconnectWhatsapp(userId: string, id: string): Promise<void>;
   disconnectTelegram(userId: string, id: string): Promise<void>;
 }
@@ -188,6 +201,18 @@ export class BotService {
     patch: WhatsappAccessBody,
   ): Promise<WhatsappAccess> {
     return this.orchestrator.updateWhatsappAccess(userId, id, patch);
+  }
+
+  getOwnerIdentity(userId: string, id: string): Promise<OwnerIdentity> {
+    return this.orchestrator.getOwnerIdentity(userId, id);
+  }
+
+  updateOwnerIdentity(
+    userId: string,
+    id: string,
+    patch: OwnerIdentityBody,
+  ): Promise<OwnerIdentity> {
+    return this.orchestrator.updateOwnerIdentity(userId, id, patch);
   }
 
   disconnectWhatsapp(userId: string, id: string): Promise<void> {

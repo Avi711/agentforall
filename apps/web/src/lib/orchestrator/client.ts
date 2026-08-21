@@ -12,6 +12,9 @@ import {
   WhatsappAccessSchema,
   type WhatsappAccess,
   type WhatsappAccessUpdate,
+  OwnerIdentitySchema,
+  type OwnerIdentity,
+  type OwnerIdentityUpdate,
   type Instance,
   type StartPairingResult,
   type PairQr,
@@ -312,6 +315,31 @@ export class OrchestratorClient {
       userId,
       body: patch,
       schema: WhatsappAccessSchema,
+      // Config updates restart the container synchronously.
+      timeoutMs: 60_000,
+    });
+  }
+
+  async getOwnerIdentity(userId: string, id: string): Promise<OwnerIdentity> {
+    return this.call({
+      method: "GET",
+      path: instancePath(id, "/owner"),
+      userId,
+      schema: OwnerIdentitySchema,
+    });
+  }
+
+  async updateOwnerIdentity(
+    userId: string,
+    id: string,
+    patch: OwnerIdentityUpdate,
+  ): Promise<OwnerIdentity> {
+    return this.call({
+      method: "PATCH",
+      path: instancePath(id, "/owner"),
+      userId,
+      body: patch,
+      schema: OwnerIdentitySchema,
       // Config updates restart the container synchronously.
       timeoutMs: 60_000,
     });

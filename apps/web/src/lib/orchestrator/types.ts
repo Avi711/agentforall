@@ -138,7 +138,21 @@ export const WhatsappAccessSchema = z.object({
   access: z.enum(WHATSAPP_DM_ACCESS),
   configured: z.boolean(),
   claiming: z.boolean(),
-  pending: z.array(
+});
+export type WhatsappAccess = z.infer<typeof WhatsappAccessSchema>;
+
+export interface WhatsappAccessUpdate {
+  access: WhatsappDmAccess;
+}
+
+export const OWNER_SYNC_STATES = ["applied", "pending", "unavailable"] as const;
+export type OwnerSyncState = (typeof OWNER_SYNC_STATES)[number];
+
+export const OwnerIdentitySchema = z.object({
+  telegram: z.object({ userId: z.string(), botUsername: z.string().nullable() }).nullable(),
+  whatsappNumber: z.string().nullable(),
+  sync: z.enum(OWNER_SYNC_STATES),
+  candidates: z.array(
     z.object({
       number: z.string(),
       code: z.string(),
@@ -146,14 +160,13 @@ export const WhatsappAccessSchema = z.object({
       requestedAt: z.string(),
     }),
   ),
-  pendingUnavailable: z.boolean(),
+  candidatesUnavailable: z.boolean(),
 });
-export type WhatsappAccess = z.infer<typeof WhatsappAccessSchema>;
-export type WhatsappPendingSender = WhatsappAccess["pending"][number];
+export type OwnerIdentity = z.infer<typeof OwnerIdentitySchema>;
+export type OwnerCandidate = OwnerIdentity["candidates"][number];
 
-export interface WhatsappAccessUpdate {
-  ownerNumber?: string | null;
-  access?: WhatsappDmAccess;
+export interface OwnerIdentityUpdate {
+  whatsappNumber: string | null;
 }
 
 export const BOT_CHANNELS = ["telegram", "whatsapp"] as const;

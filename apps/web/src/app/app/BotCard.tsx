@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { DeleteBotDialog } from "./DeleteBotDialog";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -9,6 +9,8 @@ import { useBotStatus, type BotSnapshot } from "./useBotStatus";
 import { BotAvatar, type AvatarTone } from "./Marks";
 import { CreatingPanel } from "./CreatingPanel";
 import { WhatsAppAccessDialog, accessLabel } from "./WhatsAppAccessSection";
+import { OwnerIdentityDialog, IDENTITY_HINT } from "./OwnerIdentityDialog";
+import { InfoHint } from "./InfoHint";
 import type { BotUsage } from "@/lib/orchestrator/types";
 
 const USD_TO_ILS_RATE = 3;
@@ -33,6 +35,8 @@ export function BotCard({
   const bot = useBotStatus(initialBot);
   const [menuOpen, setMenuOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [accessOpen, setAccessOpen] = useState(false);
+  const [identityOpen, setIdentityOpen] = useState(false);
   const [disconnecting, setDisconnecting] = useState<Channel | null>(null);
   const [cancelPending, setCancelPending] = useState<Channel | null>(null);
   const [channelError, setChannelError] = useState<string | null>(null);
@@ -43,6 +47,7 @@ export function BotCard({
   const menuRef = useRef<HTMLDivElement>(null);
 
   const state = resolveState(bot);
+  const whatsappConnected = bot.pairingStatus === "paired" && bot.hasWhatsappCreds;
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -280,7 +285,10 @@ export function BotCard({
             cancelPending={cancelPending}
             onDisconnect={(channel) => setDisconnecting(channel)}
             onCancelPending={handleCancelPending}
+            onOpenAccess={() => setAccessOpen(true)}
           />
+
+          <OwnerSection bot={bot} onEdit={() => setIdentityOpen(true)} />
 
           {usage?.supported ? <UsageSection usage={usage} /> : null}
 
@@ -332,6 +340,28 @@ export function BotCard({
         onClose={() => setDisconnecting(null)}
         onConfirm={handleDisconnectConfirm}
       />
+
+      {whatsappConnected && bot.whatsappAccess ? (
+        <WhatsAppAccessDialog
+          open={accessOpen}
+          botId={bot.id}
+          initial={bot.whatsappAccess}
+          ownerNumber={bot.owner.whatsappNumber}
+          onClose={() => setAccessOpen(false)}
+          onOpenIdentity={() => {
+            setAccessOpen(false);
+            setIdentityOpen(true);
+          }}
+        />
+      ) : null}
+
+      <OwnerIdentityDialog
+        open={identityOpen}
+        botId={bot.id}
+        initial={bot.owner}
+        whatsappAvailable={bot.hasWhatsappChannel}
+        onClose={() => setIdentityOpen(false)}
+      />
     </>
   );
 }
@@ -341,13 +371,15 @@ function ChannelsSection({
   cancelPending,
   onDisconnect,
   onCancelPending,
+  onOpenAccess,
 }: {
   bot: BotSnapshot;
   cancelPending: Channel | null;
   onDisconnect: (channel: Channel) => void;
   onCancelPending: (channel: Channel) => void;
+  onOpenAccess: () => void;
 }) {
-  const [accessOpen, setAccessOpen] = useState(false);
+  const titleId = useId();
   const health = channelHealth(bot);
   const whatsapp = whatsappRow(bot, health);
   const telegram = telegramRow(bot, health);
@@ -355,37 +387,37 @@ function ChannelsSection({
 
   const whatsappMenu: MenuItem[] = [];
   if (whatsapp.connected && access) {
-    whatsappMenu.push({ label: "\u05de\u05d9 \u05db\u05d5\u05ea\u05d1 \u05dc\u05d1\u05d5\u05d8\u2026", onClick: () => setAccessOpen(true) });
+    whatsappMenu.push({ label: "מי כותב לבוט…", onClick: onOpenAccess });
   }
   if (whatsapp.pending) {
     whatsappMenu.push({
-      label: cancelPending === "whatsapp" ? "\u05de\u05d1\u05d8\u05dc\u2026" : "\u05d1\u05d9\u05d8\u05d5\u05dc \u05d4\u05d4\u05ea\u05d0\u05de\u05d4",
+      label: cancelPending === "whatsapp" ? "מבטל…" : "ביטול ההתאמה",
       disabled: cancelPending !== null,
       onClick: () => onCancelPending("whatsapp"),
     });
   } else if (whatsapp.connected || whatsapp.stale) {
-    whatsappMenu.push({ label: "\u05e0\u05d9\u05ea\u05d5\u05e7", danger: true, onClick: () => onDisconnect("whatsapp") });
+    whatsappMenu.push({ label: "ניתוק", danger: true, onClick: () => onDisconnect("whatsapp") });
   }
 
   const telegramMenu: MenuItem[] = telegram.pending
     ? [
         {
-          label: cancelPending === "telegram" ? "\u05de\u05d1\u05d8\u05dc\u2026" : "\u05d1\u05d9\u05d8\u05d5\u05dc \u05d4\u05d7\u05d9\u05d1\u05d5\u05e8",
+          label: cancelPending === "telegram" ? "מבטל…" : "ביטול החיבור",
           disabled: cancelPending !== null,
           onClick: () => onCancelPending("telegram"),
         },
       ]
     : telegram.connected
-      ? [{ label: "\u05e0\u05d9\u05ea\u05d5\u05e7", danger: true, onClick: () => onDisconnect("telegram") }]
+      ? [{ label: "ניתוק", danger: true, onClick: () => onDisconnect("telegram") }]
       : [];
 
   return (
-    <section className="mb-6 sm:mb-7" aria-labelledby="channels-title">
-      <p id="channels-title" className="text-[11px] uppercase tracking-[0.22em] text-espresso-light/70 mb-2">
-        \u05e2\u05e8\u05d5\u05e6\u05d9\u05dd
+    <section className="mb-6 sm:mb-7" aria-labelledby={titleId}>
+      <p id={titleId} className="text-[11px] uppercase tracking-[0.22em] text-espresso-light/70 mb-2">
+        ערוצים
       </p>
       <ul className="border-t border-sand-light/70 divide-y divide-sand-light/70">
-        <ChannelRow
+        <CardRow
           glyph={<WhatsAppGlyph />}
           name="WhatsApp"
           status={whatsapp.status}
@@ -393,16 +425,16 @@ function ChannelsSection({
             whatsapp.connected && bot.whatsappAccountId ? (
               <PhoneDetail
                 accountId={bot.whatsappAccountId}
-                meta={access ? accessLabel(access) : null}
+                meta={access ? accessLabel(access.access, bot.owner.whatsappNumber) : null}
               />
             ) : null
           }
           primary={whatsapp.primary}
           menu={whatsappMenu}
-          menuLabel="\u05d4\u05d2\u05d3\u05e8\u05d5\u05ea WhatsApp"
+          menuLabel="הגדרות WhatsApp"
         />
 
-        <ChannelRow
+        <CardRow
           glyph={<TelegramGlyph />}
           name="Telegram"
           status={telegram.status}
@@ -421,26 +453,83 @@ function ChannelsSection({
           }
           primary={telegram.primary}
           menu={telegramMenu}
-          menuLabel="\u05d4\u05d2\u05d3\u05e8\u05d5\u05ea Telegram"
+          menuLabel="הגדרות Telegram"
         />
       </ul>
 
       {(whatsapp.connected || telegram.connected) && bot.lastSeenAt === null ? (
         <p className="mt-3 text-xs text-espresso-light leading-relaxed max-w-md italic">
-          \u05d4\u05d4\u05d5\u05d3\u05e2\u05d4 \u05d4\u05e8\u05d0\u05e9\u05d5\u05e0\u05d4 \u05e2\u05e9\u05d5\u05d9\u05d4 \u05dc\u05d4\u05d2\u05d9\u05e2 \u05d0\u05d7\u05e8\u05d9 \u05db-30\u201340 \u05e9\u05e0\u05d9\u05d5\u05ea \u2014 \u05d4\u05e1\u05d5\u05db\u05df \u05e2\u05d5\u05dc\u05d4 \u05d1\u05e8\u05d2\u05e2\u05d9\u05dd \u05d0\u05dc\u05d5. \u05d4\u05d4\u05d5\u05d3\u05e2\u05d5\u05ea
-          \u05d4\u05d1\u05d0\u05d5\u05ea \u05d9\u05e2\u05e0\u05d5 \u05de\u05d9\u05d9\u05d3\u05d9\u05ea.
+          ההודעה הראשונה עשויה להגיע אחרי כ-30–40 שניות — הסוכן עולה ברגעים אלו. ההודעות
+          הבאות יענו מיידית.
         </p>
       ) : null}
+    </section>
+  );
+}
 
-      {whatsapp.connected && bot.whatsappAccountId && access ? (
-        <WhatsAppAccessDialog
-          open={accessOpen}
-          botId={bot.id}
-          botNumber={`+${bot.whatsappAccountId}`}
-          initial={access}
-          onClose={() => setAccessOpen(false)}
+// Who the bot treats as its owner — separate from who may write to it.
+function OwnerSection({ bot, onEdit }: { bot: BotSnapshot; onEdit: () => void }) {
+  const titleId = useId();
+  const { telegramLinked, whatsappNumber } = bot.owner;
+  const hasWhatsapp = bot.hasWhatsappChannel;
+  const missingNumber = hasWhatsapp && whatsappNumber === null;
+
+  const status: RowStatus = missingNumber
+    ? { tone: "info", label: "חסר מספר WhatsApp" }
+    : telegramLinked || whatsappNumber !== null
+      ? { tone: "ok", label: "מוגדר" }
+      : { tone: "info", label: "לא מוגדר" };
+
+  const primary: RowAction | null = missingNumber
+    ? { kind: "button", label: "הגדרת המספר", emphasis: "secondary", onClick: onEdit }
+    : null;
+  const menu: MenuItem[] =
+    hasWhatsapp && whatsappNumber !== null ? [{ label: "עריכה…", onClick: onEdit }] : [];
+
+  const parts: ReactNode[] = [];
+  if (telegramLinked) parts.push(<span key="tg">Telegram ✓</span>);
+  if (hasWhatsapp) {
+    parts.push(
+      whatsappNumber !== null ? (
+        <span key="wa" dir="ltr" className="font-mono">
+          {whatsappNumber}
+        </span>
+      ) : (
+        <span key="wa">WhatsApp: לא הוגדר</span>
+      ),
+    );
+  }
+
+  return (
+    <section className="mb-6 sm:mb-7" aria-labelledby={titleId}>
+      <div className="flex items-center gap-1 mb-2">
+        <p id={titleId} className="text-[11px] uppercase tracking-[0.22em] text-espresso-light/70">
+          הזהות שלי
+        </p>
+        <InfoHint label="מה זה הזהות שלי" text={IDENTITY_HINT} />
+      </div>
+      <ul className="border-t border-sand-light/70 divide-y divide-sand-light/70">
+        <CardRow
+          glyph={<PersonGlyph />}
+          name="אני"
+          status={status}
+          detail={
+            parts.length > 0 ? (
+              <p className="flex flex-wrap items-center gap-x-2 text-sm text-espresso-light">
+                {parts.map((part, i) => (
+                  <span key={i} className="inline-flex items-center gap-x-2">
+                    {i > 0 ? <span aria-hidden>·</span> : null}
+                    {part}
+                  </span>
+                ))}
+              </p>
+            ) : null
+          }
+          primary={primary}
+          menu={menu}
+          menuLabel="הגדרות הזהות"
         />
-      ) : null}
+      </ul>
     </section>
   );
 }
@@ -458,12 +547,10 @@ interface RowStatus {
   pulse?: boolean;
 }
 
-interface RowAction {
-  label: string;
-  href: string;
-  external?: boolean;
-  emphasis: "primary" | "secondary";
-}
+type RowAction = { label: string; emphasis: "primary" | "secondary" } & (
+  | { kind: "link"; href: string; external?: boolean }
+  | { kind: "button"; onClick: () => void }
+);
 
 interface RowModel {
   status: RowStatus;
@@ -475,8 +562,8 @@ interface RowModel {
 
 // Container-level health applies to every channel at once.
 function channelHealth(bot: BotSnapshot): RowStatus | null {
-  if (bot.status === "unhealthy") return { tone: "err", label: "\u05dc\u05d0 \u05de\u05d2\u05d9\u05d1" };
-  if (bot.status === "degraded") return { tone: "warn", label: "\u05d7\u05d9\u05d1\u05d5\u05e8 \u05dc\u05d0 \u05d9\u05e6\u05d9\u05d1", pulse: true };
+  if (bot.status === "unhealthy") return { tone: "err", label: "לא מגיב" };
+  if (bot.status === "degraded") return { tone: "warn", label: "חיבור לא יציב", pulse: true };
   return null;
 }
 
@@ -486,8 +573,8 @@ function whatsappRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
     const status: RowStatus =
       health ??
       (bot.lastSeenAt === null
-        ? { tone: "info", label: "\u05de\u05ea\u05d7\u05d1\u05e8\u2026 (\u05e2\u05d3 2 \u05d3\u05e7\u05d5\u05ea)", pulse: true }
-        : { tone: "ok", label: "\u05de\u05d7\u05d5\u05d1\u05e8" });
+        ? { tone: "info", label: "מתחבר… (עד 2 דקות)", pulse: true }
+        : { tone: "ok", label: "מחובר" });
     return {
       status,
       connected: true,
@@ -495,8 +582,9 @@ function whatsappRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
       stale: false,
       primary: bot.whatsappAccountId
         ? {
-            label: "\u05e4\u05ea\u05d9\u05d7\u05d4 \u05d1-WhatsApp",
-            href: `https://wa.me/${bot.whatsappAccountId}?text=${encodeURIComponent("\u05e9\u05dc\u05d5\u05dd!")}`,
+            kind: "link",
+            label: "פתיחה ב-WhatsApp",
+            href: `https://wa.me/${bot.whatsappAccountId}?text=${encodeURIComponent("שלום!")}`,
             external: true,
             emphasis: "primary",
           }
@@ -505,41 +593,42 @@ function whatsappRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
   }
   if (pairing === "awaiting_qr" || pairing === "awaiting_code") {
     return {
-      status: { tone: "warn", label: "\u05de\u05de\u05ea\u05d9\u05df \u05dc\u05d4\u05ea\u05d0\u05de\u05d4", pulse: true },
+      status: { tone: "warn", label: "ממתין להתאמה", pulse: true },
       connected: false,
       pending: true,
       stale: false,
-      primary: { label: "\u05d4\u05de\u05e9\u05da \u05d4\u05ea\u05d0\u05de\u05d4", href: "/app/bot/pair", emphasis: "secondary" },
+      primary: { kind: "link", label: "המשך התאמה", href: "/app/bot/pair", emphasis: "secondary" },
     };
   }
   // A dropped live session (creds still stored) is worth a reconnect; a cancelled attempt is just "not connected".
   if ((pairing === "expired" || pairing === "failed") && bot.hasWhatsappCreds) {
     return {
-      status: { tone: "warn", label: "\u05d4\u05d7\u05d9\u05d1\u05d5\u05e8 \u05e0\u05d5\u05ea\u05e7" },
+      status: { tone: "warn", label: "החיבור נותק" },
       connected: false,
       pending: false,
       stale: true,
-      primary: { label: "\u05d7\u05d9\u05d1\u05d5\u05e8 \u05de\u05d7\u05d3\u05e9", href: "/app/bot/pair", emphasis: "secondary" },
+      primary: { kind: "link", label: "חיבור מחדש", href: "/app/bot/pair", emphasis: "secondary" },
     };
   }
   return {
-    status: { tone: "info", label: "\u05dc\u05d0 \u05de\u05d7\u05d5\u05d1\u05e8" },
+    status: { tone: "info", label: "לא מחובר" },
     connected: false,
     pending: false,
     stale: false,
-    primary: { label: "\u05d7\u05d9\u05d1\u05d5\u05e8 WhatsApp", href: "/app/bot/pair", emphasis: "secondary" },
+    primary: { kind: "link", label: "חיבור WhatsApp", href: "/app/bot/pair", emphasis: "secondary" },
   };
 }
 
 function telegramRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
   if (bot.telegram?.linked && bot.telegram.botUsername) {
     return {
-      status: health ?? { tone: "ok", label: "\u05de\u05d7\u05d5\u05d1\u05e8" },
+      status: health ?? { tone: "ok", label: "מחובר" },
       connected: true,
       pending: false,
       stale: false,
       primary: {
-        label: "\u05e4\u05ea\u05d9\u05d7\u05d4 \u05d1\u05d8\u05dc\u05d2\u05e8\u05dd",
+        kind: "link",
+        label: "פתיחה בטלגרם",
         href: `https://t.me/${bot.telegram.botUsername}`,
         external: true,
         emphasis: "primary",
@@ -548,23 +637,23 @@ function telegramRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
   }
   if (bot.telegram && !bot.telegram.linked) {
     return {
-      status: { tone: "warn", label: "\u05de\u05de\u05ea\u05d9\u05df \u05dc\u05d7\u05d9\u05d1\u05d5\u05e8", pulse: true },
+      status: { tone: "warn", label: "ממתין לחיבור", pulse: true },
       connected: false,
       pending: true,
       stale: false,
-      primary: { label: "\u05d4\u05de\u05e9\u05da \u05d7\u05d9\u05d1\u05d5\u05e8", href: "/app/bot/telegram", emphasis: "secondary" },
+      primary: { kind: "link", label: "המשך חיבור", href: "/app/bot/telegram", emphasis: "secondary" },
     };
   }
   return {
-    status: { tone: "info", label: "\u05dc\u05d0 \u05de\u05d7\u05d5\u05d1\u05e8" },
+    status: { tone: "info", label: "לא מחובר" },
     connected: false,
     pending: false,
     stale: false,
-    primary: { label: "\u05d7\u05d9\u05d1\u05d5\u05e8 \u05dc\u05d8\u05dc\u05d2\u05e8\u05dd", href: "/app/bot/telegram", emphasis: "secondary" },
+    primary: { kind: "link", label: "חיבור לטלגרם", href: "/app/bot/telegram", emphasis: "secondary" },
   };
 }
 
-function ChannelRow({
+function CardRow({
   glyph,
   name,
   status,
@@ -600,7 +689,7 @@ function ChannelRow({
           </div>
         </div>
         <div className="flex items-center gap-2 ps-12 sm:ps-0 sm:shrink-0">
-          {primary ? <ActionLink action={primary} /> : null}
+          {primary ? <RowActionControl action={primary} /> : null}
           {menu.length > 0 ? <RowMenu label={menuLabel} items={menu} /> : null}
         </div>
       </div>
@@ -670,11 +759,18 @@ function RowMenu({ label, items }: { label: string; items: MenuItem[] }) {
   );
 }
 
-function ActionLink({ action }: { action: RowAction }) {
+function RowActionControl({ action }: { action: RowAction }) {
   const className =
     action.emphasis === "primary"
       ? "inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-full bg-terra text-white text-sm font-medium hover:bg-terra-light transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white"
       : "inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-full border border-sand text-espresso text-sm font-medium hover:bg-cream-dark transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra";
+  if (action.kind === "button") {
+    return (
+      <button type="button" onClick={action.onClick} className={className}>
+        <span>{action.label}</span>
+      </button>
+    );
+  }
   if (action.external) {
     return (
       <a href={action.href} target="_blank" rel="noopener noreferrer" className={className}>
@@ -744,7 +840,7 @@ function PhoneDetail({ accountId, meta }: { accountId: string; meta: string | nu
       >
         {copied ? <CheckIcon /> : <CopyIcon />}
       </button>
-      {meta ? <span className="text-xs text-espresso-light/80">\u00b7 {meta}</span> : null}
+      {meta ? <span className="text-xs text-espresso-light/80">{meta}</span> : null}
     </div>
   );
 }
@@ -929,6 +1025,14 @@ function ChevronEnd() {
   return (
     <svg aria-hidden="true" viewBox="0 0 20 20" className="w-4 h-4 rtl:rotate-180" fill="none" stroke="currentColor" strokeWidth="1.75">
       <path d="M8 5l5 5-5 5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+function PersonGlyph() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <circle cx="10" cy="7" r="3.25" />
+      <path d="M4 17c.6-3 3-4.75 6-4.75S15.4 14 16 17" strokeLinecap="round" />
     </svg>
   );
 }

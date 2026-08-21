@@ -6,9 +6,13 @@ export interface TelegramSnapshot {
 }
 
 export interface WhatsappAccessSnapshot {
-  ownerNumber: string | null;
   access: WhatsappDmAccess;
   configured: boolean;
+}
+
+export interface OwnerSnapshot {
+  telegramLinked: boolean;
+  whatsappNumber: string | null;
 }
 
 export interface BotSnapshot {
@@ -20,9 +24,12 @@ export interface BotSnapshot {
   hasWhatsappCreds: boolean;
   hasWhatsappChannel: boolean;
   whatsappAccess: WhatsappAccessSnapshot | null;
+  owner: OwnerSnapshot;
   telegram: TelegramSnapshot | null;
   lastSeenAt: string | null;
 }
+
+type Channels = Instance["config"]["channels"];
 
 export function toBotSnapshot(bot: Instance): BotSnapshot {
   return {
@@ -34,27 +41,33 @@ export function toBotSnapshot(bot: Instance): BotSnapshot {
     hasWhatsappCreds: bot.hasWhatsappCreds,
     hasWhatsappChannel: bot.config.channels.some((ch) => ch.type === "whatsapp"),
     whatsappAccess: whatsappAccessSnapshot(bot.config.channels),
+    owner: ownerSnapshot(bot.config.channels),
     telegram: telegramSnapshot(bot.config.channels),
     lastSeenAt: bot.lastSeenAt ?? null,
   };
 }
 
-function whatsappAccessSnapshot(
-  channels: Instance["config"]["channels"],
-): WhatsappAccessSnapshot | null {
+function whatsappAccessSnapshot(channels: Channels): WhatsappAccessSnapshot | null {
   const ch = channels.find((c) => c.type === "whatsapp");
   if (!ch) return null;
   const access = WHATSAPP_DM_ACCESS.find((a) => a === ch.dmAccess);
+  return { access: access ?? "open", configured: access !== undefined };
+}
+
+// The Telegram allowlist is the owner; the orchestrator writes it as "tg:<id>".
+function ownerSnapshot(channels: Channels): OwnerSnapshot {
+  const telegram = channels.find((c) => c.type === "telegram");
+  const whatsapp = channels.find((c) => c.type === "whatsapp");
+  const allowFrom: unknown[] = Array.isArray(telegram?.allowFrom) ? telegram.allowFrom : [];
   return {
-    ownerNumber: typeof ch.ownerNumber === "string" ? ch.ownerNumber : null,
-    access: access ?? "open",
-    configured: access !== undefined,
+    telegramLinked: allowFrom.some(
+      (entry) => typeof entry === "string" && /^(?:tg:|telegram:)?\d+$/.test(entry),
+    ),
+    whatsappNumber: typeof whatsapp?.ownerNumber === "string" ? whatsapp.ownerNumber : null,
   };
 }
 
-function telegramSnapshot(
-  channels: Instance["config"]["channels"],
-): TelegramSnapshot | null {
+function telegramSnapshot(channels: Channels): TelegramSnapshot | null {
   const ch = channels.find((c) => c.type === "telegram");
   if (!ch) return null;
   return {

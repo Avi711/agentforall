@@ -2,115 +2,66 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type {
-  WhatsappAccess,
-  WhatsappDmAccess,
-  WhatsappPendingSender,
-} from "@/lib/orchestrator/types";
+import type { WhatsappDmAccess } from "@/lib/orchestrator/types";
 import type { WhatsappAccessSnapshot } from "@/lib/bots/snapshot";
-import { isValidIsraeliPhone, normalizeIsraeliPhone } from "@/lib/phone";
+import { readApiErrorMessage } from "@/lib/http/api-error";
+import { InfoHint } from "./InfoHint";
 
-const CLAIM_POLL_MS = 5000;
-const INTERNATIONAL_RE = /^\+[1-9]\d{6,14}$/;
+const ACCESS_HINT =
+  "קובע מי מקבל מענה בוואטסאפ. לא קשור למי הבעלים של הבוט — זה מוגדר ב״הזהות שלי״.";
 
-export function accessLabel(initial: WhatsappAccessSnapshot): string {
-  if (initial.access !== "owner") return "פתוח לכולם";
-  return initial.ownerNumber === null ? "רק אני — מזהה מספר" : "רק אני";
+export function accessLabel(access: WhatsappDmAccess, ownerNumber: string | null): string {
+  if (access !== "owner") return "פתוח לכולם";
+  return ownerNumber === null ? "רק אני — חסר מספר" : "רק אני";
 }
 
 export function WhatsAppAccessDialog({
   open,
   botId,
-  botNumber,
   initial,
+  ownerNumber,
   onClose,
+  onOpenIdentity,
 }: {
   open: boolean;
   botId: string;
-  botNumber: string;
   initial: WhatsappAccessSnapshot;
+  ownerNumber: string | null;
   onClose: () => void;
+  onOpenIdentity: () => void;
 }) {
   const router = useRouter();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
-  const phoneId = useId();
 
   const [access, setAccess] = useState<WhatsappDmAccess>(initial.access);
-  const [owner, setOwner] = useState<string | null>(initial.ownerNumber);
-  const [phone, setPhone] = useState("");
-  const [pending, setPending] = useState<WhatsappPendingSender[]>([]);
-  const [pendingUnavailable, setPendingUnavailable] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const needsIdentity = access === "owner" && owner === null;
 
   useEffect(() => {
     const el = dialogRef.current;
     if (!el) return;
     if (open && !el.open) {
       setAccess(initial.access);
-      setOwner(initial.ownerNumber);
-      setPhone("");
       setError(null);
       el.showModal();
     }
     if (!open && el.open) el.close();
-  }, [open, initial.access, initial.ownerNumber]);
+  }, [open, initial.access]);
 
-  // Pending senders matter only while the dialog is open and no number is known yet.
-  useEffect(() => {
-    if (!open || !needsIdentity) return;
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-
-    const tick = async () => {
-      timer = null;
-      try {
-        const res = await fetch(`/api/bot/${botId}/whatsapp/access`, { cache: "no-store" });
-        if (res.ok && !cancelled) {
-          const data = (await res.json()) as WhatsappAccess;
-          setPending(data.pending);
-          setPendingUnavailable(data.pendingUnavailable);
-        }
-      } catch {
-        // Best-effort poll; the next tick retries.
-      }
-      if (!cancelled) timer = setTimeout(tick, CLAIM_POLL_MS);
-    };
-
-    void tick();
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
-  }, [open, needsIdentity, botId]);
-
-  async function save(ownerOverride?: string | null) {
+  async function save() {
     if (saving) return;
-    let resolvedOwner = ownerOverride !== undefined ? ownerOverride : owner;
-    const typed = phone.trim();
-    if (ownerOverride === undefined && access === "owner" && resolvedOwner === null && typed) {
-      const normalized = normalizeManualPhone(typed);
-      if (!normalized) {
-        setError("המספר לא תקין. אפשר 050-1234567 או מספר בינלאומי מלא.");
-        return;
-      }
-      resolvedOwner = normalized;
-    }
-
     setSaving(true);
     setError(null);
     try {
       const res = await fetch(`/api/bot/${botId}/whatsapp/access`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ access, ownerNumber: resolvedOwner }),
+        body: JSON.stringify({ access }),
         cache: "no-store",
       });
       const body: unknown = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(errorMessage(body) ?? "השמירה נכשלה");
+      if (!res.ok) throw new Error(readApiErrorMessage(body) ?? "השמירה נכשלה");
       dialogRef.current?.close();
       router.refresh();
     } catch (err) {
@@ -135,9 +86,12 @@ export function WhatsAppAccessDialog({
     >
       <form method="dialog" onSubmit={(e) => e.preventDefault()} dir="rtl">
         <div className="p-5 sm:p-7">
-          <h2 id={titleId} className="font-display text-xl text-espresso mb-1">
-            מי יכול לכתוב לבוט
-          </h2>
+          <div className="flex items-center gap-1 mb-1">
+            <h2 id={titleId} className="font-display text-xl text-espresso">
+              מי יכול לכתוב לבוט
+            </h2>
+            <InfoHint label="מה ההגדרה הזו קובעת" text={ACCESS_HINT} />
+          </div>
           <p className="text-sm text-espresso-light leading-relaxed mb-5">
             לכל אדם שכותב לבוט יש שיחה נפרדת — אף אחד לא רואה את ההיסטוריה שלכם.
           </p>
@@ -159,100 +113,19 @@ export function WhatsAppAccessDialog({
             />
           </div>
 
-          {access === "owner" ? (
-            <div className="mt-5 border-t border-sand-light/70 pt-5">
-              <p className="text-[11px] uppercase tracking-[0.18em] text-espresso-light/70 mb-2">
-                המספר שלכם
+          {access === "owner" && ownerNumber === null ? (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-terra-light/30 bg-terra-pale/50 px-4 py-3">
+              <p className="text-sm text-espresso leading-relaxed">
+                כדי שהבוט יענה לכם, צריך להגדיר את המספר שלכם ב״הזהות שלי״.
               </p>
-
-              {owner ? (
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <span dir="ltr" className="font-mono text-sm text-espresso break-all">
-                    {owner}
-                  </span>
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={() => setOwner(null)}
-                    className="py-1.5 text-sm text-espresso-light underline-offset-4 hover:text-espresso hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-terra rounded disabled:opacity-60"
-                  >
-                    שינוי
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <p className="text-sm text-espresso-light leading-relaxed">
-                    שלחו הודעה כלשהי לבוט מהוואטסאפ שלכם והמספר יופיע כאן, או הקלידו אותו.
-                  </p>
-
-                  {pending.length > 0 ? (
-                    <ul className="mt-3 space-y-2">
-                      {pending.map((sender) => (
-                        <li
-                          key={sender.number}
-                          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sand-light bg-cream px-4 py-3"
-                        >
-                          <div className="min-w-0">
-                            <span dir="ltr" className="block font-mono text-sm text-espresso break-all">
-                              {sender.number}
-                            </span>
-                            {sender.name ? (
-                              <span className="block text-xs text-espresso-light mt-0.5 truncate">
-                                {sender.name}
-                              </span>
-                            ) : null}
-                          </div>
-                          <button
-                            type="button"
-                            disabled={saving}
-                            onClick={() => {
-                              setOwner(sender.number);
-                              void save(sender.number);
-                            }}
-                            className="inline-flex items-center justify-center px-4 py-2.5 rounded-full bg-terra text-white text-sm font-medium hover:bg-terra-light transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 disabled:opacity-60 disabled:cursor-wait"
-                          >
-                            זה אני
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="mt-3 flex items-center gap-2 text-sm text-espresso-light">
-                      <span aria-hidden className="inline-block w-2 h-2 rounded-full bg-terra animate-pulse" />
-                      {pendingUnavailable
-                        ? "לא הצלחנו לבדוק הודעות נכנסות כרגע."
-                        : "ממתינים להודעה שלכם…"}
-                    </p>
-                  )}
-
-                  <label htmlFor={phoneId} className="mt-4 block text-sm text-espresso-light mb-1.5">
-                    או הקלידו את המספר
-                  </label>
-                  <input
-                    id={phoneId}
-                    type="tel"
-                    inputMode="tel"
-                    dir="ltr"
-                    autoComplete="tel"
-                    placeholder="050-1234567"
-                    value={phone}
-                    disabled={saving}
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="w-full rounded-xl border border-sand bg-white px-4 py-3 font-mono text-sm text-espresso placeholder:text-sand focus:outline-none focus:border-terra focus:ring-2 focus:ring-terra-pale disabled:opacity-50"
-                  />
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={() => {
-                      setOwner(botNumber);
-                      void save(botNumber);
-                    }}
-                    className="mt-3 py-1.5 text-sm text-espresso-light underline-offset-4 hover:text-espresso hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-terra rounded disabled:opacity-60"
-                  >
-                    אני כותב לבוט מהמספר שלו עצמו
-                  </button>
-                </>
-              )}
+              <button
+                type="button"
+                disabled={saving}
+                onClick={onOpenIdentity}
+                className="inline-flex items-center justify-center px-4 py-2 rounded-full border border-sand text-espresso text-sm font-medium hover:bg-cream-dark transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra disabled:opacity-60"
+              >
+                להגדרת המספר
+              </button>
             </div>
           ) : null}
 
@@ -277,7 +150,7 @@ export function WhatsAppAccessDialog({
           <button
             type="button"
             onClick={() => void save()}
-            disabled={saving}
+            disabled={saving || access === initial.access}
             className="px-4 py-3 rounded-lg text-sm font-medium bg-espresso text-cream hover:bg-espresso-light transition disabled:opacity-60 disabled:cursor-wait"
           >
             {saving ? "שומר…" : "שמירה"}
@@ -330,22 +203,4 @@ function AccessOption({
       </span>
     </button>
   );
-}
-
-function normalizeManualPhone(raw: string): string | null {
-  const value = raw.trim();
-  if (!value) return null;
-  if (value.startsWith("+")) {
-    const compact = value.replace(/[\s().-]/g, "");
-    return INTERNATIONAL_RE.test(compact) ? compact : null;
-  }
-  return isValidIsraeliPhone(value) ? `+${normalizeIsraeliPhone(value)}` : null;
-}
-
-function errorMessage(body: unknown): string | null {
-  if (typeof body !== "object" || body === null) return null;
-  const error = (body as { error?: unknown }).error;
-  if (typeof error !== "object" || error === null) return null;
-  const message = (error as { message?: unknown }).message;
-  return typeof message === "string" ? message : null;
 }
