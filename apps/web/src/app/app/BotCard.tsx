@@ -8,7 +8,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { useBotStatus, type BotSnapshot } from "./useBotStatus";
 import { BotAvatar, type AvatarTone } from "./Marks";
 import { CreatingPanel } from "./CreatingPanel";
-import { WhatsAppAccessSection } from "./WhatsAppAccessSection";
+import { WhatsAppAccessDialog, accessLabel } from "./WhatsAppAccessSection";
 import type { BotUsage } from "@/lib/orchestrator/types";
 
 const USD_TO_ILS_RATE = 3;
@@ -18,6 +18,7 @@ const NO_LIMIT_LABEL = "ללא מסגרת";
 const CURRENT_PERIOD_LABEL = "התקופה הנוכחית";
 const PERIOD_LABEL = "תקופה";
 const THIRTY_DAYS_LABEL = "30 יום";
+const RESET_LABEL = "מתחדש ב-";
 
 type Channel = "whatsapp" | "telegram";
 
@@ -346,15 +347,42 @@ function ChannelsSection({
   onDisconnect: (channel: Channel) => void;
   onCancelPending: (channel: Channel) => void;
 }) {
+  const [accessOpen, setAccessOpen] = useState(false);
   const health = channelHealth(bot);
   const whatsapp = whatsappRow(bot, health);
   const telegram = telegramRow(bot, health);
-  const anyConnected = whatsapp.connected || telegram.connected;
+  const access = bot.whatsappAccess;
+
+  const whatsappMenu: MenuItem[] = [];
+  if (whatsapp.connected && access) {
+    whatsappMenu.push({ label: "\u05de\u05d9 \u05db\u05d5\u05ea\u05d1 \u05dc\u05d1\u05d5\u05d8\u2026", onClick: () => setAccessOpen(true) });
+  }
+  if (whatsapp.pending) {
+    whatsappMenu.push({
+      label: cancelPending === "whatsapp" ? "\u05de\u05d1\u05d8\u05dc\u2026" : "\u05d1\u05d9\u05d8\u05d5\u05dc \u05d4\u05d4\u05ea\u05d0\u05de\u05d4",
+      disabled: cancelPending !== null,
+      onClick: () => onCancelPending("whatsapp"),
+    });
+  } else if (whatsapp.connected || whatsapp.stale) {
+    whatsappMenu.push({ label: "\u05e0\u05d9\u05ea\u05d5\u05e7", danger: true, onClick: () => onDisconnect("whatsapp") });
+  }
+
+  const telegramMenu: MenuItem[] = telegram.pending
+    ? [
+        {
+          label: cancelPending === "telegram" ? "\u05de\u05d1\u05d8\u05dc\u2026" : "\u05d1\u05d9\u05d8\u05d5\u05dc \u05d4\u05d7\u05d9\u05d1\u05d5\u05e8",
+          disabled: cancelPending !== null,
+          onClick: () => onCancelPending("telegram"),
+        },
+      ]
+    : telegram.connected
+      ? [{ label: "\u05e0\u05d9\u05ea\u05d5\u05e7", danger: true, onClick: () => onDisconnect("telegram") }]
+      : [];
 
   return (
     <section className="mb-6 sm:mb-7" aria-labelledby="channels-title">
       <p id="channels-title" className="text-[11px] uppercase tracking-[0.22em] text-espresso-light/70 mb-2">
-        ערוצים
+        \u05e2\u05e8\u05d5\u05e6\u05d9\u05dd
       </p>
       <ul className="border-t border-sand-light/70 divide-y divide-sand-light/70">
         <ChannelRow
@@ -363,30 +391,16 @@ function ChannelsSection({
           status={whatsapp.status}
           detail={
             whatsapp.connected && bot.whatsappAccountId ? (
-              <PhoneDetail accountId={bot.whatsappAccountId} />
+              <PhoneDetail
+                accountId={bot.whatsappAccountId}
+                meta={access ? accessLabel(access) : null}
+              />
             ) : null
           }
           primary={whatsapp.primary}
-          secondary={
-            whatsapp.pending
-              ? {
-                  label: cancelPending === "whatsapp" ? "מבטל…" : "ביטול ההתאמה",
-                  disabled: cancelPending !== null,
-                  onClick: () => onCancelPending("whatsapp"),
-                }
-              : whatsapp.connected || whatsapp.stale
-                ? { label: "ניתוק", disabled: false, onClick: () => onDisconnect("whatsapp") }
-                : null
-          }
-        >
-          {whatsapp.connected && bot.whatsappAccountId && bot.whatsappAccess ? (
-            <WhatsAppAccessSection
-              botId={bot.id}
-              botNumber={`+${bot.whatsappAccountId}`}
-              initial={bot.whatsappAccess}
-            />
-          ) : null}
-        </ChannelRow>
+          menu={whatsappMenu}
+          menuLabel="\u05d4\u05d2\u05d3\u05e8\u05d5\u05ea WhatsApp"
+        />
 
         <ChannelRow
           glyph={<TelegramGlyph />}
@@ -406,27 +420,36 @@ function ChannelsSection({
             ) : null
           }
           primary={telegram.primary}
-          secondary={
-            telegram.pending
-              ? {
-                  label: cancelPending === "telegram" ? "מבטל…" : "ביטול החיבור",
-                  disabled: cancelPending !== null,
-                  onClick: () => onCancelPending("telegram"),
-                }
-              : telegram.connected
-                ? { label: "ניתוק", disabled: false, onClick: () => onDisconnect("telegram") }
-                : null
-          }
+          menu={telegramMenu}
+          menuLabel="\u05d4\u05d2\u05d3\u05e8\u05d5\u05ea Telegram"
         />
       </ul>
-      {anyConnected && bot.lastSeenAt === null ? (
+
+      {(whatsapp.connected || telegram.connected) && bot.lastSeenAt === null ? (
         <p className="mt-3 text-xs text-espresso-light leading-relaxed max-w-md italic">
-          ההודעה הראשונה עשויה להגיע אחרי כ-30–40 שניות — הסוכן עולה ברגעים אלו. ההודעות
-          הבאות יענו מיידית.
+          \u05d4\u05d4\u05d5\u05d3\u05e2\u05d4 \u05d4\u05e8\u05d0\u05e9\u05d5\u05e0\u05d4 \u05e2\u05e9\u05d5\u05d9\u05d4 \u05dc\u05d4\u05d2\u05d9\u05e2 \u05d0\u05d7\u05e8\u05d9 \u05db-30\u201340 \u05e9\u05e0\u05d9\u05d5\u05ea \u2014 \u05d4\u05e1\u05d5\u05db\u05df \u05e2\u05d5\u05dc\u05d4 \u05d1\u05e8\u05d2\u05e2\u05d9\u05dd \u05d0\u05dc\u05d5. \u05d4\u05d4\u05d5\u05d3\u05e2\u05d5\u05ea
+          \u05d4\u05d1\u05d0\u05d5\u05ea \u05d9\u05e2\u05e0\u05d5 \u05de\u05d9\u05d9\u05d3\u05d9\u05ea.
         </p>
+      ) : null}
+
+      {whatsapp.connected && bot.whatsappAccountId && access ? (
+        <WhatsAppAccessDialog
+          open={accessOpen}
+          botId={bot.id}
+          botNumber={`+${bot.whatsappAccountId}`}
+          initial={access}
+          onClose={() => setAccessOpen(false)}
+        />
       ) : null}
     </section>
   );
+}
+
+interface MenuItem {
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+  disabled?: boolean;
 }
 
 interface RowStatus {
@@ -452,8 +475,8 @@ interface RowModel {
 
 // Container-level health applies to every channel at once.
 function channelHealth(bot: BotSnapshot): RowStatus | null {
-  if (bot.status === "unhealthy") return { tone: "err", label: "לא מגיב" };
-  if (bot.status === "degraded") return { tone: "warn", label: "חיבור לא יציב", pulse: true };
+  if (bot.status === "unhealthy") return { tone: "err", label: "\u05dc\u05d0 \u05de\u05d2\u05d9\u05d1" };
+  if (bot.status === "degraded") return { tone: "warn", label: "\u05d7\u05d9\u05d1\u05d5\u05e8 \u05dc\u05d0 \u05d9\u05e6\u05d9\u05d1", pulse: true };
   return null;
 }
 
@@ -463,8 +486,8 @@ function whatsappRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
     const status: RowStatus =
       health ??
       (bot.lastSeenAt === null
-        ? { tone: "info", label: "מתחבר… (עד 2 דקות)", pulse: true }
-        : { tone: "ok", label: "מחובר" });
+        ? { tone: "info", label: "\u05de\u05ea\u05d7\u05d1\u05e8\u2026 (\u05e2\u05d3 2 \u05d3\u05e7\u05d5\u05ea)", pulse: true }
+        : { tone: "ok", label: "\u05de\u05d7\u05d5\u05d1\u05e8" });
     return {
       status,
       connected: true,
@@ -472,8 +495,8 @@ function whatsappRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
       stale: false,
       primary: bot.whatsappAccountId
         ? {
-            label: "פתיחה ב-WhatsApp",
-            href: `https://wa.me/${bot.whatsappAccountId}?text=${encodeURIComponent("שלום!")}`,
+            label: "\u05e4\u05ea\u05d9\u05d7\u05d4 \u05d1-WhatsApp",
+            href: `https://wa.me/${bot.whatsappAccountId}?text=${encodeURIComponent("\u05e9\u05dc\u05d5\u05dd!")}`,
             external: true,
             emphasis: "primary",
           }
@@ -482,41 +505,41 @@ function whatsappRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
   }
   if (pairing === "awaiting_qr" || pairing === "awaiting_code") {
     return {
-      status: { tone: "warn", label: "ממתין להתאמה", pulse: true },
+      status: { tone: "warn", label: "\u05de\u05de\u05ea\u05d9\u05df \u05dc\u05d4\u05ea\u05d0\u05de\u05d4", pulse: true },
       connected: false,
       pending: true,
       stale: false,
-      primary: { label: "המשך התאמה", href: "/app/bot/pair", emphasis: "secondary" },
+      primary: { label: "\u05d4\u05de\u05e9\u05da \u05d4\u05ea\u05d0\u05de\u05d4", href: "/app/bot/pair", emphasis: "secondary" },
     };
   }
   // A dropped live session (creds still stored) is worth a reconnect; a cancelled attempt is just "not connected".
   if ((pairing === "expired" || pairing === "failed") && bot.hasWhatsappCreds) {
     return {
-      status: { tone: "warn", label: "החיבור נותק" },
+      status: { tone: "warn", label: "\u05d4\u05d7\u05d9\u05d1\u05d5\u05e8 \u05e0\u05d5\u05ea\u05e7" },
       connected: false,
       pending: false,
       stale: true,
-      primary: { label: "חיבור מחדש", href: "/app/bot/pair", emphasis: "secondary" },
+      primary: { label: "\u05d7\u05d9\u05d1\u05d5\u05e8 \u05de\u05d7\u05d3\u05e9", href: "/app/bot/pair", emphasis: "secondary" },
     };
   }
   return {
-    status: { tone: "info", label: "לא מחובר" },
+    status: { tone: "info", label: "\u05dc\u05d0 \u05de\u05d7\u05d5\u05d1\u05e8" },
     connected: false,
     pending: false,
     stale: false,
-    primary: { label: "חיבור WhatsApp", href: "/app/bot/pair", emphasis: "secondary" },
+    primary: { label: "\u05d7\u05d9\u05d1\u05d5\u05e8 WhatsApp", href: "/app/bot/pair", emphasis: "secondary" },
   };
 }
 
 function telegramRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
   if (bot.telegram?.linked && bot.telegram.botUsername) {
     return {
-      status: health ?? { tone: "ok", label: "מחובר" },
+      status: health ?? { tone: "ok", label: "\u05de\u05d7\u05d5\u05d1\u05e8" },
       connected: true,
       pending: false,
       stale: false,
       primary: {
-        label: "פתיחה בטלגרם",
+        label: "\u05e4\u05ea\u05d9\u05d7\u05d4 \u05d1\u05d8\u05dc\u05d2\u05e8\u05dd",
         href: `https://t.me/${bot.telegram.botUsername}`,
         external: true,
         emphasis: "primary",
@@ -525,19 +548,19 @@ function telegramRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
   }
   if (bot.telegram && !bot.telegram.linked) {
     return {
-      status: { tone: "warn", label: "ממתין לחיבור", pulse: true },
+      status: { tone: "warn", label: "\u05de\u05de\u05ea\u05d9\u05df \u05dc\u05d7\u05d9\u05d1\u05d5\u05e8", pulse: true },
       connected: false,
       pending: true,
       stale: false,
-      primary: { label: "המשך חיבור", href: "/app/bot/telegram", emphasis: "secondary" },
+      primary: { label: "\u05d4\u05de\u05e9\u05da \u05d7\u05d9\u05d1\u05d5\u05e8", href: "/app/bot/telegram", emphasis: "secondary" },
     };
   }
   return {
-    status: { tone: "info", label: "לא מחובר" },
+    status: { tone: "info", label: "\u05dc\u05d0 \u05de\u05d7\u05d5\u05d1\u05e8" },
     connected: false,
     pending: false,
     stale: false,
-    primary: { label: "חיבור לטלגרם", href: "/app/bot/telegram", emphasis: "secondary" },
+    primary: { label: "\u05d7\u05d9\u05d1\u05d5\u05e8 \u05dc\u05d8\u05dc\u05d2\u05e8\u05dd", href: "/app/bot/telegram", emphasis: "secondary" },
   };
 }
 
@@ -547,16 +570,16 @@ function ChannelRow({
   status,
   detail,
   primary,
-  secondary,
-  children,
+  menu,
+  menuLabel,
 }: {
   glyph: ReactNode;
   name: string;
   status: RowStatus;
   detail: ReactNode;
   primary: RowAction | null;
-  secondary: { label: string; disabled: boolean; onClick: () => void } | null;
-  children?: ReactNode;
+  menu: MenuItem[];
+  menuLabel: string;
 }) {
   return (
     <li className="py-4 sm:py-5">
@@ -576,24 +599,74 @@ function ChannelRow({
             {detail ? <div className="mt-0.5">{detail}</div> : null}
           </div>
         </div>
-        {primary || secondary ? (
-          <div className="flex items-center justify-between gap-3 sm:justify-end sm:shrink-0 ps-12 sm:ps-0">
-            {primary ? <ActionLink action={primary} /> : <span />}
-            {secondary ? (
-              <button
-                type="button"
-                disabled={secondary.disabled}
-                onClick={secondary.onClick}
-                className="py-2 text-sm text-espresso-light underline-offset-4 hover:text-espresso hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-terra rounded disabled:opacity-60 disabled:cursor-wait"
-              >
-                {secondary.label}
-              </button>
-            ) : null}
-          </div>
-        ) : null}
+        <div className="flex items-center gap-2 ps-12 sm:ps-0 sm:shrink-0">
+          {primary ? <ActionLink action={primary} /> : null}
+          {menu.length > 0 ? <RowMenu label={menuLabel} items={menu} /> : null}
+        </div>
       </div>
-      {children ? <div className="mt-2 sm:ps-12">{children}</div> : null}
     </li>
+  );
+}
+
+function RowMenu({ label, items }: { label: string; items: MenuItem[] }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative shrink-0" ref={ref}>
+      <button
+        type="button"
+        aria-label={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="w-10 h-10 rounded-full border border-sand-light flex items-center justify-center text-espresso-light hover:bg-cream-dark hover:text-espresso focus:outline-none focus-visible:ring-2 focus-visible:ring-terra transition"
+      >
+        <MoreIcon />
+      </button>
+      {open ? (
+        <div
+          role="menu"
+          className="absolute top-full mt-2 end-0 w-52 rounded-xl border border-sand-light bg-white shadow-[0_8px_24px_rgba(44,24,16,0.08)] overflow-hidden z-20"
+        >
+          {items.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              role="menuitem"
+              disabled={item.disabled}
+              onClick={() => {
+                setOpen(false);
+                item.onClick();
+              }}
+              className={`w-full text-start px-4 py-3 text-sm transition disabled:opacity-60 disabled:cursor-wait ${
+                item.danger
+                  ? "text-red-700 hover:bg-red-50"
+                  : "text-espresso hover:bg-cream-dark"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -648,7 +721,7 @@ function StatusDot({ tone, label, pulse }: RowStatus) {
   );
 }
 
-function PhoneDetail({ accountId }: { accountId: string }) {
+function PhoneDetail({ accountId, meta }: { accountId: string; meta: string | null }) {
   const [copied, setCopied] = useState(false);
   const display = `+${accountId}`;
   const onCopy = async () => {
@@ -661,7 +734,7 @@ function PhoneDetail({ accountId }: { accountId: string }) {
     }
   };
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
       <span dir="ltr" className="font-mono text-sm text-espresso-light break-all">{display}</span>
       <button
         type="button"
@@ -671,6 +744,7 @@ function PhoneDetail({ accountId }: { accountId: string }) {
       >
         {copied ? <CheckIcon /> : <CopyIcon />}
       </button>
+      {meta ? <span className="text-xs text-espresso-light/80">\u00b7 {meta}</span> : null}
     </div>
   );
 }
@@ -714,7 +788,7 @@ function UsageSection({ usage }: { usage: Extract<BotUsage, { supported: true }>
         />
       </div>
       <div className="mt-2 flex items-center justify-between gap-4 text-xs text-espresso-light">
-        <span>{usage.budgetDuration ? `${PERIOD_LABEL}: ${formatBudgetDuration(usage.budgetDuration)}` : CURRENT_PERIOD_LABEL}</span>
+        <span>{periodLabel(usage)}</span>
         {percent === null ? null : <span dir="ltr">{percent}%</span>}
       </div>
     </section>
@@ -726,6 +800,24 @@ function formatShekels(usdCents: number): string {
     maximumFractionDigits: 0,
   }).format((usdCents / 100) * USD_TO_ILS_RATE);
   return `${amount} ₪`;
+}
+
+function periodLabel(usage: Extract<BotUsage, { supported: true }>): string {
+  if (usage.budgetResetAt) {
+    const reset = new Date(usage.budgetResetAt);
+    if (!Number.isNaN(reset.getTime())) return `${RESET_LABEL} ${formatResetDate(reset)}`;
+  }
+  if (usage.budgetDuration) return `${PERIOD_LABEL}: ${formatBudgetDuration(usage.budgetDuration)}`;
+  return CURRENT_PERIOD_LABEL;
+}
+
+// Fixed time zone so the server render and the client hydration agree.
+function formatResetDate(date: Date): string {
+  return new Intl.DateTimeFormat("he-IL", {
+    day: "numeric",
+    month: "long",
+    timeZone: "Asia/Jerusalem",
+  }).format(date);
 }
 
 function formatBudgetDuration(duration: string): string {

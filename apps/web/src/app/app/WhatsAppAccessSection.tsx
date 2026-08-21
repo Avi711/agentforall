@@ -13,50 +13,12 @@ import { isValidIsraeliPhone, normalizeIsraeliPhone } from "@/lib/phone";
 const CLAIM_POLL_MS = 5000;
 const INTERNATIONAL_RE = /^\+[1-9]\d{6,14}$/;
 
-export function WhatsAppAccessSection({
-  botId,
-  botNumber,
-  initial,
-}: {
-  botId: string;
-  botNumber: string;
-  initial: WhatsappAccessSnapshot;
-}) {
-  const [open, setOpen] = useState(false);
-  const claiming = initial.access === "owner" && initial.ownerNumber === null;
-
-  return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-espresso-light">
-      <span>
-        מי כותב לבוט:{" "}
-        <span className="text-espresso">
-          {initial.access === "owner"
-            ? claiming
-              ? "רק אני — מזהה מספר"
-              : "רק אני"
-            : "כולם"}
-        </span>
-      </span>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="py-1.5 underline-offset-4 hover:text-espresso hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-terra rounded"
-      >
-        שינוי
-      </button>
-
-      <AccessDialog
-        open={open}
-        botId={botId}
-        botNumber={botNumber}
-        initial={initial}
-        onClose={() => setOpen(false)}
-      />
-    </div>
-  );
+export function accessLabel(initial: WhatsappAccessSnapshot): string {
+  if (initial.access !== "owner") return "פתוח לכולם";
+  return initial.ownerNumber === null ? "רק אני — מזהה מספר" : "רק אני";
 }
 
-function AccessDialog({
+export function WhatsAppAccessDialog({
   open,
   botId,
   botNumber,

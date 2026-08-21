@@ -56,6 +56,7 @@ export const BotUsageSchema = z.discriminatedUnion("supported", [
     spendCents: z.number().int().min(0),
     maxBudgetCents: z.number().int().min(0).nullable(),
     budgetDuration: z.string().nullable(),
+    budgetResetAt: z.string().nullable(),
     keyAlias: z.string().nullable(),
     models: z.array(z.string()),
     updatedAt: IsoDate,
