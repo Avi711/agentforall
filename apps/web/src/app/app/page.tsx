@@ -26,7 +26,7 @@ export default async function AppHome() {
   return (
     <div className="relative">
       <Watermark />
-      <div className="relative max-w-3xl mx-auto px-6 pt-14 pb-20">
+      <div className="relative max-w-3xl mx-auto px-4 sm:px-6 pt-10 sm:pt-14 pb-28">
         <Suspense fallback={null}>
           <PairedToast />
         </Suspense>
@@ -58,12 +58,12 @@ export default async function AppHome() {
 
 function EmptyState() {
   return (
-    <section className="relative bg-white rounded-[28px] border border-sand-light p-6 sm:p-12 shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)]">
+    <section className="relative bg-white rounded-[28px] border border-sand-light p-5 sm:p-12 shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)]">
       <div className="absolute top-0 inset-x-12 h-px bg-gradient-to-r from-transparent via-sand-light to-transparent" />
       <p className="text-xs uppercase tracking-[0.22em] text-terra mb-3">
         התחלה
       </p>
-      <h2 className="font-display text-3xl text-espresso mb-3 leading-tight">
+      <h2 className="font-display text-2xl sm:text-3xl text-espresso mb-3 leading-tight">
         בואו ניצור לכם סוכן
       </h2>
       <p className="text-espresso-light max-w-md mb-8 leading-relaxed">
@@ -79,7 +79,7 @@ function Watermark() {
   return (
     <span
       aria-hidden="true"
-      className="absolute pointer-events-none select-none top-2 -end-4 sm:end-12 font-display text-[14rem] sm:text-[20rem] leading-none text-espresso/[0.03]"
+      className="absolute pointer-events-none select-none top-2 end-0 sm:end-12 font-display text-[9rem] sm:text-[20rem] leading-none text-espresso/[0.03]"
     >
       א
     </span>

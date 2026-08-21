@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Heebo, Secular_One } from "next/font/google";
 import { MetaPixel } from "@/components/MetaPixel";
 import { WhatsAppFloat } from "@/components/WhatsAppFloat";
@@ -59,6 +59,14 @@ export const metadata: Metadata = {
   alternates: {
     canonical: siteUrl,
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  // No maximumScale/userScalable cap — pinch-zoom is an IL AA accessibility requirement.
+  themeColor: "#FBF8F3",
+  colorScheme: "light",
 };
 
 // One @graph so answer engines resolve publisher, site and product as one entity set.

@@ -28,10 +28,10 @@ export default async function LoginPage({
   }
 
   return (
-    <main className="min-h-screen bg-cream flex items-center justify-center px-6 py-16">
+    <main className="min-h-screen bg-cream flex items-center justify-center px-4 sm:px-6 py-12 sm:py-16">
       <div className="w-full max-w-md">
-        <div className="mb-10 text-center">
-          <h1 className="font-display text-4xl text-espresso mb-3">
+        <div className="mb-8 sm:mb-10 text-center">
+          <h1 className="font-display text-3xl sm:text-4xl text-espresso mb-3 text-balance">
             כניסה ל-Agent For All
           </h1>
           <p className="text-espresso-light">
@@ -39,7 +39,7 @@ export default async function LoginPage({
           </p>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-lg p-8 border border-sand-light">
+        <div className="bg-white rounded-2xl shadow-lg p-5 sm:p-8 border border-sand-light">
           <LoginForm redirectTo={safeRedirect} />
         </div>
 

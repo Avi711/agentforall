@@ -57,7 +57,7 @@ export function UserMenu({ user }: { user: MenuUser }) {
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="group flex items-center gap-2 rounded-full p-1 pe-2 hover:bg-cream-dark transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+        className="group flex h-11 shrink-0 items-center gap-2 rounded-full p-1 pe-2 hover:bg-cream-dark transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white"
       >
         <Avatar image={user.image ?? null} initial={initial} />
         <svg
@@ -77,7 +77,7 @@ export function UserMenu({ user }: { user: MenuUser }) {
       {open ? (
         <div
           role="menu"
-          className="absolute top-full mt-2 end-0 w-64 origin-top-left rtl:origin-top-left ltr:origin-top-right rounded-xl border border-sand-light bg-white shadow-[0_12px_40px_rgba(44,24,16,0.12)] overflow-hidden animate-menu z-50"
+          className="absolute top-full mt-2 end-0 w-64 max-w-[calc(100vw-2rem)] origin-top-left rtl:origin-top-left ltr:origin-top-right rounded-xl border border-sand-light bg-white shadow-[0_12px_40px_rgba(44,24,16,0.12)] overflow-hidden animate-menu z-50"
         >
           <div className="px-4 py-3 bg-cream-dark/40 border-b border-sand-light">
             <div className="flex items-center gap-3">
@@ -118,7 +118,7 @@ export function UserMenu({ user }: { user: MenuUser }) {
               role="menuitem"
               onClick={handleSignOut}
               disabled={busy}
-              className="w-full flex items-center gap-3 px-4 py-2 text-sm text-espresso-light hover:bg-cream-dark hover:text-espresso transition disabled:opacity-50"
+              className="w-full flex items-center gap-3 px-4 py-3 text-sm text-espresso-light hover:bg-cream-dark hover:text-espresso transition disabled:opacity-50"
             >
               <IconSignOut />
               <span>{busy ? "מתנתק…" : "התנתקות"}</span>
@@ -191,7 +191,7 @@ const MenuLink = forwardRef<
       href={href}
       role="menuitem"
       onClick={onClick}
-      className="flex items-center gap-3 px-4 py-2 text-sm text-espresso-light hover:bg-cream-dark hover:text-espresso transition focus:outline-none focus-visible:bg-cream-dark"
+      className="flex items-center gap-3 px-4 py-3 text-sm text-espresso-light hover:bg-cream-dark hover:text-espresso transition focus:outline-none focus-visible:bg-cream-dark"
     >
       {icon}
       <span>{children}</span>

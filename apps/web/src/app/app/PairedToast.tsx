@@ -20,8 +20,8 @@ export function PairedToast() {
 
   if (!visible) return null;
   return (
-    <div className="fixed top-20 inset-x-0 flex justify-center z-50 pointer-events-none">
-      <div className="bg-sage text-white px-5 py-3 rounded-xl shadow-lg font-medium pointer-events-auto">
+    <div className="fixed top-20 inset-x-0 flex justify-center px-4 z-50 pointer-events-none">
+      <div className="max-w-full bg-sage text-white text-sm sm:text-base px-5 py-3 rounded-xl shadow-lg font-medium text-center pointer-events-auto">
         ✓ WhatsApp חובר בהצלחה — הבוט שלכם פעיל
       </div>
     </div>

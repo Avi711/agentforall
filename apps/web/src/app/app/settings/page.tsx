@@ -14,7 +14,7 @@ export default async function SettingsPage() {
   const session = await requireSession("/login");
 
   return (
-    <div className="max-w-3xl mx-auto px-6 pt-14 pb-20 space-y-10">
+    <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-10 sm:pt-14 pb-28 space-y-8 sm:space-y-10">
       <header>
         <p className="text-xs uppercase tracking-[0.22em] text-espresso-light/80 mb-3">
           חשבון
@@ -26,7 +26,7 @@ export default async function SettingsPage() {
         </div>
       </header>
 
-      <section className="relative bg-white rounded-[24px] border border-sand-light shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)] p-8 sm:p-10 overflow-hidden">
+      <section className="relative bg-white rounded-[24px] border border-sand-light shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)] p-5 sm:p-10 overflow-hidden">
         <span aria-hidden className="absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-sand-light to-transparent" />
         <p className="text-[11px] uppercase tracking-[0.22em] text-espresso-light/70 mb-2">
           פרטי חשבון
@@ -45,11 +45,13 @@ export default async function SettingsPage() {
 
 function Row({ label, value, ltr = false }: { label: string; value: string; ltr?: boolean }) {
   return (
-    <div className="flex items-baseline gap-4 py-3.5 first:pt-0 last:pb-0">
-      <dt className="text-xs uppercase tracking-[0.18em] text-espresso-light/80 w-28">
+    <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-4 py-3.5 first:pt-0 last:pb-0">
+      <dt className="text-xs uppercase tracking-[0.18em] text-espresso-light/80 sm:w-28 sm:shrink-0">
         {label}
       </dt>
-      <dd className="text-espresso text-sm" {...(ltr ? { dir: "ltr" } : {})}>{value}</dd>
+      <dd className="min-w-0 text-espresso text-sm break-words" {...(ltr ? { dir: "ltr" } : {})}>
+        {value}
+      </dd>
     </div>
   );
 }

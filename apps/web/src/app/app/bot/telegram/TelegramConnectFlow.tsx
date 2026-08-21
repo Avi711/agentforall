@@ -99,11 +99,11 @@ export function TelegramConnectFlow({ botId }: { botId: string }) {
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-sand-light p-8 max-w-2xl">
+    <div className="bg-white rounded-2xl shadow-sm border border-sand-light p-5 sm:p-8 max-w-2xl">
       <p className="text-xs uppercase tracking-[0.22em] text-terra mb-3">
         חיבור טלגרם
       </p>
-      <h2 className="font-display text-2xl text-espresso mb-3">
+      <h2 className="font-display text-xl sm:text-2xl text-espresso mb-3">
         שתי לחיצות ויש לכם סוכן בטלגרם
       </h2>
 
@@ -126,7 +126,7 @@ export function TelegramConnectFlow({ botId }: { botId: string }) {
               setPhase({ kind: "starting" });
               setAttempt((n) => n + 1);
             }}
-            className="px-6 py-3 rounded-xl bg-terra text-white font-medium hover:bg-terra-light transition"
+            className="w-full sm:w-auto px-6 py-3 rounded-xl bg-terra text-white font-medium hover:bg-terra-light transition"
           >
             ניסיון נוסף
           </button>
@@ -152,13 +152,13 @@ export function TelegramConnectFlow({ botId }: { botId: string }) {
               href={phase.deepLink}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2.5 px-6 py-3 rounded-xl bg-terra text-white font-medium hover:bg-terra-light transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+              className="inline-flex w-full sm:w-auto items-center justify-center gap-2.5 px-6 py-3 rounded-xl bg-terra text-white font-medium text-center hover:bg-terra-light transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white"
             >
               <TelegramGlyph />
               <span>יצירת הבוט בטלגרם</span>
             </a>
           ) : (
-            <div className="inline-flex items-center gap-2.5 px-6 py-3 rounded-xl bg-cream-dark text-espresso-light font-medium">
+            <div className="inline-flex w-full sm:w-auto items-center justify-center gap-2.5 px-6 py-3 rounded-xl bg-cream-dark text-espresso-light font-medium">
               <Spinner />
               <span>מכינים את הקישור…</span>
             </div>
@@ -182,11 +182,11 @@ export function TelegramConnectFlow({ botId }: { botId: string }) {
 
 function ConnectedPanel({ botUsername }: { botUsername: string | null }) {
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-sand-light p-8 max-w-2xl">
+    <div className="bg-white rounded-2xl shadow-sm border border-sand-light p-5 sm:p-8 max-w-2xl">
       <p className="text-xs uppercase tracking-[0.22em] text-sage-dark mb-3">
         מחובר
       </p>
-      <h2 className="font-display text-2xl text-espresso mb-3">
+      <h2 className="font-display text-xl sm:text-2xl text-espresso mb-3">
         הסוכן שלכם מחובר לטלגרם 🎉
       </h2>
       <p className="text-espresso-light leading-relaxed mb-3 max-w-md">
@@ -198,13 +198,13 @@ function ConnectedPanel({ botUsername }: { botUsername: string | null }) {
           @{botUsername}
         </p>
       ) : null}
-      <div className="flex flex-wrap items-center gap-4">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 sm:gap-4">
         {botUsername ? (
           <a
             href={`https://t.me/${botUsername}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2.5 px-6 py-3 rounded-xl bg-terra text-white font-medium hover:bg-terra-light transition"
+            className="inline-flex w-full sm:w-auto items-center justify-center gap-2.5 px-6 py-3 rounded-xl bg-terra text-white font-medium text-center hover:bg-terra-light transition"
           >
             <TelegramGlyph />
             <span>פתחו את הבוט ושלחו הודעה</span>
@@ -212,7 +212,7 @@ function ConnectedPanel({ botUsername }: { botUsername: string | null }) {
         ) : null}
         <Link
           href="/app"
-          className="px-6 py-3 rounded-xl text-espresso-light hover:text-espresso hover:bg-cream-dark transition"
+          className="px-6 py-3 rounded-xl text-center text-espresso-light hover:text-espresso hover:bg-cream-dark transition"
         >
           לעמוד הבית
         </Link>

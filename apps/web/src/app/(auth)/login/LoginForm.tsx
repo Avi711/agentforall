@@ -52,7 +52,8 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
           שלחנו לכם קישור כניסה
         </h2>
         <p className="text-espresso-light text-sm">
-          בדקו את תיבת הדוא״ל <span dir="ltr">{email}</span>. הקישור תקף 5 דקות.
+          בדקו את תיבת הדוא״ל{" "}
+          <span dir="ltr" className="inline-block break-all">{email}</span>. הקישור תקף 5 דקות.
         </p>
         <button
           type="button"

@@ -29,7 +29,7 @@ export function CreatingPanel({ name }: { name: string }) {
     <div
       role="status"
       aria-live="polite"
-      className="relative rounded-[28px] border border-sand-light bg-white shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)] px-6 py-9 sm:px-10 sm:py-11 text-center overflow-hidden"
+      className="relative rounded-[28px] border border-sand-light bg-white shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)] px-5 py-8 sm:px-10 sm:py-11 text-center overflow-hidden"
     >
       <span aria-hidden className="absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-sand-light to-transparent" />
 
@@ -49,14 +49,14 @@ export function CreatingPanel({ name }: { name: string }) {
       <p className="text-[11px] uppercase tracking-[0.22em] text-terra mb-2">
         מקימים סביבת סוכן
       </p>
-      <h3 className="font-display text-2xl sm:text-3xl text-espresso mb-2 leading-tight">
+      <h3 className="font-display text-2xl sm:text-3xl text-espresso mb-2 leading-tight break-words">
         {name ? `מקים את ${name}` : "מקים את הסוכן"}
       </h3>
       <p className="text-sm text-espresso-light mb-7 italic">
         ההכנה הראשונית מהירה; ההפעלה של OpenClaw היא החלק שלוקח זמן.
       </p>
 
-      <ol className="grid gap-2.5 sm:grid-cols-3 text-right mb-7">
+      <ol className="grid gap-2.5 sm:grid-cols-3 text-start mb-7">
         {QUICK_CHECKS.map((label) => (
           <li
             key={label}
@@ -68,16 +68,16 @@ export function CreatingPanel({ name }: { name: string }) {
         ))}
       </ol>
 
-      <div className="border-y border-sand-light/75 py-6 text-right">
-        <div className="flex flex-wrap items-start justify-between gap-x-5 gap-y-3 mb-5">
-          <div className="min-w-0 flex-1 basis-56">
+      <div className="border-y border-sand-light/75 py-6 text-start">
+        <div className="flex items-start justify-between gap-3 sm:gap-5 mb-5">
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2.5 mb-2">
               <StepIcon state="active" />
               <p className="text-[11px] uppercase tracking-[0.18em] text-terra">
                 השלב המרכזי
               </p>
             </div>
-            <h4 className="font-display text-xl text-espresso leading-tight">
+            <h4 className="font-display text-lg sm:text-xl text-espresso leading-tight">
               {phase.title}
             </h4>
             <p className="mt-2 text-sm leading-relaxed text-espresso-light">

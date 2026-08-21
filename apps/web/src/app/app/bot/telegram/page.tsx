@@ -27,7 +27,7 @@ export default async function TelegramConnectPage() {
   const needsConsent = !consent.accepted || consent.stale;
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-12">
+    <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-8 sm:pt-12 pb-28">
       {needsConsent ? <ConsentGate /> : <TelegramConnectFlow botId={bot.id} />}
     </div>
   );

@@ -125,36 +125,36 @@ export function BotCard({
           <span aria-hidden className="download-card-progress" />
         ) : null}
 
-        <div className="p-6 sm:p-10">
-          <div className="flex items-start justify-between gap-6 mb-7">
-            <div className="flex items-start gap-5 min-w-0">
-              <BotAvatar
-                name={bot.displayName}
-                tone={avatarTone(state.kind)}
-                pulse={state.pulse ?? false}
-                size="lg"
-              />
-              <div className="min-w-0 pt-1">
-                <p className="text-xs uppercase tracking-[0.22em] text-espresso-light/70 mb-1.5">
-                  הסוכן שלי
-                </p>
-                <h2 className="font-display text-3xl text-espresso leading-tight truncate">
-                  {bot.displayName}
-                </h2>
-                <div className="mt-3">
-                  <StatusBadge kind={state.kind} label={state.label} pulse={state.pulse} />
-                </div>
+        <div className="p-5 sm:p-10">
+          {/* Wraps to avatar+menu / full-width name on narrow screens; single row from sm up. */}
+          <div className="flex flex-wrap items-start gap-x-3 gap-y-4 sm:flex-nowrap sm:gap-x-5 mb-6 sm:mb-7">
+            <BotAvatar
+              name={bot.displayName}
+              tone={avatarTone(state.kind)}
+              pulse={state.pulse ?? false}
+              size="lg"
+            />
+
+            <div className="order-3 w-full min-w-0 sm:order-2 sm:w-auto sm:flex-1 sm:pt-1">
+              <p className="text-xs uppercase tracking-[0.22em] text-espresso-light/70 mb-1.5">
+                הסוכן שלי
+              </p>
+              <h2 className="font-display text-2xl sm:text-3xl text-espresso leading-tight text-balance break-words">
+                {bot.displayName}
+              </h2>
+              <div className="mt-3">
+                <StatusBadge kind={state.kind} label={state.label} pulse={state.pulse} />
               </div>
             </div>
 
-            <div className="relative" ref={menuRef}>
+            <div className="relative order-2 ms-auto shrink-0 -me-1.5 -mt-1.5 sm:order-3 sm:ms-0" ref={menuRef}>
               <button
                 type="button"
                 aria-label="פעולות נוספות"
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
                 onClick={() => setMenuOpen((v) => !v)}
-                className="w-9 h-9 rounded-full flex items-center justify-center text-espresso-light hover:bg-cream-dark hover:text-espresso focus:outline-none focus-visible:ring-2 focus-visible:ring-terra transition"
+                className="w-11 h-11 rounded-full flex items-center justify-center text-espresso-light hover:bg-cream-dark hover:text-espresso focus:outline-none focus-visible:ring-2 focus-visible:ring-terra transition"
               >
                 <MoreIcon />
               </button>
@@ -172,7 +172,7 @@ export function BotCard({
                       setMenuOpen(false);
                       handleExport();
                     }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-espresso hover:bg-cream-dark transition disabled:cursor-wait disabled:bg-terra-pale disabled:text-terra"
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-espresso hover:bg-cream-dark transition disabled:cursor-wait disabled:bg-terra-pale disabled:text-terra"
                   >
                     {downloadPending ? <DownloadSpinner /> : <DownloadIcon />}
                     <span>הורדת גיבוי</span>
@@ -184,7 +184,7 @@ export function BotCard({
                       setMenuOpen(false);
                       setDialogOpen(true);
                     }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-700 hover:bg-red-50 transition"
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-700 hover:bg-red-50 transition"
                   >
                     <TrashIcon />
                     <span>מחיקת הבוט</span>
@@ -254,7 +254,7 @@ export function BotCard({
               type="button"
               onClick={handleRestart}
               disabled={restartPending}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-terra text-white font-medium hover:bg-terra-light transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-60 disabled:cursor-wait"
+              className="inline-flex w-full sm:w-auto items-center justify-center gap-2 px-5 py-3 rounded-xl bg-terra text-white font-medium hover:bg-terra-light transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-60 disabled:cursor-wait"
             >
               {restartPending ? <DownloadSpinner /> : null}
               <span>{restartPending ? "מפעיל מחדש…" : "הפעלת הבוט מחדש"}</span>
@@ -262,7 +262,7 @@ export function BotCard({
           ) : state.cta ? (
             <Link
               href={state.cta.href}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-terra text-white font-medium hover:bg-terra-light transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+              className="inline-flex w-full sm:w-auto items-center justify-center gap-2 px-5 py-3 rounded-xl bg-terra text-white font-medium hover:bg-terra-light transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white"
             >
               <span>{state.cta.label}</span>
               <ChevronEnd />
@@ -287,7 +287,7 @@ function UsageSection({ usage }: { usage: Extract<BotUsage, { supported: true }>
       ? Math.min(100, Math.round((usage.spendCents / usage.maxBudgetCents) * 100))
       : null;
   return (
-    <section className="mb-7 border-t border-sand-light/70 pt-7">
+    <section className="mb-6 sm:mb-7 border-t border-sand-light/70 pt-6 sm:pt-7">
       <div className="grid grid-cols-2 items-end gap-4 mb-3" dir="ltr">
         <div className="text-left">
           <p className="text-[11px] tracking-[0.16em] text-espresso-light/70 mb-1">
@@ -405,17 +405,17 @@ function PhoneRow({ accountId }: { accountId: string }) {
     }
   };
   return (
-    <div className="mb-7 -mx-1 px-1">
+    <div className="mb-6 sm:mb-7 -mx-1 px-1">
       <p className="text-[11px] uppercase tracking-[0.22em] text-espresso-light/70 mb-2">
         WhatsApp מחובר
       </p>
-      <div className="flex items-center gap-2.5">
-        <span dir="ltr" className="font-mono text-lg text-espresso">{display}</span>
+      <div className="flex items-center gap-1">
+        <span dir="ltr" className="font-mono text-base sm:text-lg text-espresso break-all">{display}</span>
         <button
           type="button"
           onClick={onCopy}
           aria-label={copied ? "המספר הועתק" : "העתקת המספר"}
-          className="rounded-md p-1.5 text-espresso-light hover:text-espresso hover:bg-cream-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-terra transition"
+          className="shrink-0 w-11 h-11 -my-2 inline-flex items-center justify-center rounded-full text-espresso-light hover:text-espresso hover:bg-cream-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-terra transition"
         >
           {copied ? <CheckIcon /> : <CopyIcon />}
         </button>
@@ -426,7 +426,7 @@ function PhoneRow({ accountId }: { accountId: string }) {
 
 function TelegramRow({ botUsername }: { botUsername: string }) {
   return (
-    <div className="mb-7 -mx-1 px-1">
+    <div className="mb-6 sm:mb-7 -mx-1 px-1">
       <p className="text-[11px] uppercase tracking-[0.22em] text-espresso-light/70 mb-2">
         Telegram מחובר
       </p>
@@ -435,7 +435,7 @@ function TelegramRow({ botUsername }: { botUsername: string }) {
         target="_blank"
         rel="noopener noreferrer"
         dir="ltr"
-        className="font-mono text-lg text-espresso hover:text-terra transition break-all"
+        className="inline-block font-mono text-base sm:text-lg text-espresso hover:text-terra transition break-all"
       >
         @{botUsername}
       </a>
@@ -450,7 +450,7 @@ function TelegramReadyActions({ botUsername }: { botUsername: string }) {
         href={`https://t.me/${botUsername}`}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-2.5 px-6 py-3 rounded-xl bg-terra text-white font-medium hover:bg-terra-light transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+        className="inline-flex w-full sm:w-auto items-center justify-center gap-2.5 px-6 py-3 rounded-xl bg-terra text-white font-medium text-center hover:bg-terra-light transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white"
       >
         <TelegramGlyph />
         <span>פתחו בטלגרם ושלחו הודעה</span>
@@ -471,7 +471,7 @@ function ReadyActions({ accountId }: { accountId: string }) {
         href={waLink}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-2.5 px-6 py-3 rounded-xl bg-terra text-white font-medium hover:bg-terra-light transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+        className="inline-flex w-full sm:w-auto items-center justify-center gap-2.5 px-6 py-3 rounded-xl bg-terra text-white font-medium text-center hover:bg-terra-light transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white"
       >
         <WhatsAppGlyph />
         <span>פתחו ב-WhatsApp ושלחו הודעה</span>

@@ -32,13 +32,13 @@ export function ConsentGate() {
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-sand-light p-8 max-w-2xl">
-      <h2 className="font-display text-2xl text-espresso mb-3">
+    <div className="bg-white rounded-2xl shadow-sm border border-sand-light p-5 sm:p-8 max-w-2xl">
+      <h2 className="font-display text-xl sm:text-2xl text-espresso mb-3">
         לפני שמחברים את WhatsApp — חשוב שתקראו
       </h2>
       <WhatsappConsentBody />
 
-      <div className="mt-6 flex gap-3">
+      <div className="mt-6 flex flex-col sm:flex-row gap-3">
         <button
           type="button"
           onClick={handleAccept}

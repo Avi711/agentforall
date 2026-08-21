@@ -38,7 +38,7 @@ export function DeleteAccountCard() {
   }
 
   return (
-    <section className="bg-white rounded-2xl border border-red-200 p-8">
+    <section className="bg-white rounded-2xl border border-red-200 p-5 sm:p-8">
       <h2 className="font-display text-xl text-red-800 mb-2">מחיקת חשבון</h2>
       <p className="text-sm text-espresso-light mb-6 leading-relaxed">
         מחיקת החשבון תסיר לצמיתות את הסוכן שלכם, את חיבור ה-WhatsApp וכל
@@ -54,7 +54,7 @@ export function DeleteAccountCard() {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="px-4 py-2 rounded-lg border border-red-300 text-red-700 hover:bg-red-50 transition text-sm font-medium"
+          className="px-4 py-3 rounded-lg border border-red-300 text-red-700 hover:bg-red-50 transition text-sm font-medium"
         >
           מחיקת חשבון
         </button>
@@ -63,7 +63,7 @@ export function DeleteAccountCard() {
           <label className="block">
             <span className="block text-sm text-espresso mb-2">
               לאישור, הקלידו את המשפט:{" "}
-              <code className="bg-cream-dark px-2 py-0.5 rounded">
+              <code className="inline-block bg-cream-dark px-2 py-0.5 rounded break-words">
                 {CONFIRM_PHRASE}
               </code>
             </span>
@@ -78,12 +78,12 @@ export function DeleteAccountCard() {
             />
           </label>
 
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row gap-3">
             <button
               type="button"
               onClick={handleDelete}
               disabled={!canDelete || busy}
-              className="px-5 py-2.5 rounded-lg bg-red-700 text-white font-medium hover:bg-red-800 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-5 py-3 rounded-lg bg-red-700 text-white font-medium hover:bg-red-800 transition disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {busy ? "מוחק…" : "אישור מחיקה"}
             </button>
@@ -95,7 +95,7 @@ export function DeleteAccountCard() {
                 setError(null);
               }}
               disabled={busy}
-              className="px-5 py-2.5 rounded-lg text-espresso-light hover:text-espresso hover:bg-cream-dark transition disabled:opacity-50"
+              className="px-5 py-3 rounded-lg text-espresso-light hover:text-espresso hover:bg-cream-dark transition disabled:opacity-50"
             >
               ביטול
             </button>

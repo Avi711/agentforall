@@ -170,8 +170,8 @@ export function CreateBotForm() {
                 </div>
 
                 {backupFile ? (
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 sm:ms-auto sm:justify-end text-sm">
-                    <span className="max-w-[14rem] truncate font-medium text-espresso">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 sm:ms-auto sm:justify-end text-sm">
+                    <span className="max-w-full sm:max-w-[14rem] truncate font-medium text-espresso">
                       {backupFile.name}
                     </span>
                     <span className="text-xs text-espresso-light">
@@ -195,11 +195,11 @@ export function CreateBotForm() {
         ) : null}
       </div>
 
-      <div className="flex justify-end">
+      <div className="flex justify-stretch sm:justify-end">
         <button
           type="submit"
           disabled={displayName.trim().length === 0}
-          className="px-6 py-3 rounded-xl bg-terra text-white font-medium hover:bg-terra-light transition disabled:opacity-50"
+          className="w-full sm:w-auto px-6 py-3 rounded-xl bg-terra text-white font-medium hover:bg-terra-light transition disabled:opacity-50"
         >
           {createLabel}
         </button>

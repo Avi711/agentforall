@@ -47,13 +47,13 @@ export function BotAvatar({
   const initial = firstGlyph(name);
   const dim =
     size === "lg"
-      ? "w-20 h-20 text-[2.25rem]"
+      ? "w-14 h-14 text-[1.75rem] sm:w-20 sm:h-20 sm:text-[2.25rem]"
       : size === "sm"
         ? "w-10 h-10 text-base"
         : "w-16 h-16 text-3xl";
   const dot =
     size === "lg"
-      ? "w-4 h-4 ring-[3px]"
+      ? "w-3.5 h-3.5 ring-2 sm:w-4 sm:h-4 sm:ring-[3px]"
       : size === "sm"
         ? "w-2.5 h-2.5 ring-2"
         : "w-3.5 h-3.5 ring-2";

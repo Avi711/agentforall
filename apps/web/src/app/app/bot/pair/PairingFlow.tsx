@@ -220,12 +220,12 @@ export function PairingFlow({ botId }: Props) {
 
   return (
     <div className="space-y-6">
-      <div className="relative bg-white rounded-[24px] border border-sand-light shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)] p-6 sm:p-8 overflow-hidden">
+      <div className="relative bg-white rounded-[24px] border border-sand-light shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)] p-5 sm:p-8 overflow-hidden">
         <span aria-hidden className="absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-sand-light to-transparent" />
         <p className="text-[11px] uppercase tracking-[0.22em] text-terra mb-2">
           חיבור
         </p>
-        <h1 className="font-display text-2xl text-espresso mb-2 leading-tight">
+        <h1 className="font-display text-xl sm:text-2xl text-espresso mb-2 leading-tight">
           חיבור WhatsApp לבוט שלכם
         </h1>
         <p className="text-espresso-light mb-6 italic">
@@ -254,11 +254,11 @@ export function PairingFlow({ botId }: Props) {
           </p>
         ) : null}
 
-        <div className="mt-6 pt-6 border-t border-sand-light flex justify-between items-center">
+        <div className="mt-6 pt-4 border-t border-sand-light flex flex-wrap justify-between items-center gap-x-4 gap-y-1">
           <button
             type="button"
             onClick={handleCancel}
-            className="text-sm text-espresso-light hover:text-espresso"
+            className="-mx-2 px-2 py-3 text-sm text-espresso-light hover:text-espresso"
           >
             ביטול ההתאמה
           </button>
@@ -283,7 +283,7 @@ function TabBar({ value, onChange }: { value: Tab; onChange: (t: Tab) => void })
   return (
     <div
       role="tablist"
-      className="inline-flex rounded-xl bg-cream-dark p-1 gap-1"
+      className="flex w-full sm:inline-flex sm:w-auto rounded-xl bg-cream-dark p-1 gap-1"
     >
       {tabs.map((t) => (
         <button
@@ -291,7 +291,7 @@ function TabBar({ value, onChange }: { value: Tab; onChange: (t: Tab) => void })
           role="tab"
           aria-selected={value === t.id}
           onClick={() => onChange(t.id)}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+          className={`flex-1 sm:flex-none px-3 sm:px-4 py-2.5 rounded-lg text-[13px] sm:text-sm font-medium leading-snug text-center transition ${
             value === t.id
               ? "bg-white text-espresso shadow-sm"
               : "text-espresso-light hover:text-espresso"
@@ -314,16 +314,16 @@ function QrPanel({
   onRefresh: () => void;
 }) {
   return (
-    <div className="flex flex-col sm:flex-row gap-8 items-center sm:items-start">
-      <div className="flex flex-col items-center gap-3">
-        <div className="w-[280px] h-[280px] flex items-center justify-center rounded-2xl border-2 border-dashed border-sand bg-cream-dark">
+    <div className="flex flex-col sm:flex-row gap-6 sm:gap-8 items-center sm:items-start">
+      <div className="flex w-full max-w-[280px] shrink-0 flex-col items-center gap-2 sm:w-[280px]">
+        <div className="aspect-square w-full flex items-center justify-center rounded-2xl border-2 border-dashed border-sand bg-cream-dark">
           {qr ? (
             <img
               src={qr.dataUrl}
               alt="QR להתאמה"
               width={260}
               height={260}
-              className="rounded-xl"
+              className="h-[93%] w-[93%] rounded-xl object-contain"
             />
           ) : (
             <QrSkeleton phase={phase} />
@@ -332,7 +332,7 @@ function QrPanel({
         <button
           type="button"
           onClick={onRefresh}
-          className="text-sm text-espresso-light hover:text-espresso underline-offset-4 hover:underline"
+          className="px-3 py-3 text-sm text-espresso-light hover:text-espresso underline-offset-4 hover:underline"
         >
           רענון הקוד
         </button>
@@ -399,7 +399,7 @@ function CodePanel({
         <p className="text-espresso-light">הקוד שלכם:</p>
         <p
           dir="ltr"
-          className="font-mono text-5xl font-bold tracking-widest text-espresso"
+          className="font-mono text-4xl sm:text-5xl font-bold tracking-[0.15em] sm:tracking-widest text-espresso break-all"
         >
           {pairingCode}
         </p>
@@ -474,8 +474,8 @@ function PhaseCard({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-sand-light p-8 text-center space-y-4 max-w-md">
-      <h2 className="font-display text-2xl text-espresso">{title}</h2>
+    <div className="bg-white rounded-2xl shadow-sm border border-sand-light p-6 sm:p-8 text-center space-y-4 max-w-md mx-auto">
+      <h2 className="font-display text-xl sm:text-2xl text-espresso">{title}</h2>
       <p className="text-espresso-light">{body}</p>
       {action}
     </div>
