@@ -20,3 +20,4 @@ infra/.terraform.lock.hcl
 *.tfplan
 /backups/
 /outputs/
+.env.local
