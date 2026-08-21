@@ -1,21 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { DeleteBotDialog } from "./DeleteBotDialog";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { useBotStatus, type BotSnapshot } from "./useBotStatus";
 import { BotAvatar, type AvatarTone } from "./Marks";
 import { CreatingPanel } from "./CreatingPanel";
+import { WhatsAppAccessSection } from "./WhatsAppAccessSection";
 import type { BotUsage } from "@/lib/orchestrator/types";
 
 const USD_TO_ILS_RATE = 3;
-const USAGE_LABEL = "\u05e0\u05d5\u05e6\u05dc";
-const LIMIT_LABEL = "\u05de\u05e1\u05d2\u05e8\u05ea";
-const NO_LIMIT_LABEL = "\u05dc\u05dc\u05d0 \u05de\u05e1\u05d2\u05e8\u05ea";
-const CURRENT_PERIOD_LABEL = "\u05d4\u05ea\u05e7\u05d5\u05e4\u05d4 \u05d4\u05e0\u05d5\u05db\u05d7\u05d9\u05ea";
-const PERIOD_LABEL = "\u05ea\u05e7\u05d5\u05e4\u05d4";
-const THIRTY_DAYS_LABEL = "30 \u05d9\u05d5\u05dd";
+const USAGE_LABEL = "נוצל";
+const LIMIT_LABEL = "מסגרת";
+const NO_LIMIT_LABEL = "ללא מסגרת";
+const CURRENT_PERIOD_LABEL = "התקופה הנוכחית";
+const PERIOD_LABEL = "תקופה";
+const THIRTY_DAYS_LABEL = "30 יום";
+
+type Channel = "whatsapp" | "telegram";
 
 export function BotCard({
   bot: initialBot,
@@ -28,6 +32,9 @@ export function BotCard({
   const bot = useBotStatus(initialBot);
   const [menuOpen, setMenuOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [disconnecting, setDisconnecting] = useState<Channel | null>(null);
+  const [cancelPending, setCancelPending] = useState<Channel | null>(null);
+  const [channelError, setChannelError] = useState<string | null>(null);
   const [downloadPending, setDownloadPending] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [restartPending, setRestartPending] = useState(false);
@@ -62,6 +69,44 @@ export function BotCard({
     router.refresh();
   }
 
+  async function disconnectChannel(channel: Channel) {
+    const res = await fetch(`/api/bot/${bot.id}/${channel}/disconnect`, {
+      method: "POST",
+      cache: "no-store",
+    });
+    if (!res.ok && res.status !== 204) {
+      throw new Error(
+        res.status === 409
+          ? "הבוט עסוק כרגע — נסו שוב בעוד רגע."
+          : channel === "whatsapp"
+            ? "ניתוק WhatsApp נכשל"
+            : "ניתוק טלגרם נכשל",
+      );
+    }
+  }
+
+  async function handleDisconnectConfirm() {
+    if (!disconnecting) return;
+    await disconnectChannel(disconnecting);
+    setDisconnecting(null);
+    router.refresh();
+  }
+
+  // Cancelling a pairing/link that never completed is low-stakes: no confirm dialog.
+  async function handleCancelPending(channel: Channel) {
+    if (cancelPending) return;
+    setCancelPending(channel);
+    setChannelError(null);
+    try {
+      await disconnectChannel(channel);
+      router.refresh();
+    } catch (err) {
+      setChannelError(err instanceof Error ? err.message : "הפעולה נכשלה");
+    } finally {
+      setCancelPending(null);
+    }
+  }
+
   async function handleExport() {
     if (downloadPending) return;
 
@@ -75,7 +120,7 @@ export function BotCard({
       });
       const body: unknown = await res.json().catch(() => null);
       if (!res.ok) {
-        throw new Error("\u05d4\u05d5\u05e8\u05d3\u05ea \u05d4\u05d2\u05d9\u05d1\u05d5\u05d9 \u05e0\u05db\u05e9\u05dc\u05d4");
+        throw new Error("הורדת הגיבוי נכשלה");
       }
       const downloadUrl = await waitForExportDownloadUrl(bot.id, body);
 
@@ -86,7 +131,7 @@ export function BotCard({
       setDownloadError(
         err instanceof Error
           ? err.message
-          : "\u05d4\u05d5\u05e8\u05d3\u05ea \u05d4\u05d2\u05d9\u05d1\u05d5\u05d9 \u05e0\u05db\u05e9\u05dc\u05d4",
+          : "הורדת הגיבוי נכשלה",
       );
     }
   }
@@ -203,10 +248,10 @@ export function BotCard({
               <DownloadSpinner />
               <div className="min-w-0">
                 <p className="font-medium leading-tight">
-                  {"\u05d0\u05e0\u05d7\u05e0\u05d5 \u05de\u05db\u05d9\u05e0\u05d9\u05dd \u05d0\u05ea \u05e7\u05d1\u05e6\u05d9 \u05d4\u05d2\u05d9\u05d1\u05d5\u05d9 \u05e9\u05dc \u05d4\u05d1\u05d5\u05d8."}
+                  {"אנחנו מכינים את קבצי הגיבוי של הבוט."}
                 </p>
                 <p className="mt-1 text-xs text-espresso-light/75">
-                  {"\u05d6\u05d4 \u05dc\u05d5\u05e7\u05d7 \u05d1\u05d3\u05e8\u05da \u05db\u05dc\u05dc \u05e2\u05d3 \u05d3\u05e7\u05d4."}
+                  {"זה לוקח בדרך כלל עד דקה."}
                 </p>
               </div>
               <span aria-hidden className="ms-auto flex gap-1">
@@ -217,39 +262,28 @@ export function BotCard({
             </div>
           ) : null}
 
-          {downloadError ? (
-            <div
-              role="alert"
-              className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-            >
-              {downloadError}
-            </div>
-          ) : null}
+          {[downloadError, restartError, channelError].map((message, i) =>
+            message ? (
+              <div
+                key={i}
+                role="alert"
+                className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+              >
+                {message}
+              </div>
+            ) : null,
+          )}
 
-          {restartError ? (
-            <div
-              role="alert"
-              className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-            >
-              {restartError}
-            </div>
-          ) : null}
-
-          {bot.whatsappAccountId && state.kind === "ok" ? (
-            <PhoneRow accountId={bot.whatsappAccountId} />
-          ) : null}
-
-          {bot.telegram?.linked && bot.telegram.botUsername && state.kind === "ok" ? (
-            <TelegramRow botUsername={bot.telegram.botUsername} />
-          ) : null}
+          <ChannelsSection
+            bot={bot}
+            cancelPending={cancelPending}
+            onDisconnect={(channel) => setDisconnecting(channel)}
+            onCancelPending={handleCancelPending}
+          />
 
           {usage?.supported ? <UsageSection usage={usage} /> : null}
 
-          {state.kind === "ok" && bot.whatsappAccountId ? (
-            <ReadyActions accountId={bot.whatsappAccountId} />
-          ) : state.kind === "ok" && bot.telegram?.linked && bot.telegram.botUsername ? (
-            <TelegramReadyActions botUsername={bot.telegram.botUsername} />
-          ) : state.restart ? (
+          {state.restart ? (
             <button
               type="button"
               onClick={handleRestart}
@@ -259,14 +293,6 @@ export function BotCard({
               {restartPending ? <DownloadSpinner /> : null}
               <span>{restartPending ? "מפעיל מחדש…" : "הפעלת הבוט מחדש"}</span>
             </button>
-          ) : state.cta ? (
-            <Link
-              href={state.cta.href}
-              className="inline-flex w-full sm:w-auto items-center justify-center gap-2 px-5 py-3 rounded-xl bg-terra text-white font-medium hover:bg-terra-light transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-            >
-              <span>{state.cta.label}</span>
-              <ChevronEnd />
-            </Link>
           ) : null}
         </div>
       </article>
@@ -277,7 +303,363 @@ export function BotCard({
         onClose={() => setDialogOpen(false)}
         onConfirm={handleDelete}
       />
+
+      <ConfirmDialog
+        open={disconnecting !== null}
+        title={disconnecting === "telegram" ? "ניתוק טלגרם" : "ניתוק WhatsApp"}
+        description={
+          disconnecting === "telegram" ? (
+            <p>
+              הבוט{" "}
+              {bot.telegram?.botUsername ? (
+                <span dir="ltr" className="font-mono text-espresso">@{bot.telegram.botUsername}</span>
+              ) : (
+                "בטלגרם"
+              )}{" "}
+              יושבת ויפסיק לענות. הזיכרון וההיסטוריה נשמרים; חיבור מחדש ייצור בוט טלגרם חדש
+              בלחיצה אחת.
+            </p>
+          ) : (
+            <p>
+              הבוט יפסיק לענות בוואטסאפ והמכשיר המקושר יוסר מהטלפון. הזיכרון, ההיסטוריה
+              וההגדרות נשמרים — אפשר לחבר מחדש בכל רגע.
+            </p>
+          )
+        }
+        confirmLabel="ניתוק"
+        busyLabel="מנתק…"
+        onClose={() => setDisconnecting(null)}
+        onConfirm={handleDisconnectConfirm}
+      />
     </>
+  );
+}
+
+function ChannelsSection({
+  bot,
+  cancelPending,
+  onDisconnect,
+  onCancelPending,
+}: {
+  bot: BotSnapshot;
+  cancelPending: Channel | null;
+  onDisconnect: (channel: Channel) => void;
+  onCancelPending: (channel: Channel) => void;
+}) {
+  const health = channelHealth(bot);
+  const whatsapp = whatsappRow(bot, health);
+  const telegram = telegramRow(bot, health);
+  const anyConnected = whatsapp.connected || telegram.connected;
+
+  return (
+    <section className="mb-6 sm:mb-7" aria-labelledby="channels-title">
+      <p id="channels-title" className="text-[11px] uppercase tracking-[0.22em] text-espresso-light/70 mb-2">
+        ערוצים
+      </p>
+      <ul className="rounded-2xl border border-sand-light divide-y divide-sand-light/70 overflow-hidden">
+        <ChannelRow
+          glyph={<WhatsAppGlyph />}
+          name="WhatsApp"
+          status={whatsapp.status}
+          detail={
+            whatsapp.connected && bot.whatsappAccountId ? (
+              <PhoneDetail accountId={bot.whatsappAccountId} />
+            ) : null
+          }
+          primary={whatsapp.primary}
+          secondary={
+            whatsapp.pending
+              ? {
+                  label: cancelPending === "whatsapp" ? "מבטל…" : "ביטול ההתאמה",
+                  disabled: cancelPending !== null,
+                  onClick: () => onCancelPending("whatsapp"),
+                }
+              : whatsapp.connected || whatsapp.stale
+                ? { label: "ניתוק", disabled: false, onClick: () => onDisconnect("whatsapp") }
+                : null
+          }
+        >
+          {whatsapp.connected && bot.whatsappAccountId && bot.whatsappAccess ? (
+            <WhatsAppAccessSection
+              botId={bot.id}
+              botNumber={`+${bot.whatsappAccountId}`}
+              initial={bot.whatsappAccess}
+            />
+          ) : null}
+        </ChannelRow>
+
+        <ChannelRow
+          glyph={<TelegramGlyph />}
+          name="Telegram"
+          status={telegram.status}
+          detail={
+            telegram.connected && bot.telegram?.botUsername ? (
+              <a
+                href={`https://t.me/${bot.telegram.botUsername}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                dir="ltr"
+                className="inline-block font-mono text-base sm:text-lg text-espresso hover:text-terra transition break-all"
+              >
+                @{bot.telegram.botUsername}
+              </a>
+            ) : null
+          }
+          primary={telegram.primary}
+          secondary={
+            telegram.pending
+              ? {
+                  label: cancelPending === "telegram" ? "מבטל…" : "ביטול החיבור",
+                  disabled: cancelPending !== null,
+                  onClick: () => onCancelPending("telegram"),
+                }
+              : telegram.connected
+                ? { label: "ניתוק", disabled: false, onClick: () => onDisconnect("telegram") }
+                : null
+          }
+        />
+      </ul>
+      {anyConnected && bot.lastSeenAt === null ? (
+        <p className="mt-3 text-xs text-espresso-light leading-relaxed max-w-md italic">
+          ההודעה הראשונה עשויה להגיע אחרי כ-30–40 שניות — הסוכן עולה ברגעים אלו. ההודעות
+          הבאות יענו מיידית.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+interface RowStatus {
+  tone: "ok" | "warn" | "err" | "info";
+  label: string;
+  pulse?: boolean;
+}
+
+interface RowAction {
+  label: string;
+  href: string;
+  external?: boolean;
+  emphasis: "primary" | "secondary";
+}
+
+interface RowModel {
+  status: RowStatus;
+  connected: boolean;
+  pending: boolean;
+  stale: boolean;
+  primary: RowAction | null;
+}
+
+// Container-level health applies to every channel at once.
+function channelHealth(bot: BotSnapshot): RowStatus | null {
+  if (bot.status === "unhealthy") return { tone: "err", label: "לא מגיב" };
+  if (bot.status === "degraded") return { tone: "warn", label: "חיבור לא יציב", pulse: true };
+  return null;
+}
+
+function whatsappRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
+  const pairing = bot.pairingStatus;
+  if (pairing === "paired" && bot.hasWhatsappCreds) {
+    const status: RowStatus =
+      health ??
+      (bot.lastSeenAt === null
+        ? { tone: "info", label: "מתחבר… (עד 2 דקות)", pulse: true }
+        : { tone: "ok", label: "מחובר" });
+    return {
+      status,
+      connected: true,
+      pending: false,
+      stale: false,
+      primary: bot.whatsappAccountId
+        ? {
+            label: "פתחו ב-WhatsApp ושלחו הודעה",
+            href: `https://wa.me/${bot.whatsappAccountId}?text=${encodeURIComponent("שלום!")}`,
+            external: true,
+            emphasis: "primary",
+          }
+        : null,
+    };
+  }
+  if (pairing === "awaiting_qr" || pairing === "awaiting_code") {
+    return {
+      status: { tone: "warn", label: "ממתין להתאמה", pulse: true },
+      connected: false,
+      pending: true,
+      stale: false,
+      primary: { label: "המשך התאמה", href: "/app/bot/pair", emphasis: "primary" },
+    };
+  }
+  if (pairing === "expired" || pairing === "failed") {
+    return {
+      status: { tone: "warn", label: "החיבור נותק" },
+      connected: false,
+      pending: false,
+      stale: true,
+      primary: { label: "חיבור מחדש", href: "/app/bot/pair", emphasis: "primary" },
+    };
+  }
+  return {
+    status: { tone: "info", label: "לא מחובר" },
+    connected: false,
+    pending: false,
+    stale: false,
+    primary: { label: "חיבור WhatsApp", href: "/app/bot/pair", emphasis: "secondary" },
+  };
+}
+
+function telegramRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
+  if (bot.telegram?.linked && bot.telegram.botUsername) {
+    return {
+      status: health ?? { tone: "ok", label: "מחובר" },
+      connected: true,
+      pending: false,
+      stale: false,
+      primary: {
+        label: "פתחו בטלגרם ושלחו הודעה",
+        href: `https://t.me/${bot.telegram.botUsername}`,
+        external: true,
+        emphasis: "primary",
+      },
+    };
+  }
+  if (bot.telegram && !bot.telegram.linked) {
+    return {
+      status: { tone: "warn", label: "ממתין לחיבור", pulse: true },
+      connected: false,
+      pending: true,
+      stale: false,
+      primary: { label: "המשך חיבור", href: "/app/bot/telegram", emphasis: "primary" },
+    };
+  }
+  return {
+    status: { tone: "info", label: "לא מחובר" },
+    connected: false,
+    pending: false,
+    stale: false,
+    primary: { label: "חיבור לטלגרם", href: "/app/bot/telegram", emphasis: "secondary" },
+  };
+}
+
+function ChannelRow({
+  glyph,
+  name,
+  status,
+  detail,
+  primary,
+  secondary,
+  children,
+}: {
+  glyph: ReactNode;
+  name: string;
+  status: RowStatus;
+  detail: ReactNode;
+  primary: RowAction | null;
+  secondary: { label: string; disabled: boolean; onClick: () => void } | null;
+  children?: ReactNode;
+}) {
+  return (
+    <li className="p-4 sm:p-5">
+      <div className="flex items-start gap-3 sm:gap-4">
+        <span
+          aria-hidden
+          className="shrink-0 w-10 h-10 rounded-full bg-cream-dark text-espresso flex items-center justify-center"
+        >
+          {glyph}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="font-medium text-espresso">{name}</span>
+            <StatusDot {...status} />
+          </div>
+          {detail ? <div className="mt-1.5">{detail}</div> : null}
+          {primary || secondary ? (
+            <div className="mt-3 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-4">
+              {primary ? <ActionLink action={primary} /> : null}
+              {secondary ? (
+                <button
+                  type="button"
+                  disabled={secondary.disabled}
+                  onClick={secondary.onClick}
+                  className="py-2 text-sm text-espresso-light underline-offset-4 hover:text-espresso hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-terra rounded disabled:opacity-60 disabled:cursor-wait"
+                >
+                  {secondary.label}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          {children ? <div className="mt-5 border-t border-sand-light/70 pt-5">{children}</div> : null}
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function ActionLink({ action }: { action: RowAction }) {
+  const className =
+    action.emphasis === "primary"
+      ? "inline-flex w-full sm:w-auto items-center justify-center gap-2 px-5 py-3 rounded-xl bg-terra text-white font-medium text-center hover:bg-terra-light transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+      : "inline-flex w-full sm:w-auto items-center justify-center gap-2 px-5 py-3 rounded-xl border border-sand text-espresso font-medium text-center hover:bg-cream-dark transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra";
+  if (action.external) {
+    return (
+      <a href={action.href} target="_blank" rel="noopener noreferrer" className={className}>
+        <span>{action.label}</span>
+      </a>
+    );
+  }
+  return (
+    <Link href={action.href} className={className}>
+      <span>{action.label}</span>
+      <ChevronEnd />
+    </Link>
+  );
+}
+
+function StatusDot({ tone, label, pulse }: RowStatus) {
+  const color =
+    tone === "ok"
+      ? "text-sage-dark"
+      : tone === "warn"
+        ? "text-terra"
+        : tone === "err"
+          ? "text-red-700"
+          : "text-espresso-light";
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-xs ${color}`}>
+      <span aria-hidden className="relative flex w-1.5 h-1.5">
+        {pulse ? (
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-60" />
+        ) : null}
+        <span className="relative inline-flex w-1.5 h-1.5 rounded-full bg-current" />
+      </span>
+      {label}
+    </span>
+  );
+}
+
+function PhoneDetail({ accountId }: { accountId: string }) {
+  const [copied, setCopied] = useState(false);
+  const display = `+${accountId}`;
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(display);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // Clipboard blocked (insecure context). Number remains visible.
+    }
+  };
+  return (
+    <div className="flex items-center gap-1">
+      <span dir="ltr" className="font-mono text-base sm:text-lg text-espresso break-all">{display}</span>
+      <button
+        type="button"
+        onClick={onCopy}
+        aria-label={copied ? "המספר הועתק" : "העתקת המספר"}
+        className="shrink-0 w-11 h-11 -my-2 inline-flex items-center justify-center rounded-full text-espresso-light hover:text-espresso hover:bg-cream-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-terra transition"
+      >
+        {copied ? <CheckIcon /> : <CopyIcon />}
+      </button>
+    </div>
   );
 }
 
@@ -347,7 +729,7 @@ async function waitForExportDownloadUrl(
   for (let attempt = 0; attempt < 36; attempt += 1) {
     if (job.status === "ready") return job.downloadUrl;
     if (job.status === "error") {
-      throw new Error("\u05d4\u05d5\u05e8\u05d3\u05ea \u05d4\u05d2\u05d9\u05d1\u05d5\u05d9 \u05e0\u05db\u05e9\u05dc\u05d4");
+      throw new Error("הורדת הגיבוי נכשלה");
     }
 
     await sleep(5000);
@@ -357,12 +739,12 @@ async function waitForExportDownloadUrl(
     );
     const body: unknown = await res.json().catch(() => null);
     if (!res.ok) {
-      throw new Error("\u05d4\u05d5\u05e8\u05d3\u05ea \u05d4\u05d2\u05d9\u05d1\u05d5\u05d9 \u05e0\u05db\u05e9\u05dc\u05d4");
+      throw new Error("הורדת הגיבוי נכשלה");
     }
     job = readExportJob(body);
   }
 
-  throw new Error("\u05d4\u05d5\u05e8\u05d3\u05ea \u05d4\u05d2\u05d9\u05d1\u05d5\u05d9 \u05dc\u05d0 \u05d4\u05e1\u05ea\u05d9\u05d9\u05de\u05d4 \u05d1\u05d6\u05de\u05df.");
+  throw new Error("הורדת הגיבוי לא הסתיימה בזמן.");
 }
 
 type ExportJob =
@@ -385,103 +767,11 @@ function readExportJob(body: unknown): ExportJob {
       return { id: raw.id, status: "ready", downloadUrl: raw.downloadUrl };
     }
   }
-  throw new Error("\u05d4\u05d5\u05e8\u05d3\u05ea \u05d4\u05d2\u05d9\u05d1\u05d5\u05d9 \u05e0\u05db\u05e9\u05dc\u05d4");
+  throw new Error("הורדת הגיבוי נכשלה");
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
-
-function PhoneRow({ accountId }: { accountId: string }) {
-  const [copied, setCopied] = useState(false);
-  const display = `+${accountId}`;
-  const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(display);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch {
-      // Clipboard blocked (insecure context). Number remains visible.
-    }
-  };
-  return (
-    <div className="mb-6 sm:mb-7 -mx-1 px-1">
-      <p className="text-[11px] uppercase tracking-[0.22em] text-espresso-light/70 mb-2">
-        WhatsApp מחובר
-      </p>
-      <div className="flex items-center gap-1">
-        <span dir="ltr" className="font-mono text-base sm:text-lg text-espresso break-all">{display}</span>
-        <button
-          type="button"
-          onClick={onCopy}
-          aria-label={copied ? "המספר הועתק" : "העתקת המספר"}
-          className="shrink-0 w-11 h-11 -my-2 inline-flex items-center justify-center rounded-full text-espresso-light hover:text-espresso hover:bg-cream-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-terra transition"
-        >
-          {copied ? <CheckIcon /> : <CopyIcon />}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function TelegramRow({ botUsername }: { botUsername: string }) {
-  return (
-    <div className="mb-6 sm:mb-7 -mx-1 px-1">
-      <p className="text-[11px] uppercase tracking-[0.22em] text-espresso-light/70 mb-2">
-        Telegram מחובר
-      </p>
-      <a
-        href={`https://t.me/${botUsername}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        dir="ltr"
-        className="inline-block font-mono text-base sm:text-lg text-espresso hover:text-terra transition break-all"
-      >
-        @{botUsername}
-      </a>
-    </div>
-  );
-}
-
-function TelegramReadyActions({ botUsername }: { botUsername: string }) {
-  return (
-    <div className="space-y-4 border-t border-sand-light/70 pt-7">
-      <a
-        href={`https://t.me/${botUsername}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex w-full sm:w-auto items-center justify-center gap-2.5 px-6 py-3 rounded-xl bg-terra text-white font-medium text-center hover:bg-terra-light transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-      >
-        <TelegramGlyph />
-        <span>פתחו בטלגרם ושלחו הודעה</span>
-      </a>
-      <p className="text-xs text-espresso-light leading-relaxed max-w-md italic">
-        ההודעה הראשונה עשויה להגיע אחרי כ-30–40 שניות — הסוכן עולה ברגעים אלו.
-        ההודעות הבאות יענו מיידית.
-      </p>
-    </div>
-  );
-}
-
-function ReadyActions({ accountId }: { accountId: string }) {
-  const waLink = `https://wa.me/${accountId}?text=${encodeURIComponent("שלום!")}`;
-  return (
-    <div className="space-y-4 border-t border-sand-light/70 pt-7">
-      <a
-        href={waLink}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex w-full sm:w-auto items-center justify-center gap-2.5 px-6 py-3 rounded-xl bg-terra text-white font-medium text-center hover:bg-terra-light transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-      >
-        <WhatsAppGlyph />
-        <span>פתחו ב-WhatsApp ושלחו הודעה</span>
-      </a>
-      <p className="text-xs text-espresso-light leading-relaxed max-w-md italic">
-        ההודעה הראשונה עשויה להגיע אחרי כ-30–40 שניות — הסוכן עולה ברגעים אלו.
-        ההודעות הבאות יענו מיידית.
-      </p>
-    </div>
-  );
 }
 
 function MoreIcon() {
@@ -589,7 +879,6 @@ function StatusBadge({
 interface BotState {
   kind: "ok" | "warn" | "err" | "info";
   label: string;
-  cta: { href: string; label: string } | null;
   restart?: boolean;
   pulse?: boolean;
 }
@@ -600,85 +889,30 @@ function avatarTone(kind: BotState["kind"]): AvatarTone {
   return "muted";
 }
 
+// Health of the agent itself; per-channel state lives in the channel rows.
 function resolveState(bot: BotSnapshot): BotState {
   if (bot.status === "provisioning") {
-    return { kind: "info", label: "מכין את הסוכן…", cta: null, pulse: true };
+    return { kind: "info", label: "מכין את הסוכן…", pulse: true };
   }
   if (bot.status === "error") {
-    return { kind: "err", label: "שגיאה", cta: null };
+    return { kind: "err", label: "שגיאה" };
   }
-  if (bot.pairingStatus === "paired" && bot.hasWhatsappCreds) {
-    if (bot.status === "degraded") {
-      return { kind: "warn", label: "חיבור WhatsApp לא יציב — בודקים", cta: null, pulse: true };
-    }
-    if (bot.status === "unhealthy") {
-      return {
-        kind: "err",
-        label: "הבוט לא מגיב — אפשר להפעיל מחדש",
-        cta: null,
-        restart: true,
-        pulse: true,
-      };
-    }
-    if (bot.lastSeenAt === null) {
-      return { kind: "info", label: "מתחבר ל-WhatsApp… (עד 2 דקות)", cta: null, pulse: true };
-    }
-    if (bot.status === "degraded") {
-      return { kind: "warn", label: "חיבור לא יציב — מנסה להתאושש", cta: null, pulse: true };
-    }
-    if (bot.status === "unhealthy") {
-      return {
-        kind: "err",
-        label: "הסוכן לא מגיב — אפשר להפעיל מחדש",
-        cta: null,
-        restart: true,
-        pulse: true,
-      };
-    }
-    return { kind: "ok", label: "מחובר ופעיל", cta: null };
+  if (bot.status === "unhealthy") {
+    return { kind: "err", label: "הסוכן לא מגיב — אפשר להפעיל מחדש", restart: true, pulse: true };
   }
-  if (
-    bot.pairingStatus === "awaiting_qr" ||
-    bot.pairingStatus === "awaiting_code"
-  ) {
-    return {
-      kind: "warn",
-      label: "ממתין להתאמה",
-      cta: { href: "/app/bot/pair", label: "המשך התאמה" },
-    };
+  if (bot.status === "degraded") {
+    return { kind: "warn", label: "חיבור לא יציב — מנסה להתאושש", pulse: true };
   }
-  if (bot.pairingStatus === "failed" || bot.pairingStatus === "expired") {
-    return {
-      kind: "warn",
-      label: "לא מחובר ל-WhatsApp",
-      cta: { href: "/app/bot/pair", label: "חיבור מחדש" },
-    };
+  const whatsappConnected = bot.pairingStatus === "paired" && bot.hasWhatsappCreds;
+  const telegramConnected = Boolean(bot.telegram?.linked);
+  if (whatsappConnected && bot.lastSeenAt === null) {
+    return { kind: "info", label: "מתחבר ל-WhatsApp… (עד 2 דקות)", pulse: true };
   }
-  if (bot.telegram) {
-    if (!bot.telegram.linked) {
-      return {
-        kind: "info",
-        label: "מוכן לחיבור טלגרם",
-        cta: { href: "/app/bot/telegram", label: "חיבור לטלגרם" },
-      };
-    }
-    if (bot.status === "degraded") {
-      return { kind: "warn", label: "חיבור לא יציב — מנסה להתאושש", cta: null, pulse: true };
-    }
-    if (bot.status === "unhealthy") {
-      return {
-        kind: "err",
-        label: "הסוכן לא מגיב — אפשר להפעיל מחדש",
-        cta: null,
-        restart: true,
-        pulse: true,
-      };
-    }
-    return { kind: "ok", label: "מחובר ופעיל", cta: null };
+  if (whatsappConnected || telegramConnected) {
+    return { kind: "ok", label: "מחובר ופעיל" };
   }
-  return {
-    kind: "info",
-    label: "מוכן לחיבור WhatsApp",
-    cta: { href: "/app/bot/pair", label: "חיבור WhatsApp" },
-  };
+  if (bot.pairingStatus === "awaiting_qr" || bot.pairingStatus === "awaiting_code") {
+    return { kind: "warn", label: "ממתין להתאמה" };
+  }
+  return { kind: "info", label: "מוכן לחיבור" };
 }

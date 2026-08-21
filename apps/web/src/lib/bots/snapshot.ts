@@ -1,8 +1,14 @@
-import type { Instance } from "../orchestrator/types";
+import { WHATSAPP_DM_ACCESS, type Instance, type WhatsappDmAccess } from "../orchestrator/types";
 
 export interface TelegramSnapshot {
   linked: boolean;
   botUsername: string | null;
+}
+
+export interface WhatsappAccessSnapshot {
+  ownerNumber: string | null;
+  access: WhatsappDmAccess;
+  configured: boolean;
 }
 
 export interface BotSnapshot {
@@ -13,6 +19,7 @@ export interface BotSnapshot {
   whatsappAccountId: string | null;
   hasWhatsappCreds: boolean;
   hasWhatsappChannel: boolean;
+  whatsappAccess: WhatsappAccessSnapshot | null;
   telegram: TelegramSnapshot | null;
   lastSeenAt: string | null;
 }
@@ -26,8 +33,22 @@ export function toBotSnapshot(bot: Instance): BotSnapshot {
     whatsappAccountId: bot.whatsappAccountId,
     hasWhatsappCreds: bot.hasWhatsappCreds,
     hasWhatsappChannel: bot.config.channels.some((ch) => ch.type === "whatsapp"),
+    whatsappAccess: whatsappAccessSnapshot(bot.config.channels),
     telegram: telegramSnapshot(bot.config.channels),
     lastSeenAt: bot.lastSeenAt ?? null,
+  };
+}
+
+function whatsappAccessSnapshot(
+  channels: Instance["config"]["channels"],
+): WhatsappAccessSnapshot | null {
+  const ch = channels.find((c) => c.type === "whatsapp");
+  if (!ch) return null;
+  const access = WHATSAPP_DM_ACCESS.find((a) => a === ch.dmAccess);
+  return {
+    ownerNumber: typeof ch.ownerNumber === "string" ? ch.ownerNumber : null,
+    access: access ?? "open",
+    configured: access !== undefined,
   };
 }
 

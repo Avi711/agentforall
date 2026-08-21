@@ -9,6 +9,9 @@ import {
   BotUsageSchema,
   TelegramLinkSchema,
   TelegramLinkStatusSchema,
+  WhatsappAccessSchema,
+  type WhatsappAccess,
+  type WhatsappAccessUpdate,
   type Instance,
   type StartPairingResult,
   type PairQr,
@@ -264,6 +267,53 @@ export class OrchestratorClient {
       path: instancePath(id, "/telegram/status"),
       userId,
       schema: TelegramLinkStatusSchema,
+    });
+  }
+
+  async disconnectWhatsapp(userId: string, id: string): Promise<void> {
+    await this.call({
+      method: "POST",
+      path: instancePath(id, "/whatsapp/disconnect"),
+      userId,
+      schema: z.unknown(),
+      allowEmptyBody: true,
+      timeoutMs: 60_000,
+    });
+  }
+
+  async disconnectTelegram(userId: string, id: string): Promise<void> {
+    await this.call({
+      method: "POST",
+      path: instancePath(id, "/telegram/disconnect"),
+      userId,
+      schema: z.unknown(),
+      allowEmptyBody: true,
+      timeoutMs: 60_000,
+    });
+  }
+
+  async getWhatsappAccess(userId: string, id: string): Promise<WhatsappAccess> {
+    return this.call({
+      method: "GET",
+      path: instancePath(id, "/whatsapp/access"),
+      userId,
+      schema: WhatsappAccessSchema,
+    });
+  }
+
+  async updateWhatsappAccess(
+    userId: string,
+    id: string,
+    patch: WhatsappAccessUpdate,
+  ): Promise<WhatsappAccess> {
+    return this.call({
+      method: "PATCH",
+      path: instancePath(id, "/whatsapp/access"),
+      userId,
+      body: patch,
+      schema: WhatsappAccessSchema,
+      // Config updates restart the container synchronously.
+      timeoutMs: 60_000,
     });
   }
 

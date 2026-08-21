@@ -128,6 +128,33 @@ export const TelegramLinkStatusSchema = z.object({
 });
 export type TelegramLinkStatus = z.infer<typeof TelegramLinkStatusSchema>;
 
+export const WHATSAPP_DM_ACCESS = ["owner", "open"] as const;
+export type WhatsappDmAccess = (typeof WHATSAPP_DM_ACCESS)[number];
+
+export const WhatsappAccessSchema = z.object({
+  botNumber: z.string().nullable(),
+  ownerNumber: z.string().nullable(),
+  access: z.enum(WHATSAPP_DM_ACCESS),
+  configured: z.boolean(),
+  claiming: z.boolean(),
+  pending: z.array(
+    z.object({
+      number: z.string(),
+      code: z.string(),
+      name: z.string().nullable(),
+      requestedAt: z.string(),
+    }),
+  ),
+  pendingUnavailable: z.boolean(),
+});
+export type WhatsappAccess = z.infer<typeof WhatsappAccessSchema>;
+export type WhatsappPendingSender = WhatsappAccess["pending"][number];
+
+export interface WhatsappAccessUpdate {
+  ownerNumber?: string | null;
+  access?: WhatsappDmAccess;
+}
+
 export const BOT_CHANNELS = ["telegram", "whatsapp"] as const;
 export type BotChannel = (typeof BOT_CHANNELS)[number];
 

@@ -15,11 +15,13 @@ const FAST_INTERVAL_MS = 2000;
 const SLOW_INTERVAL_MS = 30_000;
 const MAX_BACKOFF_MS = 60_000;
 
-// An unlinked telegram channel means the user is mid-connect in another tab.
+// Unlinked telegram / awaiting pairing means the user is mid-connect in another tab.
 function isTransitional(bot: BotSnapshot): boolean {
   return (
     TRANSITIONAL.has(bot.status) ||
-    (bot.telegram !== null && !bot.telegram.linked)
+    (bot.telegram !== null && !bot.telegram.linked) ||
+    bot.pairingStatus === "awaiting_qr" ||
+    bot.pairingStatus === "awaiting_code"
   );
 }
 

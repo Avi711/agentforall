@@ -14,8 +14,10 @@ import type {
   StartPairingResult,
   TelegramLink,
   TelegramLinkStatus,
+  WhatsappAccess,
+  WhatsappAccessUpdate,
 } from "../orchestrator/types";
-import type { CreateBotBody, PhoneBody } from "./schemas";
+import type { CreateBotBody, PhoneBody, WhatsappAccessBody } from "./schemas";
 
 export interface CreateBotResult {
   bot: Instance;
@@ -54,6 +56,14 @@ export interface BotOrchestratorPort {
   getPairStatus(userId: string, id: string): Promise<PairStatus>;
   startTelegramLink(userId: string, id: string): Promise<TelegramLink>;
   getTelegramLinkStatus(userId: string, id: string): Promise<TelegramLinkStatus>;
+  getWhatsappAccess(userId: string, id: string): Promise<WhatsappAccess>;
+  updateWhatsappAccess(
+    userId: string,
+    id: string,
+    patch: WhatsappAccessUpdate,
+  ): Promise<WhatsappAccess>;
+  disconnectWhatsapp(userId: string, id: string): Promise<void>;
+  disconnectTelegram(userId: string, id: string): Promise<void>;
 }
 
 export class BotService {
@@ -166,6 +176,26 @@ export class BotService {
 
   getTelegramLinkStatus(userId: string, id: string): Promise<TelegramLinkStatus> {
     return this.orchestrator.getTelegramLinkStatus(userId, id);
+  }
+
+  getWhatsappAccess(userId: string, id: string): Promise<WhatsappAccess> {
+    return this.orchestrator.getWhatsappAccess(userId, id);
+  }
+
+  updateWhatsappAccess(
+    userId: string,
+    id: string,
+    patch: WhatsappAccessBody,
+  ): Promise<WhatsappAccess> {
+    return this.orchestrator.updateWhatsappAccess(userId, id, patch);
+  }
+
+  disconnectWhatsapp(userId: string, id: string): Promise<void> {
+    return this.orchestrator.disconnectWhatsapp(userId, id);
+  }
+
+  disconnectTelegram(userId: string, id: string): Promise<void> {
+    return this.orchestrator.disconnectTelegram(userId, id);
   }
 }
 

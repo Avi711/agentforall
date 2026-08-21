@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { BOT_CHANNELS } from "../orchestrator/types";
+import { BOT_CHANNELS, WHATSAPP_DM_ACCESS } from "../orchestrator/types";
 
 export const BotIdParamsSchema = z.object({
   id: z.string().uuid(),
@@ -30,6 +30,22 @@ export const PhoneBodySchema = z.object({
     ),
 });
 
+export const WhatsappAccessBodySchema = z
+  .object({
+    ownerNumber: z
+      .string()
+      .trim()
+      .regex(/^\+?[1-9]\d{6,14}$/, "ownerNumber must be E.164")
+      .nullable()
+      .optional(),
+    access: z.enum(WHATSAPP_DM_ACCESS).optional(),
+  })
+  .strict()
+  .refine((body) => body.ownerNumber !== undefined || body.access !== undefined, {
+    message: "at least one field required",
+  });
+
+export type WhatsappAccessBody = z.infer<typeof WhatsappAccessBodySchema>;
 export type CreateBotBody = z.infer<typeof CreateBotBodySchema>;
 export type BackupUploadSessionBody = z.infer<typeof BackupUploadSessionBodySchema>;
 export type BackupRestoreBody = z.infer<typeof BackupRestoreBodySchema>;

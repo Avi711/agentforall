@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ESimCard } from "@/components/ESimCard";
+import { isValidIsraeliPhone, normalizeIsraeliPhone } from "@/lib/phone";
 import type {
   PairStatus as CanonicalPairStatus,
   PairQr,
@@ -440,7 +441,7 @@ function CodePanel({
       </label>
       <button
         type="submit"
-        disabled={busy || !isValidPhone(phone)}
+        disabled={busy || !isValidIsraeliPhone(phone)}
         className="w-full px-5 py-3 rounded-xl bg-espresso text-cream font-medium hover:bg-espresso-light transition disabled:opacity-50"
       >
         {busy ? "מייצר קוד…" : "קבלת קוד התאמה"}
@@ -533,14 +534,3 @@ function isAbort(err: unknown): boolean {
   return err instanceof DOMException && err.name === "AbortError";
 }
 
-function normalizeIsraeliPhone(value: string): string {
-  const digits = value.replace(/\D/g, "");
-  if (digits.startsWith("972")) return digits;
-  return `972${digits.replace(/^0+/, "")}`;
-}
-
-function isValidPhone(value: string): boolean {
-  const digits = value.replace(/\D/g, "");
-  const local = digits.startsWith("972") ? digits.slice(3) : digits.replace(/^0+/, "");
-  return local.length === 9;
-}
