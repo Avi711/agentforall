@@ -169,6 +169,13 @@ export interface OwnerIdentityUpdate {
   whatsappNumber: string | null;
 }
 
+export const AdminInstanceSchema = z.object({
+  instance: InstanceSchema,
+  // null = usage lookup failed for that bot; the overview still renders.
+  usage: BotUsageSchema.nullable(),
+});
+export type AdminInstance = z.infer<typeof AdminInstanceSchema>;
+
 export const BOT_CHANNELS = ["telegram", "whatsapp"] as const;
 export type BotChannel = (typeof BOT_CHANNELS)[number];
 

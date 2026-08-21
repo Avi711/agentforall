@@ -15,6 +15,8 @@ import {
   OwnerIdentitySchema,
   type OwnerIdentity,
   type OwnerIdentityUpdate,
+  AdminInstanceSchema,
+  type AdminInstance,
   type Instance,
   type StartPairingResult,
   type PairQr,
@@ -345,6 +347,19 @@ export class OrchestratorClient {
     });
   }
 
+  // Every live bot across all users, with usage — admin reporting only.
+  async listAdminInstances(): Promise<AdminInstance[]> {
+    const res = await this.call({
+      method: "GET",
+      path: "/api/v1/admin/instances",
+      userId: null,
+      schema: z.object({ data: z.array(AdminInstanceSchema) }),
+      // Fans out to LiteLLM once per bot.
+      timeoutMs: 30_000,
+    });
+    return res.data;
+  }
+
   async getPairStatus(userId: string, id: string): Promise<PairStatus> {
     return this.call({
       method: "GET",
@@ -357,7 +372,8 @@ export class OrchestratorClient {
   private async call<T>(opts: {
     method: "GET" | "POST" | "DELETE" | "PATCH";
     path: string;
-    userId: string;
+    // null = platform-scope route (admin reporting); everything else impersonates the user.
+    userId: string | null;
     body?: unknown;
     schema: z.ZodType<T>;
     allowEmptyBody?: boolean;
@@ -366,8 +382,8 @@ export class OrchestratorClient {
     const url = `${this.env.baseUrl}${opts.path}`;
     const headers: Record<string, string> = {
       authorization: `Bearer ${this.env.serviceToken}`,
-      "x-act-as-user": opts.userId,
     };
+    if (opts.userId !== null) headers["x-act-as-user"] = opts.userId;
     let body: BodyInit | undefined;
     if (opts.body !== undefined) {
       headers["content-type"] = "application/json";

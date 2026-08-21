@@ -1,50 +1,17 @@
-import { NextRequest, NextResponse } from "next/server";
-import { verifyAdminAuth } from "@/lib/auth/admin";
+import { NextResponse } from "next/server";
+import { adminHandler } from "@/lib/auth/admin";
 import { leadService } from "@/lib/leads/service";
 import { AdminLeadIdSchema } from "@/lib/leads/schemas";
 
-export async function GET(request: NextRequest) {
-  if (!verifyAdminAuth(request.headers.get("authorization"))) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+export const GET = adminHandler({}, async () => {
+  const leads = await leadService.list();
+  return NextResponse.json({ leads, count: leads.length });
+});
 
-  try {
-    const allLeads = await leadService.list();
-    return NextResponse.json({ leads: allLeads, count: allLeads.length });
-  } catch (err) {
-    console.error("[admin/leads] error:", err);
-    return NextResponse.json(
-      { error: "Failed to fetch leads" },
-      { status: 500 },
-    );
-  }
-}
-
-export async function DELETE(request: NextRequest) {
-  if (!verifyAdminAuth(request.headers.get("authorization"))) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
-
-  const parsed = AdminLeadIdSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid lead ID" }, { status: 400 });
-  }
-
-  try {
-    await leadService.remove(parsed.data.id);
+export const DELETE = adminHandler(
+  { bodySchema: AdminLeadIdSchema },
+  async ({ body }) => {
+    await leadService.remove(body.id);
     return NextResponse.json({ success: true });
-  } catch (err) {
-    console.error("[admin/leads] delete error:", err);
-    return NextResponse.json(
-      { error: "Failed to delete lead" },
-      { status: 500 },
-    );
-  }
-}
+  },
+);

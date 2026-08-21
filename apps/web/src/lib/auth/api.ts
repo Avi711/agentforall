@@ -1,12 +1,13 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { ZodError, z } from "zod";
-import { getServerSession } from "./session";
+import { getServerSession, type AuthenticatedUser } from "./session";
 import { OrchestratorError } from "../orchestrator/client";
 import { getConsentStatus } from "../consent/service";
 
-type Handler<Body> = (ctx: {
+export type Handler<Body> = (ctx: {
   userId: string;
+  user: AuthenticatedUser;
   body: Body;
 }) => Promise<Response> | Response;
 
@@ -51,7 +52,7 @@ export function authenticatedHandler<Body = undefined>(
     }
 
     try {
-      return await handler({ userId: session.user.id, body });
+      return await handler({ userId: session.user.id, user: session.user, body });
     } catch (err) {
       return renderError(err);
     }
