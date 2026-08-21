@@ -4,9 +4,15 @@ export type CreationStep = "registering" | "uploading" | "restoring" | "booting"
 
 export interface CreationTimelineEntry {
   id: CreationStep;
-  // null when the step was already under way before this view mounted (page reload).
+  // null when the start was never observed (step already under way before this view mounted).
   startedAt: number | null;
   endedAt: number | null;
+}
+
+export interface ProvisioningEvent {
+  stage: ProvisioningStage;
+  // Epoch milliseconds, server clock.
+  at: number;
 }
 
 export interface CreationStepSpec {
@@ -34,8 +40,6 @@ const RESTORE_STEPS: CreationStepSpec[] = [
   { id: "healthcheck", label: "בדיקת תקינות", hint: "מחכים שהסוכן יענה בפעם הראשונה", weight: 35, typicalSeconds: 18 },
 ];
 
-const STEP_ORDER: readonly CreationStep[] = ["registering", "uploading", "restoring", "booting", "starting", "healthcheck"];
-
 // The active step never reads as more than this much done; only the real milestone completes it.
 export const IN_STEP_CAP = 0.9;
 
@@ -43,29 +47,39 @@ export function creationSteps(restoring: boolean): CreationStepSpec[] {
   return restoring ? RESTORE_STEPS : FRESH_STEPS;
 }
 
-export function isLaterStep(candidate: CreationStep, than: CreationStep): boolean {
-  return STEP_ORDER.indexOf(candidate) > STEP_ORDER.indexOf(than);
+export interface TimelineInput {
+  // Steps the client itself performed (register / upload / restore), with client timestamps.
+  local: CreationTimelineEntry[];
+  // Stages the orchestrator recorded, server timestamps, ascending.
+  history: ProvisioningEvent[];
+  // Client time at which the orchestrator row was known to exist; used if `reserved` is absent.
+  rowKnownAt: number | null;
+  // Client time the bot was seen `running`, if the final `running` event was not observed.
+  readyAt: number | null;
 }
 
-// Orchestrator stage → the client step that stage *starts*. Stages before the container
-// exists map to nothing new: the client already shows "booting" once the row exists.
-export function stepForStage(stage: ProvisioningStage | null | undefined): CreationStep | null {
-  switch (stage) {
-    case "container_created":
-    case "backup_restored":
-      return "starting";
-    case "started":
-      return "healthcheck";
-    default:
-      return null;
+// Container-side steps start and end on server events, so their durations are exact and a
+// late poll can never skip one. The first server step starts when the row was reserved.
+export function buildTimeline(input: TimelineInput): CreationTimelineEntry[] {
+  const at = (stage: ProvisioningStage): number | null =>
+    input.history.find((e) => e.stage === stage)?.at ?? null;
+  const reserved = at("reserved") ?? input.rowKnownAt;
+  const containerCreated = at("container_created");
+  const started = at("started");
+  const running = at("running") ?? input.readyAt;
+
+  const entries: CreationTimelineEntry[] = [...input.local];
+  if (reserved === null && containerCreated === null && started === null && running === null) {
+    return entries;
   }
-}
-
-// Reload mid-provisioning: earlier steps are known to be done, but their timings are gone.
-export function timelineForStage(stage: ProvisioningStage | null | undefined): CreationTimelineEntry[] {
-  const reached = stepForStage(stage) ?? "booting";
-  const steps = FRESH_STEPS.map((s) => s.id);
-  return steps.slice(0, steps.indexOf(reached) + 1).map((id) => ({ id, startedAt: null, endedAt: null }));
+  entries.push({ id: "booting", startedAt: reserved, endedAt: containerCreated ?? started ?? running });
+  if (containerCreated !== null || started !== null || running !== null) {
+    entries.push({ id: "starting", startedAt: containerCreated, endedAt: started ?? running });
+  }
+  if (started !== null || running !== null) {
+    entries.push({ id: "healthcheck", startedAt: started, endedAt: running });
+  }
+  return entries;
 }
 
 export function resolvePercent(

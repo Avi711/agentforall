@@ -8,7 +8,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { useBotStatus, type BotSnapshot } from "./useBotStatus";
 import { BotAvatar, SurfaceCard, type AvatarTone } from "./Marks";
 import { CreatingPanel } from "./CreatingPanel";
-import { timelineForStage } from "@/lib/bots/creation-progress";
+import { buildTimeline } from "@/lib/bots/creation-progress";
 import { WhatsAppAccessDialog, accessLabel } from "./WhatsAppAccessSection";
 import { OwnerIdentityDialog, IDENTITY_HINT } from "./OwnerIdentityDialog";
 import { InfoHint } from "./InfoHint";
@@ -171,7 +171,13 @@ export function BotCard({
         <CreatingPanel
           name={bot.displayName}
           restoring={false}
-          timeline={timelineForStage(bot.provisioningStage)}
+          timeline={buildTimeline({
+            // Reload mid-provisioning: the client-side registration already happened, timing unknown.
+            local: [{ id: "registering", startedAt: null, endedAt: null }],
+            history: bot.provisioningHistory,
+            rowKnownAt: null,
+            readyAt: null,
+          })}
           uploadPercent={null}
           ready={false}
           failure={null}

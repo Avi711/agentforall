@@ -4,7 +4,7 @@ import type { FastifyBaseLogger } from "fastify";
 import type { InstanceRepository } from "../storage/instance-repository.js";
 import type { ContainerRuntime } from "./container-runtime.js";
 import type { PortAllocator } from "./port-allocator.js";
-import type { EventRepository } from "../storage/event-repository.js";
+import type { EventRepository, ProvisioningEvent } from "../storage/event-repository.js";
 import type { PairingManager } from "./pairing-manager.js";
 import type { AppConfig } from "../config.js";
 import type { AgentRuntimeRegistry } from "./agent-runtime/registry.js";
@@ -63,6 +63,7 @@ const STARTUP_SETTLE_MS = 120_000;
 
 export interface InstanceDetails extends Instance {
   provisioningStage: ProvisioningStage | null;
+  provisioningHistory: ProvisioningEvent[];
 }
 
 export class InstanceManager {
@@ -173,12 +174,16 @@ export class InstanceManager {
     return this.requireOwnedInstance(id, userId);
   }
 
-  // Detail view: while provisioning, surface the last recorded stage so clients can show real progress.
+  // Detail view: while provisioning, surface the recorded stages so clients can show real progress.
   async describe(id: string, userId: string): Promise<InstanceDetails> {
     const inst = await this.requireOwnedInstance(id, userId);
-    const provisioningStage =
-      inst.status === "provisioning" ? await this.eventLog.latestProvisioningStage(id) : null;
-    return { ...inst, provisioningStage };
+    const provisioningHistory =
+      inst.status === "provisioning" ? await this.eventLog.provisioningHistory(id) : [];
+    return {
+      ...inst,
+      provisioningStage: provisioningHistory.at(-1)?.stage ?? null,
+      provisioningHistory,
+    };
   }
 
   async list(

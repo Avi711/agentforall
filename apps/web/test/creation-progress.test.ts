@@ -2,11 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   IN_STEP_CAP,
+  buildTimeline,
   creationSteps,
-  isLaterStep,
   resolvePercent,
-  stepForStage,
-  timelineForStage,
 } from "../src/lib/bots/creation-progress";
 
 test("step weights sum to 100 for both flows", () => {
@@ -37,17 +35,63 @@ test("upload step uses the real byte percentage, clamped", () => {
   assert.equal(resolvePercent(steps, 0, 0, 250), Math.round(steps[0].weight * IN_STEP_CAP));
 });
 
-test("orchestrator stages map onto client steps and reload timelines", () => {
-  assert.equal(stepForStage("reserved"), null);
-  assert.equal(stepForStage("container_created"), "starting");
-  assert.equal(stepForStage("backup_restored"), "starting");
-  assert.equal(stepForStage("started"), "healthcheck");
-  assert.equal(stepForStage(null), null);
+test("timeline: server stages bound the container steps exactly", () => {
+  const local = [{ id: "registering" as const, startedAt: 1_000, endedAt: 3_000 }];
+  const history = [
+    { stage: "reserved" as const, at: 2_900 },
+    { stage: "container_created" as const, at: 6_800 },
+    { stage: "started" as const, at: 9_000 },
+  ];
+  const timeline = buildTimeline({ local, history, rowKnownAt: 3_000, readyAt: null });
+  assert.deepEqual(timeline, [
+    { id: "registering", startedAt: 1_000, endedAt: 3_000 },
+    { id: "booting", startedAt: 2_900, endedAt: 6_800 },
+    { id: "starting", startedAt: 6_800, endedAt: 9_000 },
+    { id: "healthcheck", startedAt: 9_000, endedAt: null },
+  ]);
+});
+
+test("timeline: a late poll that skipped a stage still yields every step", () => {
+  const timeline = buildTimeline({
+    local: [{ id: "registering", startedAt: 0, endedAt: 3_000 }],
+    history: [
+      { stage: "reserved", at: 2_900 },
+      { stage: "container_created", at: 6_800 },
+      { stage: "started", at: 9_000 },
+      { stage: "running", at: 25_000 },
+    ],
+    rowKnownAt: 3_000,
+    readyAt: null,
+  });
   assert.deepEqual(
-    timelineForStage("started").map((t) => t.id),
-    ["registering", "booting", "starting", "healthcheck"],
+    timeline.map((t) => [t.id, t.endedAt]),
+    [["registering", 3_000], ["booting", 6_800], ["starting", 9_000], ["healthcheck", 25_000]],
   );
-  assert.deepEqual(timelineForStage(undefined).map((t) => t.id), ["registering", "booting"]);
-  assert.ok(isLaterStep("healthcheck", "starting"));
-  assert.ok(!isLaterStep("booting", "starting"));
+});
+
+test("timeline: before any server stage only the local steps exist; ready closes the last step", () => {
+  assert.deepEqual(
+    buildTimeline({ local: [{ id: "uploading", startedAt: 0, endedAt: null }], history: [], rowKnownAt: null, readyAt: null }),
+    [{ id: "uploading", startedAt: 0, endedAt: null }],
+  );
+  const ready = buildTimeline({
+    local: [],
+    history: [{ stage: "reserved", at: 10 }, { stage: "container_created", at: 20 }, { stage: "started", at: 30 }],
+    rowKnownAt: null,
+    readyAt: 50,
+  });
+  assert.equal(ready.at(-1)?.endedAt, 50);
+});
+
+test("timeline: reload with no reserve event falls back to the client row time", () => {
+  const timeline = buildTimeline({
+    local: [],
+    history: [{ stage: "container_created", at: 500 }],
+    rowKnownAt: 100,
+    readyAt: null,
+  });
+  assert.deepEqual(timeline.map((t) => [t.id, t.startedAt, t.endedAt]), [
+    ["booting", 100, 500],
+    ["starting", 500, null],
+  ]);
 });

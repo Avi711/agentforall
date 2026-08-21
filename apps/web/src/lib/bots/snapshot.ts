@@ -5,6 +5,7 @@ import {
   type ProvisioningStage,
   type WhatsappDmAccess,
 } from "../orchestrator/types";
+import type { ProvisioningEvent } from "./creation-progress";
 
 export interface TelegramSnapshot {
   linked: boolean;
@@ -26,6 +27,7 @@ export interface BotSnapshot {
   displayName: string;
   status: string;
   provisioningStage: ProvisioningStage | null;
+  provisioningHistory: ProvisioningEvent[];
   pairingStatus: string;
   whatsappAccountId: string | null;
   hasWhatsappCreds: boolean;
@@ -44,6 +46,7 @@ export function toBotSnapshot(bot: Instance): BotSnapshot {
     displayName: bot.displayName,
     status: bot.status,
     provisioningStage: provisioningStageOf(bot),
+    provisioningHistory: provisioningHistoryOf(bot),
     pairingStatus: bot.pairingStatus,
     whatsappAccountId: bot.whatsappAccountId,
     hasWhatsappCreds: bot.hasWhatsappCreds,
@@ -89,4 +92,11 @@ function provisioningStageOf(bot: Instance): ProvisioningStage | null {
   if (isProvisioningStage(bot.provisioningStage)) return bot.provisioningStage;
   if (bot.status !== "provisioning") return null;
   return bot.containerId ? "container_created" : "reserved";
+}
+
+function provisioningHistoryOf(bot: Instance): ProvisioningEvent[] {
+  return (bot.provisioningHistory ?? []).flatMap((event) => {
+    const at = Date.parse(event.at);
+    return isProvisioningStage(event.stage) && Number.isFinite(at) ? [{ stage: event.stage, at }] : [];
+  });
 }

@@ -5,6 +5,7 @@ import { MonogramDisc } from "./Marks";
 import {
   creationSteps,
   resolvePercent,
+  type CreationStep,
   type CreationTimelineEntry,
 } from "@/lib/bots/creation-progress";
 
@@ -38,6 +39,9 @@ export function CreatingPanel({
 }) {
   const [now, setNow] = useState(() => Date.now());
   const [mountedAt] = useState(() => Date.now());
+  // When this client first saw each step become active — drives the in-step easing on the
+  // client clock, so server timestamps (exact durations) never fight clock skew.
+  const [observedAt, setObservedAt] = useState<Partial<Record<CreationStep, number>>>({});
 
   useEffect(() => {
     if (ready || failure) return;
@@ -47,11 +51,19 @@ export function CreatingPanel({
 
   const steps = creationSteps(restoring);
   const current = timeline.length > 0 ? timeline[timeline.length - 1] : null;
-  const activeIndex = ready ? steps.length : steps.findIndex((s) => s.id === current?.id);
-  // After a reload we only know when this view started watching, so the timer is hidden.
-  const knownStart = timeline[0]?.startedAt ?? null;
+  const currentId = current?.id ?? null;
+
+  useEffect(() => {
+    if (!currentId) return;
+    setObservedAt((prev) => (prev[currentId] ? prev : { ...prev, [currentId]: Date.now() }));
+  }, [currentId]);
+
+  const activeIndex = ready ? steps.length : steps.findIndex((s) => s.id === currentId);
+  // Timer starts at the first known step start; after a reload that is the server's reserve time.
+  const knownStart = timeline.find((t) => t.startedAt !== null)?.startedAt ?? null;
   const elapsedMs = Math.max(0, now - (knownStart ?? mountedAt));
-  const secondsInStep = current?.startedAt ? Math.max(0, now - current.startedAt) / 1000 : 0;
+  const observedStart = currentId ? observedAt[currentId] : undefined;
+  const secondsInStep = observedStart ? Math.max(0, now - observedStart) / 1000 : 0;
   const percent = ready ? 100 : resolvePercent(steps, activeIndex, secondsInStep, uploadPercent);
   const stepNumber = Math.min(activeIndex + 1, steps.length);
   const activeStep = steps[activeIndex];

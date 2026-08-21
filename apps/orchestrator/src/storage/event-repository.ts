@@ -1,6 +1,6 @@
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { instanceEvents } from "@agent-forall/db";
-import { and, eq, desc, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import {
   PROVISIONING_EVENT_TYPES,
   provisioningStageOf,
@@ -16,6 +16,11 @@ export interface InstanceEvent {
   payload: Record<string, unknown>;
   actor: string | null;
   createdAt: Date;
+}
+
+export interface ProvisioningEvent {
+  stage: ProvisioningStage;
+  at: Date;
 }
 
 export interface AppendOptions {
@@ -40,9 +45,10 @@ export class EventRepository {
     });
   }
 
-  async latestProvisioningStage(instanceId: string): Promise<ProvisioningStage | null> {
+  // Ascending stage history: lets clients show real per-step timings instead of poll-sampled ones.
+  async provisioningHistory(instanceId: string): Promise<ProvisioningEvent[]> {
     const rows = await this.db
-      .select({ eventType: instanceEvents.eventType })
+      .select({ eventType: instanceEvents.eventType, createdAt: instanceEvents.createdAt })
       .from(instanceEvents)
       .where(
         and(
@@ -50,10 +56,11 @@ export class EventRepository {
           inArray(instanceEvents.eventType, PROVISIONING_EVENT_TYPES),
         ),
       )
-      .orderBy(desc(instanceEvents.createdAt), desc(instanceEvents.id))
-      .limit(1);
-    const eventType = rows[0]?.eventType;
-    return eventType ? provisioningStageOf(eventType) : null;
+      .orderBy(asc(instanceEvents.createdAt), asc(instanceEvents.id));
+    return rows.flatMap((row) => {
+      const stage = provisioningStageOf(row.eventType);
+      return stage ? [{ stage, at: row.createdAt }] : [];
+    });
   }
 
   async recent(instanceId: string, limit = 50): Promise<InstanceEvent[]> {

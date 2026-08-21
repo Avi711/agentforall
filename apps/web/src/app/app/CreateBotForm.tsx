@@ -9,10 +9,10 @@ import { SurfaceCard } from "./Marks";
 import { InstanceSchema } from "@/lib/orchestrator/types";
 import { toBotSnapshot, type BotSnapshot } from "@/lib/bots/snapshot";
 import {
-  isLaterStep,
-  stepForStage,
+  buildTimeline,
   type CreationStep,
   type CreationTimelineEntry,
+  type ProvisioningEvent,
 } from "@/lib/bots/creation-progress";
 
 const MAX_BACKUP_FILE_BYTES = 512 * 1024 * 1024;
@@ -29,7 +29,12 @@ interface CreatingState {
   kind: "creating";
   name: string;
   restoring: boolean;
-  timeline: CreationTimelineEntry[];
+  // Client-side steps (register / upload / restore) with client timestamps.
+  local: CreationTimelineEntry[];
+  // Orchestrator stages with server timestamps, refreshed on every poll.
+  history: ProvisioningEvent[];
+  rowKnownAt: number | null;
+  readyAt: number | null;
   uploadPercent: number | null;
   ready: boolean;
   failure: string | null;
@@ -78,25 +83,25 @@ export function CreateBotForm() {
       if (unmounted.current) return;
       setPhase((prev) => (prev.kind === "creating" ? update(prev) : prev));
     };
+    const closeLocal = (prev: CreatingState, now: number): CreationTimelineEntry[] =>
+      prev.local.map((t, i) => (i === prev.local.length - 1 && t.endedAt === null ? { ...t, endedAt: now } : t));
     const enter = (step: CreationStep) =>
       patch((prev) => {
         const now = Date.now();
-        const closed = prev.timeline.map((t, i) =>
-          i === prev.timeline.length - 1 && t.endedAt === null ? { ...t, endedAt: now } : t,
-        );
-        return { ...prev, timeline: [...closed, { id: step, startedAt: now, endedAt: null }], uploadPercent: null };
+        return { ...prev, local: [...closeLocal(prev, now), { id: step, startedAt: now, endedAt: null }], uploadPercent: null };
       });
-    const report = (step: CreationStep, uploadPercent: number | null = null) =>
-      patch((prev) =>
-        prev.timeline.at(-1)?.id === step ? { ...prev, uploadPercent } : prev,
-      );
+    const report = (step: CreationStep, uploadPercent: number) =>
+      patch((prev) => (prev.local.at(-1)?.id === step ? { ...prev, uploadPercent } : prev));
 
     setError(null);
     setPhase({
       kind: "creating",
       name,
       restoring,
-      timeline: [],
+      local: [],
+      history: [],
+      rowKnownAt: null,
+      readyAt: null,
       uploadPercent: null,
       ready: false,
       failure: null,
@@ -109,11 +114,13 @@ export function CreateBotForm() {
       const botId = file
         ? await createBotFromBackup(name, file, { enter, report })
         : await createBot(name);
-      patch((prev) => ({ ...prev, botId }));
-      enter("booting");
+      patch((prev) => {
+        const now = Date.now();
+        return { ...prev, botId, rowKnownAt: now, local: closeLocal(prev, now), uploadPercent: null };
+      });
       const ready = await waitUntilReady(botId, {
         cancelled: () => unmounted.current,
-        onStep: enter,
+        onProgress: (bot) => patch((prev) => ({ ...prev, history: bot.provisioningHistory })),
       });
       if (unmounted.current) return;
       if (ready === "error") throw new Error(PROVISION_FAILED_HE);
@@ -122,11 +129,7 @@ export function CreateBotForm() {
         router.refresh();
         return;
       }
-      patch((prev) => ({
-        ...prev,
-        ready: true,
-        timeline: prev.timeline.map((t) => (t.endedAt === null ? { ...t, endedAt: Date.now() } : t)),
-      }));
+      patch((prev) => ({ ...prev, ready: true, readyAt: Date.now() }));
       await sleep(READY_BEAT_MS);
       if (unmounted.current) return;
       if (restoring) {
@@ -181,7 +184,7 @@ export function CreateBotForm() {
           <CreatingPanel
             name={phase.name}
             restoring={phase.restoring}
-            timeline={phase.timeline}
+            timeline={buildTimeline(phase)}
             uploadPercent={phase.uploadPercent}
             ready={phase.ready}
             failure={phase.failure}
@@ -332,13 +335,11 @@ async function createBot(displayName: string): Promise<string> {
 type ReadyOutcome = "running" | "error" | "timeout";
 
 // Resolves once the orchestrator promotes the bot (health-gated), or when the bot fails to come up.
-// Each newly observed provisioning stage is reported as the step it starts.
 async function waitUntilReady(
   botId: string,
-  hooks: { cancelled: () => boolean; onStep: (step: CreationStep) => void },
+  hooks: { cancelled: () => boolean; onProgress: (bot: BotSnapshot) => void },
 ): Promise<ReadyOutcome> {
   const deadline = Date.now() + READY_TIMEOUT_MS;
-  let reported: CreationStep = "booting";
   while (Date.now() < deadline) {
     await sleep(READY_POLL_MS);
     if (hooks.cancelled()) return "timeout";
@@ -348,13 +349,9 @@ async function waitUntilReady(
     if (!res || !res.ok) continue;
     const bot = botOf(await res.json().catch(() => null));
     if (!bot) continue;
+    hooks.onProgress(bot);
     if (bot.status === "running") return "running";
     if (bot.status === "error") return "error";
-    const step = stepForStage(bot.provisioningStage);
-    if (step && isLaterStep(step, reported)) {
-      reported = step;
-      hooks.onStep(step);
-    }
   }
   return "timeout";
 }

@@ -23,6 +23,7 @@ export const InstanceSchema = z.object({
   // Only on the detail endpoint while provisioning; the last stage the orchestrator recorded.
   // Kept as a string so a newer orchestrator stage never breaks parsing; see isProvisioningStage.
   provisioningStage: z.string().nullable().optional(),
+  provisioningHistory: z.array(z.object({ stage: z.string(), at: IsoDate })).optional(),
   gatewayPort: z.number().int(),
   healthFailures: z.number().int(),
   errorMessage: z.string().nullable(),
