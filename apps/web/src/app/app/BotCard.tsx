@@ -592,7 +592,7 @@ function ChannelRow({
           </div>
         ) : null}
       </div>
-      {children ? <div className="mt-4 sm:ps-12">{children}</div> : null}
+      {children ? <div className="mt-2 sm:ps-12">{children}</div> : null}
     </li>
   );
 }
