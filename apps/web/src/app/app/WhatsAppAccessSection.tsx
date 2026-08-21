@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import type { WhatsappDmAccess } from "@/lib/orchestrator/types";
 import type { WhatsappAccessSnapshot } from "@/lib/bots/snapshot";
 import { readApiErrorMessage } from "@/lib/http/api-error";
-import { InfoHint } from "./InfoHint";
 
 const ACCESS_HINT =
   "קובע מי מקבל מענה בוואטסאפ. לא קשור למי הבעלים של הבוט — זה מוגדר ב״הזהות שלי״.";
@@ -86,14 +85,11 @@ export function WhatsAppAccessDialog({
     >
       <form method="dialog" onSubmit={(e) => e.preventDefault()} dir="rtl">
         <div className="p-5 sm:p-7">
-          <div className="flex items-center gap-1 mb-1">
-            <h2 id={titleId} className="font-display text-xl text-espresso">
-              מי יכול לכתוב לבוט
-            </h2>
-            <InfoHint label="מה ההגדרה הזו קובעת" text={ACCESS_HINT} />
-          </div>
+          <h2 id={titleId} className="font-display text-xl text-espresso mb-1">
+            מי יכול לכתוב לבוט
+          </h2>
           <p className="text-sm text-espresso-light leading-relaxed mb-5">
-            לכל אדם שכותב לבוט יש שיחה נפרדת — אף אחד לא רואה את ההיסטוריה שלכם.
+            {ACCESS_HINT} לכל אדם שכותב לבוט יש שיחה נפרדת — אף אחד לא רואה את ההיסטוריה שלכם.
           </p>
 
           <div role="radiogroup" aria-labelledby={titleId} className="space-y-2">

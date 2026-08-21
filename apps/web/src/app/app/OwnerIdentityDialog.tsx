@@ -6,7 +6,6 @@ import type { OwnerCandidate, OwnerIdentity } from "@/lib/orchestrator/types";
 import type { OwnerSnapshot } from "@/lib/bots/snapshot";
 import { readApiErrorMessage } from "@/lib/http/api-error";
 import { normalizePhoneInput } from "@/lib/phone";
-import { InfoHint } from "./InfoHint";
 
 const CANDIDATES_POLL_MS = 5000;
 
@@ -137,25 +136,19 @@ export function OwnerIdentityDialog({
         dir="rtl"
       >
         <div className="p-5 sm:p-7">
-          <div className="flex items-center gap-1 mb-1">
-            <h2 id={titleId} className="font-display text-xl text-espresso">
-              הזהות שלי
-            </h2>
-            <InfoHint label="מה זה הזהות שלי" text={IDENTITY_HINT} />
-          </div>
-          <p className="text-sm text-espresso-light leading-relaxed mb-5">
-            הבוט מזהה את החשבונות האלה כבעלים שלו — השיחה נשמרת אחת בין הערוצים, ופעולות
-            ניהול פתוחות רק מהם.
-          </p>
+          <h2 id={titleId} className="font-display text-xl text-espresso mb-1">
+            הזהות שלי
+          </h2>
+          <p className="text-sm text-espresso-light leading-relaxed mb-5">{IDENTITY_HINT}</p>
 
           <ul className="divide-y divide-sand-light/70 border-y border-sand-light/70">
-            <IdentityRow name="Telegram" hint={TELEGRAM_HINT} hintLabel="איך Telegram מזוהה">
+            <IdentityRow name="Telegram" hint={TELEGRAM_HINT}>
               <span className={`text-sm ${telegramLinked ? "text-sage-dark" : "text-espresso-light"}`}>
                 {telegramLinked ? "מקושר ✓" : "לא מחובר"}
               </span>
             </IdentityRow>
 
-            <IdentityRow name="WhatsApp" hint={WHATSAPP_HINT} hintLabel="איזה מספר להזין">
+            <IdentityRow name="WhatsApp" hint={WHATSAPP_HINT}>
               {!whatsappAvailable ? (
                 <span className="text-sm text-espresso-light">לא מחובר</span>
               ) : number !== null && !editing ? (
@@ -254,22 +247,15 @@ export function OwnerIdentityDialog({
   );
 }
 
-function IdentityRow({
-  name,
-  hint,
-  hintLabel,
-  children,
-}: {
-  name: string;
-  hint: string;
-  hintLabel: string;
-  children: ReactNode;
-}) {
+// Hints are always visible: a floating tooltip at a dialog edge gets clipped and nobody hovers on mobile.
+function IdentityRow({ name, hint, children }: { name: string; hint: string; children: ReactNode }) {
   return (
-    <li className="py-3.5 flex items-center gap-3">
-      <span className="w-20 shrink-0 text-sm font-medium text-espresso">{name}</span>
-      <span className="min-w-0 flex-1">{children}</span>
-      <InfoHint label={hintLabel} text={hint} />
+    <li className="py-3.5 flex items-start gap-3">
+      <span className="w-20 shrink-0 pt-0.5 text-sm font-medium text-espresso">{name}</span>
+      <div className="min-w-0 flex-1">
+        {children}
+        <p className="mt-1 text-xs text-espresso-light/80 leading-relaxed">{hint}</p>
+      </div>
     </li>
   );
 }
