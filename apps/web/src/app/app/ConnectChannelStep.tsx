@@ -1,9 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useId, useRef, useState } from "react";
 import { MonogramDisc } from "./Marks";
 
 export function ConnectChannelStep({ name, onLater }: { name: string; onLater: () => void }) {
+  const router = useRouter();
+  const [confirmWhatsapp, setConfirmWhatsapp] = useState(false);
+
   return (
     <div role="status" aria-live="polite" className="space-y-6">
       <div className="flex items-center gap-4">
@@ -16,25 +21,18 @@ export function ConnectChannelStep({ name, onLater }: { name: string; onLater: (
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <ChannelLink
+        <ChannelChoice
           href="/app/bot/telegram"
           title="טלגרם"
           badge="מומלץ"
           description="חיבור מיידי בשתי לחיצות — בלי מספר טלפון"
         />
-        <ChannelLink
-          href="/app/bot/pair"
+        <ChannelChoice
+          onClick={() => setConfirmWhatsapp(true)}
           title="וואטסאפ"
           description="סריקת QR עם מספר ייעודי לסוכן"
         />
       </div>
-
-      <p className="text-xs text-espresso-light leading-relaxed">
-        <strong className="font-bold text-espresso">
-          חשוב: אל תחברו לוואטסאפ את המספר האישי שלכם. וואטסאפ עלולה לחסום מספרים שמריצים בוטים,
-          לכן צריך מספר נפרד (SIM נוסף או מספר וירטואלי).
-        </strong>
-      </p>
 
       <div className="flex justify-end">
         <button
@@ -45,26 +43,97 @@ export function ConnectChannelStep({ name, onLater }: { name: string; onLater: (
           אחר כך
         </button>
       </div>
+
+      <WhatsappNumberConfirmDialog
+        open={confirmWhatsapp}
+        onClose={() => setConfirmWhatsapp(false)}
+        onConfirm={() => router.push("/app/bot/pair")}
+        onTelegram={() => router.push("/app/bot/telegram")}
+      />
     </div>
   );
 }
 
-function ChannelLink({
+function WhatsappNumberConfirmDialog({
+  open,
+  onClose,
+  onConfirm,
+  onTelegram,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  onTelegram: () => void;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+
+  useEffect(() => {
+    const el = dialogRef.current;
+    if (!el) return;
+    if (open && !el.open) el.showModal();
+    if (!open && el.open) el.close();
+  }, [open]);
+
+  return (
+    <dialog
+      ref={dialogRef}
+      aria-labelledby={titleId}
+      onClose={onClose}
+      onClick={(e) => {
+        // Backdrop = the dialog element itself; content sits in the inner form.
+        if (e.target === dialogRef.current) dialogRef.current?.close();
+      }}
+      className="fixed inset-0 m-auto backdrop:bg-espresso/40 rounded-2xl p-0 w-[min(92vw,480px)] border border-sand-light shadow-[0_20px_48px_rgba(44,24,16,0.18)]"
+    >
+      <form method="dialog" onSubmit={(e) => e.preventDefault()} dir="rtl">
+        <div className="p-5 sm:p-7">
+          <h2 id={titleId} className="font-display text-xl text-espresso mb-2">
+            יש לכם מספר ייעודי לסוכן?
+          </h2>
+          <p className="text-sm text-espresso leading-relaxed">
+            <strong className="font-bold">אל תחברו את המספר האישי שלכם.</strong> וואטסאפ עלולה לחסום מספרים שמריצים
+            בוטים, לכן הסוכן צריך מספר נפרד — SIM נוסף או מספר וירטואלי — שמותקן עליו וואטסאפ.
+          </p>
+        </div>
+        <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 px-5 pb-5 sm:px-7 sm:pb-6">
+          <button
+            type="button"
+            onClick={onTelegram}
+            className="px-4 py-3 rounded-lg text-sm text-espresso-light hover:text-espresso hover:bg-cream-dark transition"
+          >
+            לא, נמשיך עם טלגרם
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="px-4 py-3 rounded-lg text-sm font-medium bg-espresso text-cream hover:bg-espresso-light transition"
+          >
+            כן, יש לי מספר ייעודי
+          </button>
+        </div>
+      </form>
+    </dialog>
+  );
+}
+
+function ChannelChoice({
   href,
+  onClick,
   title,
   description,
   badge,
 }: {
-  href: string;
+  href?: string;
+  onClick?: () => void;
   title: string;
   description: string;
   badge?: string;
 }) {
-  return (
-    <Link
-      href={href}
-      className="flex flex-col gap-1 rounded-2xl border border-sand bg-white px-4 py-3.5 transition hover:border-terra hover:bg-terra-pale/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra"
-    >
+  const className =
+    "flex flex-col gap-1 text-start rounded-2xl border border-sand bg-white px-4 py-3.5 transition hover:border-terra hover:bg-terra-pale/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra";
+  const body = (
+    <>
       <span className="flex items-center gap-2">
         <span className="text-sm font-medium text-espresso">{title}</span>
         {badge ? (
@@ -72,6 +141,18 @@ function ChannelLink({
         ) : null}
       </span>
       <span className="text-xs text-espresso-light leading-relaxed">{description}</span>
-    </Link>
+    </>
+  );
+  if (href) {
+    return (
+      <Link href={href} className={className}>
+        {body}
+      </Link>
+    );
+  }
+  return (
+    <button type="button" onClick={onClick} className={className}>
+      {body}
+    </button>
   );
 }
