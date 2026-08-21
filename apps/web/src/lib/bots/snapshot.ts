@@ -19,6 +19,7 @@ export interface BotSnapshot {
   id: string;
   displayName: string;
   status: string;
+  containerCreated: boolean;
   pairingStatus: string;
   whatsappAccountId: string | null;
   hasWhatsappCreds: boolean;
@@ -36,6 +37,7 @@ export function toBotSnapshot(bot: Instance): BotSnapshot {
     id: bot.id,
     displayName: bot.displayName,
     status: bot.status,
+    containerCreated: bot.containerId !== null,
     pairingStatus: bot.pairingStatus,
     whatsappAccountId: bot.whatsappAccountId,
     hasWhatsappCreds: bot.hasWhatsappCreds,

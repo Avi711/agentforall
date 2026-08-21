@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { DeleteBotDialog } from "./DeleteBotDialog";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { useBotStatus, type BotSnapshot } from "./useBotStatus";
-import { BotAvatar, type AvatarTone } from "./Marks";
+import { BotAvatar, SurfaceCard, type AvatarTone } from "./Marks";
 import { CreatingPanel } from "./CreatingPanel";
 import { WhatsAppAccessDialog, accessLabel } from "./WhatsAppAccessSection";
 import { OwnerIdentityDialog, IDENTITY_HINT } from "./OwnerIdentityDialog";
@@ -165,7 +165,16 @@ export function BotCard({
   }
 
   if (bot.status === "provisioning") {
-    return <CreatingPanel name={bot.displayName} />;
+    return (
+      <SurfaceCard className="p-5 sm:p-12">
+        <CreatingPanel
+          name={bot.displayName}
+          restoring={false}
+          step={bot.containerCreated ? "starting" : "booting"}
+          uploadPercent={null}
+        />
+      </SurfaceCard>
+    );
   }
 
   return (

@@ -3,15 +3,41 @@
 import { useEffect, useState } from "react";
 import { MonogramDisc } from "./Marks";
 
-const QUICK_CHECKS = [
-  "פרטי הסוכן נשמרו",
-  "סביבת עבודה הוקצתה",
-  "ההרצה נשלחה לשרת",
+export type CreationStep = "registering" | "uploading" | "restoring" | "booting" | "starting";
+
+interface StepCopy {
+  id: CreationStep;
+  label: string;
+  detail: string;
+}
+
+const FRESH_STEPS: StepCopy[] = [
+  { id: "registering", label: "שומרים את הסוכן", detail: "רושמים את הסוכן ומקצים לו מפתח מודל." },
+  { id: "booting", label: "מקצים סביבה פרטית", detail: "יוצרים לסוכן קונטיינר משלו." },
+  { id: "starting", label: "הסוכן עולה", detail: "OpenClaw נטען ועובר בדיקת תקינות — בדרך כלל כ־20 שניות." },
+];
+
+const RESTORE_STEPS: StepCopy[] = [
+  { id: "uploading", label: "מעלים את קובץ הגיבוי", detail: "הקובץ נשלח לשרת בחלקים." },
+  { id: "restoring", label: "משחזרים את הגיבוי", detail: "רושמים את הסוכן ומצמידים אליו את הגיבוי." },
+  { id: "booting", label: "מקצים סביבה פרטית", detail: "יוצרים לסוכן קונטיינר משלו ומשחזרים את המצב." },
+  { id: "starting", label: "הסוכן עולה", detail: "OpenClaw נטען ועובר בדיקת תקינות — בדרך כלל כ־20 שניות." },
 ];
 
 const SECOND_MS = 1000;
+const SLOW_AFTER_SECONDS = 60;
 
-export function CreatingPanel({ name }: { name: string }) {
+export function CreatingPanel({
+  name,
+  restoring,
+  step,
+  uploadPercent,
+}: {
+  name: string;
+  restoring: boolean;
+  step: CreationStep;
+  uploadPercent: number | null;
+}) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   useEffect(() => {
@@ -22,17 +48,11 @@ export function CreatingPanel({ name }: { name: string }) {
     return () => clearInterval(id);
   }, []);
 
-  const phase = resolveProvisioningPhase(elapsedSeconds);
-  const progress = resolveProgress(elapsedSeconds);
+  const steps = restoring ? RESTORE_STEPS : FRESH_STEPS;
+  const activeIndex = steps.findIndex((s) => s.id === step);
 
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="relative rounded-[28px] border border-sand-light bg-white shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)] px-5 py-8 sm:px-10 sm:py-11 text-center overflow-hidden"
-    >
-      <span aria-hidden className="absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-sand-light to-transparent" />
-
+    <div role="status" aria-live="polite" className="text-center">
       <div className="relative mx-auto mb-6 inline-flex">
         <span aria-hidden className="absolute -inset-3 rounded-full bg-terra-pale animate-halo blur-[6px]" />
         <span aria-hidden className="absolute -inset-3">
@@ -46,78 +66,48 @@ export function CreatingPanel({ name }: { name: string }) {
         </span>
       </div>
 
-      <p className="text-[11px] uppercase tracking-[0.22em] text-terra mb-2">
-        מקימים סביבת סוכן
-      </p>
-      <h3 className="font-display text-2xl sm:text-3xl text-espresso mb-2 leading-tight break-words">
+      <p className="text-[11px] uppercase tracking-[0.22em] text-terra mb-2">מקימים סביבת סוכן</p>
+      <h3 className="font-display text-2xl sm:text-3xl text-espresso mb-6 leading-tight break-words">
         {name ? `מקים את ${name}` : "מקים את הסוכן"}
       </h3>
-      <p className="text-sm text-espresso-light mb-7 italic">
-        ההכנה הראשונית מהירה; ההפעלה של OpenClaw היא החלק שלוקח זמן.
-      </p>
 
-      <ol className="grid gap-2.5 sm:grid-cols-3 text-start mb-7">
-        {QUICK_CHECKS.map((label) => (
-          <li
-            key={label}
-            className="flex items-center gap-2.5 text-xs sm:text-[13px] text-espresso bg-cream/55 border border-sand-light/70 rounded-lg px-3 py-2.5"
-          >
-            <StepIcon state="done" />
-            <span className="leading-snug">{label}</span>
-          </li>
-        ))}
+      <ol className="mx-auto max-w-md space-y-2 text-start">
+        {steps.map((s, i) => {
+          const state = i < activeIndex ? "done" : i === activeIndex ? "active" : "pending";
+          return (
+            <li
+              key={s.id}
+              className={`flex items-start gap-3 rounded-xl border px-3.5 py-3 transition-colors ${
+                state === "active" ? "border-terra-light/60 bg-terra-pale/40" : "border-sand-light/70 bg-cream/40"
+              }`}
+            >
+              <span className="mt-0.5 shrink-0">
+                <StepIcon state={state} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className={`block text-sm ${state === "pending" ? "text-espresso-light" : "text-espresso"}`}>
+                  {s.label}
+                  {s.id === "uploading" && state === "active" && uploadPercent !== null ? (
+                    <span dir="ltr" className="ms-2 font-mono text-xs text-espresso-light">
+                      {uploadPercent}%
+                    </span>
+                  ) : null}
+                </span>
+                {state === "active" ? (
+                  <span className="mt-0.5 block text-xs leading-relaxed text-espresso-light">{s.detail}</span>
+                ) : null}
+              </span>
+            </li>
+          );
+        })}
       </ol>
 
-      <div className="border-y border-sand-light/75 py-6 text-start">
-        <div className="flex items-start justify-between gap-3 sm:gap-5 mb-5">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2.5 mb-2">
-              <StepIcon state="active" />
-              <p className="text-[11px] uppercase tracking-[0.18em] text-terra">
-                השלב המרכזי
-              </p>
-            </div>
-            <h4 className="font-display text-lg sm:text-xl text-espresso leading-tight">
-              {phase.title}
-            </h4>
-            <p className="mt-2 text-sm leading-relaxed text-espresso-light">
-              {phase.description}
-            </p>
-          </div>
-          <time
-            dir="ltr"
-            className="shrink-0 rounded-full border border-sand-light bg-white px-3 py-1.5 font-mono text-xs text-espresso-light"
-          >
-            {formatElapsed(elapsedSeconds)}
-          </time>
-        </div>
-
-        <div>
-          <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.18em] text-espresso-light/70 mb-2">
-            <span>מפעיל את סביבת הסוכן</span>
-            <span dir="ltr">{Math.round(progress)}%</span>
-          </div>
-          <div className="relative h-2 w-full rounded-full bg-cream-dark overflow-hidden">
-            <div
-              className="h-full rounded-full bg-terra transition-[width] duration-1000 ease-out"
-              style={{ width: `${progress}%` }}
-            />
-            <span
-              aria-hidden
-              className="absolute inset-y-0 w-16 -translate-x-16 bg-gradient-to-r from-transparent via-white/55 to-transparent animate-runtime-sweep"
-            />
-          </div>
-        </div>
-
-        <div className="mt-4 flex items-center gap-2 text-xs text-espresso-light">
-          <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-sage animate-ember" />
-          <span>{phase.note}</span>
-        </div>
+      <div className="mx-auto mt-5 flex max-w-md items-center justify-between text-xs text-espresso-light">
+        <span>{elapsedSeconds >= SLOW_AFTER_SECONDS ? "לוקח קצת יותר מהרגיל — עדיין ממתינים." : "כשהסוכן יהיה מוכן נציג כאן את שלב החיבור."}</span>
+        <time dir="ltr" className="rounded-full border border-sand-light bg-white px-2.5 py-1 font-mono">
+          {formatElapsed(elapsedSeconds)}
+        </time>
       </div>
-
-      <p className="mt-5 text-xs text-espresso-light/80 leading-relaxed">
-        כשהסוכן יהיה מוכן נציג כאן את שלב החיבור.
-      </p>
 
       <span className="sr-only">טוען</span>
     </div>
@@ -184,40 +174,6 @@ function StepIcon({ state }: { state: "done" | "active" | "pending" }) {
       <span className="h-1.5 w-1.5 rounded-full bg-sand" />
     </span>
   );
-}
-
-interface ProvisioningPhase {
-  title: string;
-  description: string;
-  note: string;
-}
-
-function resolveProvisioningPhase(elapsedSeconds: number): ProvisioningPhase {
-  if (elapsedSeconds >= 180) {
-    return {
-      title: "זה לוקח יותר מהרגיל",
-      description: "אנחנו עדיין מחכים שהשער של הסוכן יסיים לעלות. אפשר להשאיר את המסך פתוח.",
-      note: "אם זה לא משתנה בקרוב, נציג אפשרות ניסיון מחדש.",
-    };
-  }
-  if (elapsedSeconds >= 90) {
-    return {
-      title: "עדיין מפעילים את הסוכן",
-      description: "המערכת כבר נוצרה; עכשיו אנחנו ממתינים לאישור שהשער הפנימי עונה בצורה תקינה.",
-      note: "זמן ארוך מהרגיל, אבל התהליך עדיין פעיל.",
-    };
-  }
-  return {
-    title: "מפעילים את הסוכן",
-    description: "OpenClaw עולה בתוך קונטיינר פרטי, טוען את ההגדרות ומחכה לבדיקת בריאות ראשונה.",
-    note: "בדרך כלל זה מסתיים בתוך דקה.",
-  };
-}
-
-function resolveProgress(elapsedSeconds: number): number {
-  if (elapsedSeconds < 75) return 42 + (elapsedSeconds / 75) * 40;
-  if (elapsedSeconds < 150) return 82 + ((elapsedSeconds - 75) / 75) * 10;
-  return Math.min(96, 92 + ((elapsedSeconds - 150) / 180) * 4);
 }
 
 function formatElapsed(totalSeconds: number): string {

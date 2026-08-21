@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
-import { CreatingPanel } from "./CreatingPanel";
+import { CreatingPanel, type CreationStep } from "./CreatingPanel";
 import { ConnectChannelStep } from "./ConnectChannelStep";
+import { SurfaceCard } from "./Marks";
 
 const MAX_BACKUP_FILE_BYTES = 512 * 1024 * 1024;
 const DEFAULT_BACKUP_CONTENT_TYPE = "application/gzip";
@@ -12,11 +13,11 @@ const BACKUP_UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024;
 const MAX_UPLOAD_ATTEMPTS = 3;
 const READY_POLL_MS = 2_000;
 // Health-gated `running` lands ~20s after create; past this we stop waiting and show the real status.
-const READY_TIMEOUT_MS = 90_000;
+const READY_TIMEOUT_MS = 180_000;
 
 type Phase =
   | { kind: "form" }
-  | { kind: "creating"; name: string }
+  | { kind: "creating"; name: string; restoring: boolean; step: CreationStep; uploadPercent: number | null }
   | { kind: "connect"; name: string };
 
 export function CreateBotForm() {
@@ -28,6 +29,8 @@ export function CreateBotForm() {
   const [phase, setPhase] = useState<Phase>({ kind: "form" });
   const [error, setError] = useState<string | null>(null);
   const unmounted = useRef(false);
+  const cardRef = useRef<HTMLElement>(null);
+  const mountedPhase = useRef(false);
 
   useEffect(() => {
     unmounted.current = false;
@@ -36,21 +39,38 @@ export function CreateBotForm() {
     };
   }, []);
 
+  // Keep the card in view when its content changes (the panels differ a lot in height).
+  useEffect(() => {
+    if (!mountedPhase.current) {
+      mountedPhase.current = true;
+      return;
+    }
+    cardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [phase.kind]);
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const trimmedName = displayName.trim();
-    setPhase({ kind: "creating", name: trimmedName });
+    const restoring = backupFile !== null;
+    const report = (step: CreationStep, uploadPercent: number | null = null) => {
+      if (!unmounted.current) setPhase({ kind: "creating", name: trimmedName, restoring, step, uploadPercent });
+    };
+    report(restoring ? "uploading" : "registering");
     setError(null);
     try {
       const botId = backupFile
-        ? await createBotFromBackup(trimmedName, backupFile)
+        ? await createBotFromBackup(trimmedName, backupFile, report)
         : await createBot(trimmedName);
-      const ready = await waitUntilReady(botId, () => unmounted.current);
+      report("booting");
+      const ready = await waitUntilReady(botId, {
+        cancelled: () => unmounted.current,
+        onContainerCreated: () => report("starting"),
+      });
       if (unmounted.current) return;
       if (ready === "error") {
         throw new Error("ההקמה נכשלה. נסו שוב, ואם זה חוזר — דברו איתנו.");
       }
-      if (backupFile || ready === "timeout") {
+      if (restoring || ready === "timeout") {
         // Restored bots already carry their channels; on timeout the card shows the real status.
         router.refresh();
         return;
@@ -91,122 +111,144 @@ export function CreateBotForm() {
     selectBackupFile(e.dataTransfer.files.item(0));
   }
 
-  if (phase.kind === "creating") return <CreatingPanel name={phase.name} />;
-  if (phase.kind === "connect") {
-    return <ConnectChannelStep name={phase.name} onLater={() => router.refresh()} />;
-  }
-
   const createLabel = backupFile ? "יצירת סוכן מגיבוי" : "יצירת סוכן";
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      <label className="block">
-        <span className="block text-sm text-espresso-light mb-1.5">
-          איך הסוכן שלכם ייקרא?
-        </span>
-        <input
-          type="text"
-          required
-          maxLength={60}
-          value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-          placeholder="לדוגמה: ג׳ארוויס, שלומי, אלפרד"
-          className="w-full px-4 py-3 rounded-xl border border-sand bg-white text-espresso placeholder:text-sand focus:outline-none focus:border-terra focus:ring-2 focus:ring-terra-pale"
-        />
-      </label>
-
-      <div className="rounded-2xl border border-sand-light/80 bg-cream/55 overflow-hidden">
-        <button
-          type="button"
-          aria-expanded={restoreOpen}
-          onClick={() => setRestoreOpen((value) => !value)}
-          className="w-full flex items-center justify-between gap-4 px-4 py-3.5 text-start text-espresso hover:bg-cream-dark/55 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-inset"
-        >
-          <span className="min-w-0">
-            <span className="block text-sm font-medium">יש לכם קובץ גיבוי?</span>
-            <span className="block mt-0.5 text-xs text-espresso-light">
-              שחזור OpenClaw קיים במקום יצירה נקייה
-            </span>
-          </span>
-          <ChevronDownIcon open={restoreOpen} />
-        </button>
-
-        {restoreOpen ? (
-          <div className="border-t border-sand-light/70 px-4 py-4">
-            <label
-              onDragEnter={handleRestoreDrag}
-              onDragOver={handleRestoreDrag}
-              onDragLeave={handleRestoreDrag}
-              onDrop={handleRestoreDrop}
-              className={`block rounded-2xl border border-dashed px-4 py-4 cursor-pointer transition ${
-                dragActive
-                  ? "border-terra bg-terra-pale/80 text-terra"
-                  : "border-sand bg-white/70 hover:border-terra-light hover:bg-white text-espresso"
-              }`}
-            >
+    <SurfaceCard cardRef={cardRef} className="scroll-mt-6 p-5 sm:p-12">
+      {phase.kind === "creating" ? (
+        <div key="creating" className="animate-fade-up">
+          <CreatingPanel
+            name={phase.name}
+            restoring={phase.restoring}
+            step={phase.step}
+            uploadPercent={phase.uploadPercent}
+          />
+        </div>
+      ) : phase.kind === "connect" ? (
+        <div key="connect" className="animate-fade-up">
+          <ConnectChannelStep name={phase.name} onLater={() => router.refresh()} />
+        </div>
+      ) : (
+        <div key="form" className="animate-fade-up">
+          <p className="text-xs uppercase tracking-[0.22em] text-terra mb-3">התחלה</p>
+          <h2 className="font-display text-2xl sm:text-3xl text-espresso mb-3 leading-tight">
+            בואו ניצור לכם סוכן
+          </h2>
+          <p className="text-espresso-light max-w-md mb-8 leading-relaxed">
+            תוך דקות יהיה לכם עוזר אישי בטלגרם או בוואטסאפ — שמכיר אתכם, זוכר את
+            התזכורות, ומגיב 24/7.
+          </p>
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <label className="block">
+              <span className="block text-sm text-espresso-light mb-1.5">
+                איך הסוכן שלכם ייקרא?
+              </span>
               <input
-                type="file"
-                accept=".gz,.tgz,application/gzip,application/x-gzip"
-                onChange={(e) => selectBackupFile(e.target.files?.[0] ?? null)}
-                className="sr-only"
+                type="text"
+                required
+                maxLength={60}
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="לדוגמה: ג׳ארוויס, שלומי, אלפרד"
+                className="w-full px-4 py-3 rounded-xl border border-sand bg-white text-espresso placeholder:text-sand focus:outline-none focus:border-terra focus:ring-2 focus:ring-terra-pale"
               />
-              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cream-dark text-terra">
-                  <UploadIcon />
-                </span>
-                <div className="min-w-0 text-sm">
-                  <span className="block font-medium">
-                    {backupFile
-                      ? "קובץ הגיבוי נבחר"
-                      : "גררו לכאן קובץ גיבוי או לחצו לבחירה"}
-                  </span>
-                  <span className="block mt-0.5 text-xs text-espresso-light">
-                    קובץ .tar.gz או .tgz שהורדתם מהסוכן הקודם
-                  </span>
-                </div>
-
-                {backupFile ? (
-                  <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 sm:ms-auto sm:justify-end text-sm">
-                    <span className="max-w-full sm:max-w-[14rem] truncate font-medium text-espresso">
-                      {backupFile.name}
-                    </span>
-                    <span className="text-xs text-espresso-light">
-                      {formatFileSize(backupFile.size)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        selectBackupFile(null);
-                      }}
-                      className="text-xs font-medium text-terra hover:text-terra-light transition"
-                    >
-                      הסרה
-                    </button>
-                  </div>
-                ) : null}
-              </div>
             </label>
-          </div>
-        ) : null}
-      </div>
 
-      <div className="flex justify-stretch sm:justify-end">
-        <button
-          type="submit"
-          disabled={displayName.trim().length === 0}
-          className="w-full sm:w-auto px-6 py-3 rounded-xl bg-terra text-white font-medium hover:bg-terra-light transition disabled:opacity-50"
-        >
-          {createLabel}
-        </button>
-      </div>
+            <div className="rounded-2xl border border-sand-light/80 bg-cream/55 overflow-hidden">
+              <button
+                type="button"
+                aria-expanded={restoreOpen}
+                onClick={() => setRestoreOpen((value) => !value)}
+                className="w-full flex items-center justify-between gap-4 px-4 py-3.5 text-start text-espresso hover:bg-cream-dark/55 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-inset"
+              >
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">יש לכם קובץ גיבוי?</span>
+                  <span className="block mt-0.5 text-xs text-espresso-light">
+                    שחזור OpenClaw קיים במקום יצירה נקייה
+                  </span>
+                </span>
+                <ChevronDownIcon open={restoreOpen} />
+              </button>
 
-      {error ? (
-        <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
-          {error}
-        </p>
-      ) : null}
-    </form>
+              {restoreOpen ? (
+                <div className="border-t border-sand-light/70 px-4 py-4">
+                  <label
+                    onDragEnter={handleRestoreDrag}
+                    onDragOver={handleRestoreDrag}
+                    onDragLeave={handleRestoreDrag}
+                    onDrop={handleRestoreDrop}
+                    className={`block rounded-2xl border border-dashed px-4 py-4 cursor-pointer transition ${
+                      dragActive
+                        ? "border-terra bg-terra-pale/80 text-terra"
+                        : "border-sand bg-white/70 hover:border-terra-light hover:bg-white text-espresso"
+                    }`}
+                  >
+                    <input
+                      type="file"
+                      accept=".gz,.tgz,application/gzip,application/x-gzip"
+                      onChange={(e) => selectBackupFile(e.target.files?.[0] ?? null)}
+                      className="sr-only"
+                    />
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cream-dark text-terra">
+                        <UploadIcon />
+                      </span>
+                      <div className="min-w-0 text-sm">
+                        <span className="block font-medium">
+                          {backupFile
+                            ? "קובץ הגיבוי נבחר"
+                            : "גררו לכאן קובץ גיבוי או לחצו לבחירה"}
+                        </span>
+                        <span className="block mt-0.5 text-xs text-espresso-light">
+                          קובץ .tar.gz או .tgz שהורדתם מהסוכן הקודם
+                        </span>
+                      </div>
+
+                      {backupFile ? (
+                        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 sm:ms-auto sm:justify-end text-sm">
+                          <span className="max-w-full sm:max-w-[14rem] truncate font-medium text-espresso">
+                            {backupFile.name}
+                          </span>
+                          <span className="text-xs text-espresso-light">
+                            {formatFileSize(backupFile.size)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              selectBackupFile(null);
+                            }}
+                            className="text-xs font-medium text-terra hover:text-terra-light transition"
+                          >
+                            הסרה
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </label>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex justify-stretch sm:justify-end">
+              <button
+                type="submit"
+                disabled={displayName.trim().length === 0}
+                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-terra text-white font-medium hover:bg-terra-light transition disabled:opacity-50"
+              >
+                {createLabel}
+              </button>
+            </div>
+
+            {error ? (
+              <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+                {error}
+              </p>
+            ) : null}
+          </form>
+        </div>
+      )}
+    </SurfaceCard>
   );
 }
 
@@ -226,34 +268,51 @@ async function createBot(displayName: string): Promise<string> {
 type ReadyOutcome = "running" | "error" | "timeout";
 
 // Resolves once the orchestrator promotes the bot (health-gated), or when the bot fails to come up.
-async function waitUntilReady(botId: string, cancelled: () => boolean): Promise<ReadyOutcome> {
+async function waitUntilReady(
+  botId: string,
+  hooks: { cancelled: () => boolean; onContainerCreated: () => void },
+): Promise<ReadyOutcome> {
   const deadline = Date.now() + READY_TIMEOUT_MS;
+  let containerSeen = false;
   while (Date.now() < deadline) {
     await sleep(READY_POLL_MS);
-    if (cancelled()) return "timeout";
+    if (hooks.cancelled()) return "timeout";
     const res = await fetch(`/api/bot/${botId}`, { cache: "no-store" }).catch(() => null);
     if (!res || !res.ok) continue;
-    const status = botStatusOf(await res.json().catch(() => null));
-    if (status === "running") return "running";
-    if (status === "error") return "error";
+    const bot = botOf(await res.json().catch(() => null));
+    if (!bot) continue;
+    if (!containerSeen && bot.containerId) {
+      containerSeen = true;
+      hooks.onContainerCreated();
+    }
+    if (bot.status === "running") return "running";
+    if (bot.status === "error") return "error";
   }
   return "timeout";
 }
 
-function botIdOf(data: unknown): string {
-  const bot = (data as { bot?: { id?: unknown } } | null)?.bot;
-  if (bot && typeof bot.id === "string") return bot.id;
-  throw new Error(UNEXPECTED_ERROR_HE);
+interface BotProgress {
+  id: string;
+  status: string;
+  containerId: string | null;
 }
 
-function botStatusOf(data: unknown): string | null {
-  const bot = (data as { bot?: { status?: unknown } } | null)?.bot;
-  return bot && typeof bot.status === "string" ? bot.status : null;
+function botOf(data: unknown): BotProgress | null {
+  const bot = (data as { bot?: Record<string, unknown> } | null)?.bot;
+  if (!bot || typeof bot.id !== "string" || typeof bot.status !== "string") return null;
+  return { id: bot.id, status: bot.status, containerId: typeof bot.containerId === "string" ? bot.containerId : null };
+}
+
+function botIdOf(data: unknown): string {
+  const bot = botOf(data);
+  if (!bot) throw new Error(UNEXPECTED_ERROR_HE);
+  return bot.id;
 }
 
 async function createBotFromBackup(
   displayName: string,
   backupFile: File,
+  report: (step: CreationStep, uploadPercent?: number | null) => void,
 ): Promise<string> {
   if (backupFile.size > MAX_BACKUP_FILE_BYTES) {
     throw new Error("קובץ הגיבוי גדול מדי.");
@@ -274,7 +333,10 @@ async function createBotFromBackup(
     throw new Error(codeToHe(errorCode(sessionData)) ?? UNEXPECTED_ERROR_HE);
   }
 
-  await uploadBackupFile(sessionData.uploadUrl, backupFile, contentType);
+  await uploadBackupFile(sessionData.uploadUrl, backupFile, contentType, (percent) =>
+    report("uploading", percent),
+  );
+  report("restoring");
 
   const restoreRes = await fetch("/api/bot/import-complete", {
     method: "POST",
@@ -305,8 +367,10 @@ async function uploadBackupFile(
   uploadUrl: string,
   file: File,
   contentType: string,
+  onProgress: (percent: number) => void,
 ): Promise<void> {
   let offset = 0;
+  onProgress(0);
   while (offset < file.size) {
     const endExclusive = Math.min(offset + BACKUP_UPLOAD_CHUNK_BYTES, file.size);
     const chunk = file.slice(offset, endExclusive, contentType);
@@ -318,6 +382,7 @@ async function uploadBackupFile(
       offset,
       endExclusive,
     });
+    onProgress(Math.min(100, Math.round((offset / file.size) * 100)));
   }
 }
 

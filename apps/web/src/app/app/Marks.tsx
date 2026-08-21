@@ -114,3 +114,25 @@ function firstGlyph(value: string): string {
   const first = it.next().value ?? "·";
   return first.toLocaleUpperCase("he-IL");
 }
+
+export function SurfaceCard({
+  as: Tag = "section",
+  className = "",
+  cardRef,
+  children,
+}: {
+  as?: "section" | "article";
+  className?: string;
+  cardRef?: React.Ref<HTMLElement>;
+  children: React.ReactNode;
+}) {
+  return (
+    <Tag
+      ref={cardRef}
+      className={`relative bg-white rounded-[28px] border border-sand-light shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)] overflow-hidden ${className}`}
+    >
+      <span aria-hidden className="absolute top-0 inset-x-12 h-px bg-gradient-to-r from-transparent via-sand-light to-transparent" />
+      {children}
+    </Tag>
+  );
+}
