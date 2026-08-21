@@ -2,42 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { MonogramDisc } from "./Marks";
+import {
+  creationSteps,
+  resolvePercent,
+  type CreationTimelineEntry,
+} from "@/lib/bots/creation-progress";
 
-export type CreationStep = "registering" | "uploading" | "restoring" | "booting" | "starting";
-
-export interface CreationTimelineEntry {
-  id: CreationStep;
-  // null when the step was already under way before this view mounted (page reload).
-  startedAt: number | null;
-  endedAt: number | null;
-}
-
-interface StepCopy {
-  id: CreationStep;
-  label: string;
-  hint: string;
-  // Share of the ring this step owns; inside a step the ring eases toward the ceiling
-  // at the pace of `typicalSeconds` but only the real milestone completes it.
-  weight: number;
-  typicalSeconds: number;
-}
-
-const FRESH_STEPS: StepCopy[] = [
-  { id: "registering", label: "שומרים את הסוכן", hint: "רושמים את הסוכן ומקצים לו מפתח מודל", weight: 15, typicalSeconds: 3 },
-  { id: "booting", label: "מקצים סביבה פרטית", hint: "יוצרים לסוכן קונטיינר משלו", weight: 20, typicalSeconds: 5 },
-  { id: "starting", label: "הסוכן עולה", hint: "OpenClaw נטען ועובר בדיקת תקינות", weight: 65, typicalSeconds: 20 },
-];
-
-const RESTORE_STEPS: StepCopy[] = [
-  { id: "uploading", label: "מעלים את קובץ הגיבוי", hint: "הקובץ נשלח לשרת בחלקים", weight: 35, typicalSeconds: 30 },
-  { id: "restoring", label: "משחזרים את הגיבוי", hint: "רושמים את הסוכן ומצמידים אליו את הגיבוי", weight: 10, typicalSeconds: 4 },
-  { id: "booting", label: "מקצים סביבה פרטית", hint: "יוצרים לסוכן קונטיינר משלו ומשחזרים את המצב", weight: 15, typicalSeconds: 8 },
-  { id: "starting", label: "הסוכן עולה", hint: "OpenClaw נטען ועובר בדיקת תקינות", weight: 40, typicalSeconds: 20 },
-];
+export type { CreationStep, CreationTimelineEntry } from "@/lib/bots/creation-progress";
 
 const TICK_MS = 200;
 const SLOW_AFTER_MS = 60_000;
-const IN_STEP_CAP = 0.9;
 const RING_SIZE = 96;
 const RING_STROKE = 5;
 const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
@@ -71,11 +45,12 @@ export function CreatingPanel({
     return () => clearInterval(id);
   }, [ready, failure]);
 
-  const steps = restoring ? RESTORE_STEPS : FRESH_STEPS;
+  const steps = creationSteps(restoring);
   const current = timeline.length > 0 ? timeline[timeline.length - 1] : null;
   const activeIndex = ready ? steps.length : steps.findIndex((s) => s.id === current?.id);
-  const startedAt = timeline[0]?.startedAt ?? mountedAt;
-  const elapsedMs = Math.max(0, now - startedAt);
+  // After a reload we only know when this view started watching, so the timer is hidden.
+  const knownStart = timeline[0]?.startedAt ?? null;
+  const elapsedMs = Math.max(0, now - (knownStart ?? mountedAt));
   const secondsInStep = current?.startedAt ? Math.max(0, now - current.startedAt) / 1000 : 0;
   const percent = ready ? 100 : resolvePercent(steps, activeIndex, secondsInStep, uploadPercent);
   const stepNumber = Math.min(activeIndex + 1, steps.length);
@@ -96,32 +71,23 @@ export function CreatingPanel({
   return (
     <div role="status" aria-live="polite" aria-busy={!ready && !failure}>
       <div className="flex items-center gap-5">
-        <ProgressRing percent={percent} ready={ready} failed={failure !== null}>
-          <MonogramDisc letter={name || "א"} size="md" />
-        </ProgressRing>
+        <ProgressRing percent={percent} ready={ready} failed={failure !== null} />
         <div className="min-w-0 flex-1">
-          <p className="text-[11px] uppercase tracking-[0.22em] text-terra mb-1">
+          <p className="text-[11px] uppercase tracking-[0.22em] text-terra mb-1.5">
             {ready ? "הסוכן מוכן" : "מקימים את הסוכן"}
           </p>
-          <h3 className="font-display text-2xl sm:text-[1.75rem] text-espresso leading-tight break-words">{name}</h3>
-          <p className="relative mt-1 h-[21px] overflow-hidden text-sm text-espresso-light">
+          <div className="flex items-center gap-2.5">
+            <MonogramDisc letter={name || "א"} size="sm" />
+            <h3 className="min-w-0 truncate font-display text-2xl sm:text-[1.75rem] text-espresso leading-tight">{name}</h3>
+          </div>
+          <p className="relative mt-1.5 h-[21px] overflow-hidden text-sm text-espresso-light">
             <span key={status} className="absolute inset-0 animate-status-in">
               {status}
             </span>
           </p>
-          <div className="mt-1.5 flex items-baseline gap-2.5">
-            <span
-              dir="ltr"
-              className={`font-mono text-xl font-semibold tabular-nums leading-none transition-colors duration-300 ${
-                failure ? "text-red-700" : ready ? "text-sage-dark" : "text-espresso"
-              }`}
-            >
-              {percent}%
-            </span>
-            {!ready && !failure && elapsedMs < SLOW_AFTER_MS ? (
-              <span className="text-xs text-espresso-light">בדרך כלל כחצי דקה</span>
-            ) : null}
-          </div>
+          <p className="mt-0.5 h-4 text-xs text-espresso-light">
+            {!ready && !failure && elapsedMs < SLOW_AFTER_MS ? "בדרך כלל כחצי דקה" : ""}
+          </p>
         </div>
       </div>
 
@@ -173,9 +139,11 @@ export function CreatingPanel({
 
       <div className="mt-4 flex items-center justify-between gap-3 text-xs text-espresso-light">
         <span className={failure ? "text-red-700" : undefined}>{footer}</span>
-        <time dir="ltr" className="shrink-0 rounded-full border border-sand-light bg-white px-2.5 py-1 font-mono tabular-nums">
-          {formatElapsed(elapsedMs)}
-        </time>
+        {knownStart !== null ? (
+          <time dir="ltr" className="shrink-0 rounded-full border border-sand-light bg-white px-2.5 py-1 font-mono tabular-nums">
+            {formatElapsed(elapsedMs)}
+          </time>
+        ) : null}
       </div>
 
       {failure && onRetry ? (
@@ -195,19 +163,10 @@ export function CreatingPanel({
   );
 }
 
-function ProgressRing({
-  percent,
-  ready,
-  failed,
-  children,
-}: {
-  percent: number;
-  ready: boolean;
-  failed: boolean;
-  children: React.ReactNode;
-}) {
+function ProgressRing({ percent, ready, failed }: { percent: number; ready: boolean; failed: boolean }) {
   const offset = RING_CIRCUMFERENCE * (1 - percent / 100);
   const stroke = failed ? "stroke-red-600" : ready ? "stroke-sage" : "stroke-terra";
+  const tone = failed ? "text-red-700" : ready ? "text-sage-dark" : "text-espresso";
   return (
     <span
       role="progressbar"
@@ -243,7 +202,17 @@ function ProgressRing({
           className={`${stroke} transition-[stroke-dashoffset,stroke] duration-500 ease-linear`}
         />
       </svg>
-      <span className="absolute inset-0 grid place-items-center">{children}</span>
+      <span className={`absolute inset-0 grid place-items-center transition-colors duration-300 ${tone}`}>
+        {ready ? (
+          <svg viewBox="0 0 24 24" className="h-8 w-8 animate-status-in" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+            <path d="M5 12.5l4.5 4.5L19 7.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ) : (
+          <span dir="ltr" className="font-mono text-lg font-semibold tabular-nums leading-none">
+            {percent}%
+          </span>
+        )}
+      </span>
     </span>
   );
 }
@@ -275,18 +244,6 @@ function StepIcon({ state }: { state: StepState }) {
       <span className="h-1.5 w-1.5 rounded-full bg-sand-light" />
     </span>
   );
-}
-
-function resolvePercent(steps: StepCopy[], activeIndex: number, secondsInStep: number, uploadPercent: number | null): number {
-  if (activeIndex < 0) return 0;
-  const floor = steps.slice(0, activeIndex).reduce((sum, s) => sum + s.weight, 0);
-  const active = steps[activeIndex];
-  if (!active) return Math.min(100, floor);
-  const fraction =
-    active.id === "uploading" && uploadPercent !== null
-      ? uploadPercent / 100
-      : 1 - Math.exp(-secondsInStep / active.typicalSeconds);
-  return Math.round(floor + active.weight * Math.min(IN_STEP_CAP, fraction));
 }
 
 function formatDuration(ms: number): string {

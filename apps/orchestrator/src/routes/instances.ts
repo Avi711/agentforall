@@ -150,7 +150,7 @@ export const instanceRoutes: FastifyPluginAsync<InstanceRouteDeps> = async (
 
   app.get("/:id", async (request, reply) => {
     const { id } = UuidParam.parse(request.params);
-    const instance = await manager.get(id, request.authenticatedUserId);
+    const instance = await manager.describe(id, request.authenticatedUserId);
     return reply.send(sanitizeInstance(instance));
   });
 

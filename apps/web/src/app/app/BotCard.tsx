@@ -7,7 +7,8 @@ import { DeleteBotDialog } from "./DeleteBotDialog";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { useBotStatus, type BotSnapshot } from "./useBotStatus";
 import { BotAvatar, SurfaceCard, type AvatarTone } from "./Marks";
-import { CreatingPanel, type CreationTimelineEntry } from "./CreatingPanel";
+import { CreatingPanel } from "./CreatingPanel";
+import { timelineForStage } from "@/lib/bots/creation-progress";
 import { WhatsAppAccessDialog, accessLabel } from "./WhatsAppAccessSection";
 import { OwnerIdentityDialog, IDENTITY_HINT } from "./OwnerIdentityDialog";
 import { InfoHint } from "./InfoHint";
@@ -23,14 +24,6 @@ const THIRTY_DAYS_LABEL = "30 יום";
 const RESET_LABEL = "מתחדש ב-";
 
 type Channel = "whatsapp" | "telegram";
-
-// Reload mid-provisioning: earlier steps are known to be done, but their timings are gone.
-function provisioningTimeline(containerCreated: boolean): CreationTimelineEntry[] {
-  const done = { startedAt: null, endedAt: null };
-  return containerCreated
-    ? [{ id: "registering", ...done }, { id: "booting", ...done }, { id: "starting", startedAt: null, endedAt: null }]
-    : [{ id: "registering", ...done }, { id: "booting", startedAt: null, endedAt: null }];
-}
 
 export function BotCard({
   bot: initialBot,
@@ -178,7 +171,7 @@ export function BotCard({
         <CreatingPanel
           name={bot.displayName}
           restoring={false}
-          timeline={provisioningTimeline(bot.containerCreated)}
+          timeline={timelineForStage(bot.provisioningStage)}
           uploadPercent={null}
           ready={false}
           failure={null}

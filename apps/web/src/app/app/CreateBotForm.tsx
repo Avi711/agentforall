@@ -3,9 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
-import { CreatingPanel, type CreationStep, type CreationTimelineEntry } from "./CreatingPanel";
+import { CreatingPanel } from "./CreatingPanel";
 import { ConnectChannelStep } from "./ConnectChannelStep";
 import { SurfaceCard } from "./Marks";
+import { InstanceSchema } from "@/lib/orchestrator/types";
+import { toBotSnapshot, type BotSnapshot } from "@/lib/bots/snapshot";
+import {
+  isLaterStep,
+  stepForStage,
+  type CreationStep,
+  type CreationTimelineEntry,
+} from "@/lib/bots/creation-progress";
 
 const MAX_BACKUP_FILE_BYTES = 512 * 1024 * 1024;
 const DEFAULT_BACKUP_CONTENT_TYPE = "application/gzip";
@@ -105,7 +113,7 @@ export function CreateBotForm() {
       enter("booting");
       const ready = await waitUntilReady(botId, {
         cancelled: () => unmounted.current,
-        onContainerCreated: () => enter("starting"),
+        onStep: enter,
       });
       if (unmounted.current) return;
       if (ready === "error") throw new Error(PROVISION_FAILED_HE);
@@ -324,39 +332,36 @@ async function createBot(displayName: string): Promise<string> {
 type ReadyOutcome = "running" | "error" | "timeout";
 
 // Resolves once the orchestrator promotes the bot (health-gated), or when the bot fails to come up.
+// Each newly observed provisioning stage is reported as the step it starts.
 async function waitUntilReady(
   botId: string,
-  hooks: { cancelled: () => boolean; onContainerCreated: () => void },
+  hooks: { cancelled: () => boolean; onStep: (step: CreationStep) => void },
 ): Promise<ReadyOutcome> {
   const deadline = Date.now() + READY_TIMEOUT_MS;
-  let containerSeen = false;
+  let reported: CreationStep = "booting";
   while (Date.now() < deadline) {
     await sleep(READY_POLL_MS);
     if (hooks.cancelled()) return "timeout";
     const res = await fetch(`/api/bot/${botId}`, { cache: "no-store" }).catch(() => null);
+    // The bot vanished or the session ended: waiting longer cannot succeed.
+    if (res && (res.status === 404 || res.status === 401)) return "error";
     if (!res || !res.ok) continue;
     const bot = botOf(await res.json().catch(() => null));
     if (!bot) continue;
-    if (!containerSeen && bot.containerId) {
-      containerSeen = true;
-      hooks.onContainerCreated();
-    }
     if (bot.status === "running") return "running";
     if (bot.status === "error") return "error";
+    const step = stepForStage(bot.provisioningStage);
+    if (step && isLaterStep(step, reported)) {
+      reported = step;
+      hooks.onStep(step);
+    }
   }
   return "timeout";
 }
 
-interface BotProgress {
-  id: string;
-  status: string;
-  containerId: string | null;
-}
-
-function botOf(data: unknown): BotProgress | null {
-  const bot = (data as { bot?: Record<string, unknown> } | null)?.bot;
-  if (!bot || typeof bot.id !== "string" || typeof bot.status !== "string") return null;
-  return { id: bot.id, status: bot.status, containerId: typeof bot.containerId === "string" ? bot.containerId : null };
+function botOf(data: unknown): BotSnapshot | null {
+  const parsed = InstanceSchema.safeParse((data as { bot?: unknown } | null)?.bot);
+  return parsed.success ? toBotSnapshot(parsed.data) : null;
 }
 
 function botIdOf(data: unknown): string {

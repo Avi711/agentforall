@@ -36,6 +36,7 @@ import {
   isContainerUp,
 } from "../domain/types.js";
 import { InstanceOperationLock } from "./instance-operation-lock.js";
+import type { ProvisioningStage } from "../domain/provisioning.js";
 import type { TelegramBotApi } from "./telegram/bot-api.js";
 import {
   applyChannelDefaults,
@@ -59,6 +60,10 @@ export interface AgentBackupStream {
 
 // Docker's healthcheck StartPeriod is 90s; give a booting container that long plus slack before restarting it.
 const STARTUP_SETTLE_MS = 120_000;
+
+export interface InstanceDetails extends Instance {
+  provisioningStage: ProvisioningStage | null;
+}
 
 export class InstanceManager {
   constructor(
@@ -166,6 +171,14 @@ export class InstanceManager {
 
   async get(id: string, userId: string): Promise<Instance> {
     return this.requireOwnedInstance(id, userId);
+  }
+
+  // Detail view: while provisioning, surface the last recorded stage so clients can show real progress.
+  async describe(id: string, userId: string): Promise<InstanceDetails> {
+    const inst = await this.requireOwnedInstance(id, userId);
+    const provisioningStage =
+      inst.status === "provisioning" ? await this.eventLog.latestProvisioningStage(id) : null;
+    return { ...inst, provisioningStage };
   }
 
   async list(

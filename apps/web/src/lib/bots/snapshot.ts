@@ -1,4 +1,10 @@
-import { WHATSAPP_DM_ACCESS, type Instance, type WhatsappDmAccess } from "../orchestrator/types";
+import {
+  WHATSAPP_DM_ACCESS,
+  isProvisioningStage,
+  type Instance,
+  type ProvisioningStage,
+  type WhatsappDmAccess,
+} from "../orchestrator/types";
 
 export interface TelegramSnapshot {
   linked: boolean;
@@ -19,7 +25,7 @@ export interface BotSnapshot {
   id: string;
   displayName: string;
   status: string;
-  containerCreated: boolean;
+  provisioningStage: ProvisioningStage | null;
   pairingStatus: string;
   whatsappAccountId: string | null;
   hasWhatsappCreds: boolean;
@@ -37,7 +43,7 @@ export function toBotSnapshot(bot: Instance): BotSnapshot {
     id: bot.id,
     displayName: bot.displayName,
     status: bot.status,
-    containerCreated: bot.containerId !== null,
+    provisioningStage: provisioningStageOf(bot),
     pairingStatus: bot.pairingStatus,
     whatsappAccountId: bot.whatsappAccountId,
     hasWhatsappCreds: bot.hasWhatsappCreds,
@@ -76,4 +82,11 @@ function telegramSnapshot(channels: Channels): TelegramSnapshot | null {
     linked: typeof ch.botToken === "string",
     botUsername: typeof ch.botUsername === "string" ? ch.botUsername : null,
   };
+}
+
+// Older orchestrators omit the stage; the container id still tells us the environment exists.
+function provisioningStageOf(bot: Instance): ProvisioningStage | null {
+  if (isProvisioningStage(bot.provisioningStage)) return bot.provisioningStage;
+  if (bot.status !== "provisioning") return null;
+  return bot.containerId ? "container_created" : "reserved";
 }

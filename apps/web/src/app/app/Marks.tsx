@@ -87,7 +87,7 @@ export function MonogramDisc({
   children,
 }: {
   letter?: string;
-  size?: "md" | "lg" | "xl";
+  size?: "sm" | "md" | "lg" | "xl";
   children?: ReactNode;
 }) {
   const dim =
@@ -95,7 +95,9 @@ export function MonogramDisc({
       ? "w-24 h-24 text-[2.5rem]"
       : size === "lg"
         ? "w-20 h-20 text-[2.25rem]"
-        : "w-16 h-16 text-3xl";
+        : size === "md"
+          ? "w-16 h-16 text-3xl"
+          : "w-10 h-10 text-xl";
   return (
     <span
       aria-hidden="true"

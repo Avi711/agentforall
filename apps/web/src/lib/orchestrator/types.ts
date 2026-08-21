@@ -20,6 +20,9 @@ export const InstanceSchema = z.object({
   ]),
   containerName: z.string(),
   containerId: z.string().nullable(),
+  // Only on the detail endpoint while provisioning; the last stage the orchestrator recorded.
+  // Kept as a string so a newer orchestrator stage never breaks parsing; see isProvisioningStage.
+  provisioningStage: z.string().nullable().optional(),
   gatewayPort: z.number().int(),
   healthFailures: z.number().int(),
   errorMessage: z.string().nullable(),
@@ -51,6 +54,13 @@ export const InstanceSchema = z.object({
 });
 
 export type Instance = z.infer<typeof InstanceSchema>;
+
+export const PROVISIONING_STAGES = ["reserved", "container_created", "backup_restored", "started", "running"] as const;
+export type ProvisioningStage = (typeof PROVISIONING_STAGES)[number];
+
+export function isProvisioningStage(value: unknown): value is ProvisioningStage {
+  return typeof value === "string" && (PROVISIONING_STAGES as readonly string[]).includes(value);
+}
 
 export const BotUsageSchema = z.discriminatedUnion("supported", [
   z.object({

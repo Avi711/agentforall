@@ -1,6 +1,11 @@
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { instanceEvents } from "@agent-forall/db";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc, inArray } from "drizzle-orm";
+import {
+  PROVISIONING_EVENT_TYPES,
+  provisioningStageOf,
+  type ProvisioningStage,
+} from "../domain/provisioning.js";
 
 type DB = NodePgDatabase<Record<string, never>>;
 
@@ -33,6 +38,22 @@ export class EventRepository {
       payload: opts.payload ?? {},
       actor: opts.actor ?? "system",
     });
+  }
+
+  async latestProvisioningStage(instanceId: string): Promise<ProvisioningStage | null> {
+    const rows = await this.db
+      .select({ eventType: instanceEvents.eventType })
+      .from(instanceEvents)
+      .where(
+        and(
+          eq(instanceEvents.instanceId, instanceId),
+          inArray(instanceEvents.eventType, PROVISIONING_EVENT_TYPES),
+        ),
+      )
+      .orderBy(desc(instanceEvents.createdAt), desc(instanceEvents.id))
+      .limit(1);
+    const eventType = rows[0]?.eventType;
+    return eventType ? provisioningStageOf(eventType) : null;
   }
 
   async recent(instanceId: string, limit = 50): Promise<InstanceEvent[]> {
