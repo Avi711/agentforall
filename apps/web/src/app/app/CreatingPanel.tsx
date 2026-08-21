@@ -83,29 +83,6 @@ export function CreatingPanel({
         {name ? `מקים את ${name}` : "מקים את הסוכן"}
       </h3>
 
-      <div className="mx-auto mb-4 max-w-md text-start">
-        <div className="mb-2 flex items-center justify-between text-[11px] uppercase tracking-[0.18em] text-espresso-light/70">
-          <span>התקדמות</span>
-          <span dir="ltr">{percent}%</span>
-        </div>
-        <div
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={percent}
-          className="relative h-2 w-full overflow-hidden rounded-full bg-cream-dark"
-        >
-          <div
-            className="h-full rounded-full bg-terra transition-[width] duration-300 ease-out"
-            style={{ width: `${percent}%` }}
-          />
-          <span
-            aria-hidden
-            className="absolute inset-y-0 w-16 -translate-x-16 bg-gradient-to-r from-transparent via-white/55 to-transparent animate-runtime-sweep"
-          />
-        </div>
-      </div>
-
       <ol className="mx-auto max-w-md space-y-2 text-start">
         {steps.map((s, i) => {
           const state = i < activeIndex ? "done" : i === activeIndex ? "active" : "pending";
@@ -137,7 +114,30 @@ export function CreatingPanel({
         })}
       </ol>
 
-      <div className="mx-auto mt-5 flex max-w-md items-center justify-between text-xs text-espresso-light">
+      <div className="mx-auto mt-5 max-w-md text-start">
+        <div className="mb-2 flex items-center justify-between text-[11px] uppercase tracking-[0.18em] text-espresso-light/70">
+          <span>התקדמות</span>
+          <span dir="ltr">{percent}%</span>
+        </div>
+        <div
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={percent}
+          className="relative h-2 w-full overflow-hidden rounded-full bg-cream-dark"
+        >
+          <div
+            className="h-full rounded-full bg-terra transition-[width] duration-300 ease-out"
+            style={{ width: `${percent}%` }}
+          />
+          <span
+            aria-hidden
+            className="absolute inset-y-0 w-16 -translate-x-16 bg-gradient-to-r from-transparent via-white/55 to-transparent animate-runtime-sweep"
+          />
+        </div>
+      </div>
+
+      <div className="mx-auto mt-3 flex max-w-md items-center justify-between text-xs text-espresso-light">
         <span>{elapsedSeconds >= SLOW_AFTER_SECONDS ? "לוקח קצת יותר מהרגיל — עדיין ממתינים." : "כשהסוכן יהיה מוכן נציג כאן את שלב החיבור."}</span>
         <time dir="ltr" className="rounded-full border border-sand-light bg-white px-2.5 py-1 font-mono">
           {formatElapsed(elapsedSeconds)}
