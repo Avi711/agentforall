@@ -5,6 +5,8 @@ import type { FastifyBaseLogger } from "fastify";
 import type { RuntimeUser } from "./runtime-users.js";
 
 const DEFAULT_EXEC_STDOUT_LIMIT_BYTES = 512 * 1024 * 1024;
+// Docker re-checks health every 30s; poll faster so restarts are not needlessly delayed.
+const HEALTH_POLL_MS = 2_000;
 
 export interface ContainerCreateOptions {
   name: string;
@@ -303,6 +305,20 @@ export class ContainerRuntime {
   async isRunning(containerId: string): Promise<boolean> {
     const info = await this.inspect(containerId);
     return Boolean(info?.State.Running);
+  }
+
+  // Resolves once the container has left Docker's start-up window (healthy, unhealthy, restarting,
+  // stopped, or no healthcheck) or after timeoutMs; true only when it ended healthy.
+  async waitForHealthy(containerId: string, timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const info = await this.inspect(containerId);
+      const health = info?.State.Health?.Status;
+      const starting = Boolean(info?.State.Running) && !info?.State.Restarting && health === "starting";
+      if (!starting) return health === "healthy";
+      if (Date.now() >= deadline) return false;
+      await new Promise<void>((resolve) => setTimeout(resolve, HEALTH_POLL_MS));
+    }
   }
 
   async start(containerId: string): Promise<void> {

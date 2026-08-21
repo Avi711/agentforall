@@ -25,6 +25,8 @@ export interface AgentRuntimeAdapter {
   kind: AgentRuntimeKind;
   image: string;
   maxBackupBytes: number;
+  // true when the runtime watches its config file and applies changes itself (no container restart).
+  hotReloadsConfig: boolean;
 
   containerName(instanceId: string): string;
   stateVolumeName(instanceId: string): string;

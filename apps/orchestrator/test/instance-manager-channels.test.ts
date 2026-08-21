@@ -25,6 +25,8 @@ test("disconnectWhatsapp logs out, clears creds, keeps the channel and restarts"
   assert.deepEqual(after.config.channels, [
     { type: "whatsapp", dmAccess: "owner", ownerNumber: "+972501234567" },
   ]);
+  // The only restart left on this path; it waits for the start-up window first.
+  assert.deepEqual(h.calls.waited, ["container-1"]);
   assert.deepEqual(h.calls.restarted, ["container-1"]);
   assert.ok(h.calls.events.includes("whatsapp.disconnected"));
 });
@@ -78,7 +80,7 @@ test("disconnectTelegram revokes the token, strips the channel and reloads the r
   assert.deepEqual(h.calls.revokedBots, [42]);
   assert.deepEqual(after.config.channels, [{ type: "whatsapp", dmAccess: "owner" }]);
   assert.deepEqual(h.calls.refreshedConfigs, ["container-1"]);
-  assert.deepEqual(h.calls.restarted, ["container-1"]);
+  assert.deepEqual(h.calls.restarted, []);
   assert.ok(h.calls.events.includes("telegram.disconnected"));
 });
 
@@ -90,11 +92,12 @@ test("ensureWhatsappChannel adds an owner-only channel once", async () => {
     { type: "telegram", botToken: "t" },
     { type: "whatsapp", dmAccess: "owner" },
   ]);
-  assert.deepEqual(h.calls.restarted, ["container-1"]);
+  assert.deepEqual(h.calls.refreshedConfigs, ["container-1"]);
+  assert.deepEqual(h.calls.restarted, []);
 
   const again = await h.manager.ensureWhatsappChannel(h.instance().id, "user_1");
   assert.deepEqual(again.config.channels, added.config.channels);
-  assert.deepEqual(h.calls.restarted, ["container-1"]);
+  assert.deepEqual(h.calls.refreshedConfigs, ["container-1"]);
 });
 
 test("updateChannels writes and restarts only when the mutator returns a new array", async () => {
@@ -111,6 +114,15 @@ test("updateChannels writes and restarts only when the mutator returns a new arr
   assert.equal(changed.changed, true);
   assert.equal(changed.instance.config.channels.length, 2);
   assert.deepEqual(h.calls.refreshedConfigs, ["container-1"]);
+  // A hot-reloading runtime applies the file itself: no restart, no outage.
+  assert.deepEqual(h.calls.restarted, []);
+});
+
+test("config writes restart only runtimes that cannot hot-reload, and only after start-up settles", async () => {
+  const h = harness({ channels: [{ type: "whatsapp", dmAccess: "open" }], hotReload: false });
+  await h.manager.updateChannels(h.instance().id, "user_1", (channels) => [...channels, { type: "telegram" }]);
+  assert.deepEqual(h.calls.refreshedConfigs, ["container-1"]);
+  assert.deepEqual(h.calls.waited, ["container-1"]);
   assert.deepEqual(h.calls.restarted, ["container-1"]);
 });
 
@@ -138,6 +150,7 @@ interface Overrides {
   hasWhatsappCreds?: boolean;
   whatsappAccountId?: string | null;
   logoutCleared?: boolean;
+  hotReload?: boolean;
 }
 
 function harness(overrides: Overrides) {
@@ -145,6 +158,7 @@ function harness(overrides: Overrides) {
   const calls = {
     logout: [] as string[],
     cancelPairing: [] as string[],
+    waited: [] as string[],
     restarted: [] as string[],
     refreshedConfigs: [] as string[],
     revokedBots: [] as number[],
@@ -170,12 +184,17 @@ function harness(overrides: Overrides) {
     },
   };
   const runtime = {
+    waitForHealthy: async (containerId: string) => {
+      calls.waited.push(containerId);
+      return true;
+    },
     restart: async (containerId: string) => {
       calls.restarted.push(containerId);
     },
   };
   const registry = {
     get: () => ({
+      hotReloadsConfig: overrides.hotReload ?? true,
       refreshConfig: async (containerId: string) => {
         calls.refreshedConfigs.push(containerId);
       },

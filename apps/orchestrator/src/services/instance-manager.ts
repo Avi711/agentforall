@@ -57,6 +57,9 @@ export interface AgentBackupStream {
   done: Promise<void>;
 }
 
+// Docker's healthcheck StartPeriod is 90s; give a booting container that long plus slack before restarting it.
+const STARTUP_SETTLE_MS = 120_000;
+
 export class InstanceManager {
   constructor(
     private readonly repo: InstanceRepository,
@@ -124,15 +127,20 @@ export class InstanceManager {
         });
       }
 
+      // Restore into the not-yet-started container: one boot, no restart mid-migration.
       if (inst.backupImport.status === "pending") {
-        await this.ensureContainerStarted(containerId);
         await this.restoreAgentBackup(inst, containerId);
         await this.eventLog.append(id, "provision.backup_restored");
-        await this.runtime.restart(containerId);
       }
 
       await this.ensureContainerStarted(containerId);
       await this.eventLog.append(id, "provision.started");
+
+      // "running" means the gateway answered its health check, not merely that the process exists.
+      // If it never does, promote anyway so the health monitor owns it from here.
+      if (!(await this.runtime.waitForHealthy(containerId, STARTUP_SETTLE_MS))) {
+        this.logger.warn({ instanceId: id }, "gateway not healthy after start-up window");
+      }
 
       const promoted = await this.repo.updateStatus(id, "running", {
         expectedStatus: "provisioning",
@@ -222,7 +230,7 @@ export class InstanceManager {
     if (inst.hasWhatsappCreds) {
       await this.injectWhatsappCreds(id, inst.containerId);
     }
-    await this.runtime.restart(inst.containerId);
+    await this.restartContainer(inst.containerId);
     await this.repo.updateStatus(id, "running", {
       expectedStatus: inst.status,
     });
@@ -410,21 +418,8 @@ export class InstanceManager {
 
   async getUsage(id: string, userId: string): Promise<BotUsage> {
     const inst = await this.requireOwnedInstance(id, userId);
-    if (inst.config.provider.name !== "litellm") {
-      return { supported: false, reason: "not_litellm" };
-    }
     try {
-      const usage = await this.llmKeys.getUsage(inst);
-      return {
-        supported: true,
-        spendCents: usage.spendCents,
-        maxBudgetCents: usage.maxBudgetCents,
-        budgetDuration: usage.budgetDuration,
-        budgetResetAt: usage.budgetResetAt,
-        keyAlias: usage.keyAlias ?? inst.litellm.keyAlias,
-        models: usage.models,
-        updatedAt: new Date().toISOString(),
-      };
+      return await this.llmKeys.getBotUsage(inst);
     } catch (err) {
       this.logger.warn({ instanceId: id, err }, "LiteLLM usage lookup failed");
       throw new UpstreamUnavailableError("LiteLLM");
@@ -455,12 +450,13 @@ export class InstanceManager {
 
     await this.repo.updateConfig(id, merged);
 
-    // Config can be injected into stopped containers too.
+    // Config can be injected into stopped containers too. A hot-reloading runtime applies the file
+    // itself; restarting it would only cause an outage (and can wedge a still-booting container).
     if (inst.containerId) {
       const adapter = this.runtimes.get(inst.runtimeKind);
       await adapter.refreshConfig(inst.containerId, { ...inst, config: merged });
-      if (isContainerUp(inst.status)) {
-        await this.runtime.restart(inst.containerId);
+      if (!adapter.hotReloadsConfig && isContainerUp(inst.status)) {
+        await this.restartContainer(inst.containerId);
       }
     }
 
@@ -541,7 +537,7 @@ export class InstanceManager {
 
       // Restart so the runtime drops its in-memory socket; start() won't re-inject creds anymore.
       if (inst.containerId && containerUp) {
-        await this.runtime.restart(inst.containerId);
+        await this.restartContainer(inst.containerId);
       }
       return this.requireOwnedInstance(id, userId);
     });
@@ -791,6 +787,13 @@ export class InstanceManager {
       throw new InvalidStateError(inst.status, "export_backup");
     }
     return containerId;
+  }
+
+  // Restarting mid-first-boot leaves OpenClaw's startup-migration lock behind (5-minute lease) and
+  // crash-loops the container, so let the start-up window finish first; an unhealthy one restarts at once.
+  private async restartContainer(containerId: string): Promise<void> {
+    await this.runtime.waitForHealthy(containerId, STARTUP_SETTLE_MS);
+    await this.runtime.restart(containerId);
   }
 
   private async refreshRuntimeConfig(inst: Instance): Promise<void> {

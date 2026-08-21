@@ -38,6 +38,8 @@ import {
 export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   readonly kind = "openclaw" as const;
   readonly maxBackupBytes = OPENCLAW_MAX_BACKUP_BYTES;
+  // The gateway watches openclaw.json (gateway.reload.mode=hybrid) and hot-applies channels/session/agents.
+  readonly hotReloadsConfig = true;
 
   constructor(
     private readonly runtime: ContainerRuntime,
@@ -89,21 +91,30 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     return generateOpenclawFiles(config, gatewayToken);
   }
 
+  // Writes the file; the gateway's own hot reload applies it. A stopped or crash-looping container
+  // can't be read (exec is refused), so it gets a freshly generated file instead — putArchive works either way.
   async refreshConfig(containerId: string, instance: Instance): Promise<void> {
-    // readConfig execs into the container, which stopped containers reject;
-    // putArchive works either way, so fall back to a freshly generated config.
-    const files = (await this.runtime.isRunning(containerId))
-      ? generateRuntimePatchedOpenclawFiles(
-          await this.readConfig(containerId),
-          instance.config,
-          instance.gatewayToken,
-        )
-      : generateOpenclawFiles(instance.config, instance.gatewayToken);
+    const existing = (await this.runtime.isRunning(containerId))
+      ? await this.tryReadConfig(containerId)
+      : null;
+    const files =
+      existing === null
+        ? generateOpenclawFiles(instance.config, instance.gatewayToken)
+        : generateRuntimePatchedOpenclawFiles(existing, instance.config, instance.gatewayToken);
     await this.runtime.putArchive(
       containerId,
       OPENCLAW_STATE_PARENT,
       await buildOpenclawConfigTar(files),
     );
+  }
+
+  private async tryReadConfig(containerId: string): Promise<string | null> {
+    try {
+      return await this.readConfig(containerId);
+    } catch {
+      // Docker refuses exec while a container is restarting; the fresh file is the safe fallback.
+      return null;
+    }
   }
 
   injectWhatsappSession(

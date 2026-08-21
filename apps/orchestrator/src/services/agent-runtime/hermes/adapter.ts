@@ -34,6 +34,8 @@ import {
 export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
   readonly kind = "hermes" as const;
   readonly maxBackupBytes = HERMES_MAX_BACKUP_BYTES;
+  // Hermes reads config at boot only.
+  readonly hotReloadsConfig = false;
 
   constructor(
     private readonly runtime: ContainerRuntime,
