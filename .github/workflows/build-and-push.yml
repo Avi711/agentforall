@@ -1,16 +1,8 @@
 name: build-and-push
 
+# Manual only until Workload Identity Federation (WIF_PROVIDER / GCP_SA_EMAIL secrets) is configured;
+# production images are built via Cloud Build and deployed by digest (see DEPLOY_HANDOFF.md).
 on:
-  push:
-    branches: [main]
-    paths:
-      - "apps/orchestrator/**"
-      - "apps/whatsapp-pairing/**"
-      - "infra/litellm/**"
-      - "packages/db/**"
-      - "package.json"
-      - "package-lock.json"
-      - ".github/workflows/build-and-push.yml"
   workflow_dispatch:
 
 env:
