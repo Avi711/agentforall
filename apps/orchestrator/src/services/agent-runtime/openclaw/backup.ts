@@ -9,19 +9,23 @@ import {
   OPENCLAW_MAX_RESTORE_ENTRIES,
   OPENCLAW_STATE_ROOT,
   OPENCLAW_USER,
+  OPENCLAW_WHATSAPP_SESSION_DIR,
 } from "./constants.js";
 
-const EXCLUDED_TOP_LEVEL_ENTRIES = new Set([".env", "logs", "npm"]);
+// WhatsApp device creds never travel with a backup: they are secrets in a user-downloadable file,
+// and a restored bot booting with another bot's device would create a ghost session. Re-pair instead.
+const EXCLUDED_TOP_LEVEL_ENTRIES = new Set([".env", "logs", "npm", OPENCLAW_WHATSAPP_SESSION_DIR]);
 
 export function buildOpenclawBackupCommand(
   opts: { outputPath?: string } = {},
 ): string {
   const output = opts.outputPath ? `"${opts.outputPath}"` : "-";
+  const excludes = [...EXCLUDED_TOP_LEVEL_ENTRIES].map((name) => `! -name ${name}`).join(" ");
   return [
     `cd ${OPENCLAW_STATE_ROOT}`,
     "&&",
     "find . -mindepth 1 -maxdepth 1",
-    "! -name .env ! -name logs ! -name npm",
+    excludes,
     "-print 2>/dev/null",
     `| tar -czf ${output} -T -`,
   ].join(" ");
@@ -180,7 +184,8 @@ function isSafeLinkName(linkname: string | null | undefined): boolean {
   );
 }
 
+// Same exclusions on restore, so a hand-built or older archive can't smuggle them back in.
 function shouldRestoreOpenclawEntry(relative: string): boolean {
-  const topLevel = relative.split("/")[0];
-  return topLevel !== ".env";
+  const topLevel = relative.split("/")[0] ?? "";
+  return !EXCLUDED_TOP_LEVEL_ENTRIES.has(topLevel);
 }
