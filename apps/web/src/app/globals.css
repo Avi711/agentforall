@@ -54,6 +54,20 @@ body {
   animation: fade-up 0.7s ease-out both;
 }
 
+@keyframes status-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-status-in { animation: status-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+/* Indeterminate segment orbiting under the determinate ring: "still moving" even while a step waits. */
+@keyframes ring-orbit { to { stroke-dashoffset: -1000; } }
+.animate-ring-orbit { animation: ring-orbit 7s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up, .animate-status-in, .animate-ring-orbit, .animate-spin { animation: none; }
+}
+
 /* Floating animation for chat mockup */
 @keyframes float {
   0%, 100% { transform: translateY(0) rotate(-1deg); }

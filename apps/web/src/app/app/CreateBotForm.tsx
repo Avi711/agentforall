@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
-import { CreatingPanel, type CreationStep } from "./CreatingPanel";
+import { CreatingPanel, type CreationStep, type CreationTimelineEntry } from "./CreatingPanel";
 import { ConnectChannelStep } from "./ConnectChannelStep";
 import { SurfaceCard } from "./Marks";
 
@@ -14,11 +14,22 @@ const MAX_UPLOAD_ATTEMPTS = 3;
 const READY_POLL_MS = 2_000;
 // Health-gated `running` lands ~20s after create; past this we stop waiting and show the real status.
 const READY_TIMEOUT_MS = 180_000;
+const READY_BEAT_MS = 900;
+const PROVISION_FAILED_HE = "לא הצלחנו להעלות את הסוכן. נסו שוב; אם זה חוזר — דברו איתנו.";
 
-type Phase =
-  | { kind: "form" }
-  | { kind: "creating"; name: string; restoring: boolean; step: CreationStep; uploadPercent: number | null }
-  | { kind: "connect"; name: string };
+interface CreatingState {
+  kind: "creating";
+  name: string;
+  restoring: boolean;
+  timeline: CreationTimelineEntry[];
+  uploadPercent: number | null;
+  ready: boolean;
+  failure: string | null;
+  // Set once the orchestrator row exists; a retry removes it first so it doesn't linger in `error`.
+  botId: string | null;
+}
+
+type Phase = { kind: "form" } | CreatingState | { kind: "connect"; name: string };
 
 export function CreateBotForm() {
   const router = useRouter();
@@ -48,38 +59,80 @@ export function CreateBotForm() {
     cardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [phase.kind]);
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const trimmedName = displayName.trim();
-    const restoring = backupFile !== null;
-    const report = (step: CreationStep, uploadPercent: number | null = null) => {
-      if (!unmounted.current) setPhase({ kind: "creating", name: trimmedName, restoring, step, uploadPercent });
+    void startCreation(displayName.trim(), backupFile, null);
+  }
+
+  async function startCreation(name: string, file: File | null, previousBotId: string | null) {
+    const restoring = file !== null;
+    const patch = (update: (prev: CreatingState) => CreatingState) => {
+      if (unmounted.current) return;
+      setPhase((prev) => (prev.kind === "creating" ? update(prev) : prev));
     };
-    report(restoring ? "uploading" : "registering");
+    const enter = (step: CreationStep) =>
+      patch((prev) => {
+        const now = Date.now();
+        const closed = prev.timeline.map((t, i) =>
+          i === prev.timeline.length - 1 && t.endedAt === null ? { ...t, endedAt: now } : t,
+        );
+        return { ...prev, timeline: [...closed, { id: step, startedAt: now, endedAt: null }], uploadPercent: null };
+      });
+    const report = (step: CreationStep, uploadPercent: number | null = null) =>
+      patch((prev) =>
+        prev.timeline.at(-1)?.id === step ? { ...prev, uploadPercent } : prev,
+      );
+
     setError(null);
+    setPhase({
+      kind: "creating",
+      name,
+      restoring,
+      timeline: [],
+      uploadPercent: null,
+      ready: false,
+      failure: null,
+      botId: null,
+    });
+    enter(restoring ? "uploading" : "registering");
+
     try {
-      const botId = backupFile
-        ? await createBotFromBackup(trimmedName, backupFile, report)
-        : await createBot(trimmedName);
-      report("booting");
+      if (previousBotId) await deleteBot(previousBotId);
+      const botId = file
+        ? await createBotFromBackup(name, file, { enter, report })
+        : await createBot(name);
+      patch((prev) => ({ ...prev, botId }));
+      enter("booting");
       const ready = await waitUntilReady(botId, {
         cancelled: () => unmounted.current,
-        onContainerCreated: () => report("starting"),
+        onContainerCreated: () => enter("starting"),
       });
       if (unmounted.current) return;
-      if (ready === "error") {
-        throw new Error("ההקמה נכשלה. נסו שוב, ואם זה חוזר — דברו איתנו.");
-      }
-      if (restoring || ready === "timeout") {
-        // Restored bots already carry their channels; on timeout the card shows the real status.
+      if (ready === "error") throw new Error(PROVISION_FAILED_HE);
+      if (ready === "timeout") {
+        // Past the wait budget: the dashboard card shows the real status.
         router.refresh();
         return;
       }
-      setPhase({ kind: "connect", name: trimmedName });
+      patch((prev) => ({
+        ...prev,
+        ready: true,
+        timeline: prev.timeline.map((t) => (t.endedAt === null ? { ...t, endedAt: Date.now() } : t)),
+      }));
+      await sleep(READY_BEAT_MS);
+      if (unmounted.current) return;
+      if (restoring) {
+        // Restored bots already carry their channels.
+        router.refresh();
+        return;
+      }
+      setPhase({ kind: "connect", name });
     } catch (err) {
       if (unmounted.current) return;
-      setError(err instanceof Error ? err.message : UNEXPECTED_ERROR_HE);
-      setPhase({ kind: "form" });
+      const message = err instanceof Error ? err.message : UNEXPECTED_ERROR_HE;
+      setPhase((prev) =>
+        prev.kind === "creating" ? { ...prev, failure: message } : prev,
+      );
     }
   }
 
@@ -120,8 +173,11 @@ export function CreateBotForm() {
           <CreatingPanel
             name={phase.name}
             restoring={phase.restoring}
-            step={phase.step}
+            timeline={phase.timeline}
             uploadPercent={phase.uploadPercent}
+            ready={phase.ready}
+            failure={phase.failure}
+            onRetry={() => void startCreation(phase.name, backupFile, phase.botId)}
           />
         </div>
       ) : phase.kind === "connect" ? (
@@ -309,10 +365,15 @@ function botIdOf(data: unknown): string {
   return bot.id;
 }
 
+async function deleteBot(botId: string): Promise<void> {
+  // Best effort: a failed row that survives is hidden from the dashboard and cleaned up by support.
+  await fetch(`/api/bot/${botId}`, { method: "DELETE" }).catch(() => undefined);
+}
+
 async function createBotFromBackup(
   displayName: string,
   backupFile: File,
-  report: (step: CreationStep, uploadPercent?: number | null) => void,
+  progress: { enter: (step: CreationStep) => void; report: (step: CreationStep, uploadPercent: number) => void },
 ): Promise<string> {
   if (backupFile.size > MAX_BACKUP_FILE_BYTES) {
     throw new Error("קובץ הגיבוי גדול מדי.");
@@ -334,9 +395,9 @@ async function createBotFromBackup(
   }
 
   await uploadBackupFile(sessionData.uploadUrl, backupFile, contentType, (percent) =>
-    report("uploading", percent),
+    progress.report("uploading", percent),
   );
-  report("restoring");
+  progress.enter("restoring");
 
   const restoreRes = await fetch("/api/bot/import-complete", {
     method: "POST",
