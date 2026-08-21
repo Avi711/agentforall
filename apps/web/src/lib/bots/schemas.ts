@@ -7,7 +7,8 @@ export const BotIdParamsSchema = z.object({
 
 export const CreateBotBodySchema = z.object({
   displayName: z.string().min(1, "bot name is required").max(60),
-  channel: z.enum(BOT_CHANNELS),
+  // The orchestrator needs one channel at creation; an unlinked telegram channel is inert.
+  channel: z.enum(BOT_CHANNELS).default("telegram"),
 }).strict();
 
 export const BackupUploadSessionBodySchema = z.object({

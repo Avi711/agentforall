@@ -12,7 +12,7 @@ export type Handler<Body> = (ctx: {
 }) => Promise<Response> | Response;
 
 export interface HandlerOptions<Body> {
-  bodySchema?: z.ZodType<Body>;
+  bodySchema?: z.ZodType<Body, z.ZodTypeDef, unknown>;
   /** Reject with 403 consent_required if user hasn't accepted current version. */
   requireConsent?: boolean;
 }

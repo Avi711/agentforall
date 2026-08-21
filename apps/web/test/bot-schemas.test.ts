@@ -15,7 +15,10 @@ test("bot id params require UUIDs", () => {
 });
 
 test("bot creation and phone request bodies are constrained", () => {
-  assert.equal(CreateBotBodySchema.safeParse({ displayName: "Agent" }).success, true);
+  assert.deepEqual(CreateBotBodySchema.parse({ displayName: "Agent" }), {
+    displayName: "Agent",
+    channel: "telegram",
+  });
   assert.equal(
     CreateBotBodySchema.safeParse({
       displayName: "Agent",

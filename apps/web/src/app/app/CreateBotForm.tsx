@@ -1,43 +1,65 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 import { CreatingPanel } from "./CreatingPanel";
+import { ConnectChannelStep } from "./ConnectChannelStep";
 
 const MAX_BACKUP_FILE_BYTES = 512 * 1024 * 1024;
 const DEFAULT_BACKUP_CONTENT_TYPE = "application/gzip";
 const BACKUP_UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024;
 const MAX_UPLOAD_ATTEMPTS = 3;
+const READY_POLL_MS = 2_000;
+// Health-gated `running` lands ~20s after create; past this we stop waiting and show the real status.
+const READY_TIMEOUT_MS = 90_000;
 
-type BotChannel = "telegram" | "whatsapp";
+type Phase =
+  | { kind: "form" }
+  | { kind: "creating"; name: string }
+  | { kind: "connect"; name: string };
 
 export function CreateBotForm() {
   const router = useRouter();
   const [displayName, setDisplayName] = useState("");
-  const [channel, setChannel] = useState<BotChannel>("telegram");
   const [backupFile, setBackupFile] = useState<File | null>(null);
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [dragActive, setDragActive] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<Phase>({ kind: "form" });
   const [error, setError] = useState<string | null>(null);
+  const unmounted = useRef(false);
+
+  useEffect(() => {
+    unmounted.current = false;
+    return () => {
+      unmounted.current = true;
+    };
+  }, []);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setBusy(true);
+    const trimmedName = displayName.trim();
+    setPhase({ kind: "creating", name: trimmedName });
     setError(null);
     try {
-      const trimmedName = displayName.trim();
-      if (backupFile) {
-        await createBotFromBackup(trimmedName, backupFile);
-      } else {
-        await createBot(trimmedName, channel);
+      const botId = backupFile
+        ? await createBotFromBackup(trimmedName, backupFile)
+        : await createBot(trimmedName);
+      const ready = await waitUntilReady(botId, () => unmounted.current);
+      if (unmounted.current) return;
+      if (ready === "error") {
+        throw new Error("ההקמה נכשלה. נסו שוב, ואם זה חוזר — דברו איתנו.");
       }
-      router.refresh();
-      router.push(!backupFile && channel === "telegram" ? "/app/bot/telegram" : "/app");
+      if (backupFile || ready === "timeout") {
+        // Restored bots already carry their channels; on timeout the card shows the real status.
+        router.refresh();
+        return;
+      }
+      setPhase({ kind: "connect", name: trimmedName });
     } catch (err) {
+      if (unmounted.current) return;
       setError(err instanceof Error ? err.message : UNEXPECTED_ERROR_HE);
-      setBusy(false);
+      setPhase({ kind: "form" });
     }
   }
 
@@ -69,7 +91,10 @@ export function CreateBotForm() {
     selectBackupFile(e.dataTransfer.files.item(0));
   }
 
-  if (busy) return <CreatingPanel name={displayName.trim()} />;
+  if (phase.kind === "creating") return <CreatingPanel name={phase.name} />;
+  if (phase.kind === "connect") {
+    return <ConnectChannelStep name={phase.name} onLater={() => router.refresh()} />;
+  }
 
   const createLabel = backupFile ? "יצירת סוכן מגיבוי" : "יצירת סוכן";
 
@@ -89,35 +114,6 @@ export function CreateBotForm() {
           className="w-full px-4 py-3 rounded-xl border border-sand bg-white text-espresso placeholder:text-sand focus:outline-none focus:border-terra focus:ring-2 focus:ring-terra-pale"
         />
       </label>
-
-      {backupFile ? null : (
-        <fieldset>
-          <legend className="block text-sm text-espresso-light mb-1.5">
-            איפה תדברו עם הסוכן?
-          </legend>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <ChannelOption
-              selected={channel === "telegram"}
-              onSelect={() => setChannel("telegram")}
-              title="טלגרם"
-              badge="מומלץ"
-              description="חיבור מיידי בשתי לחיצות — בלי מספר טלפון"
-            />
-            <ChannelOption
-              selected={channel === "whatsapp"}
-              onSelect={() => setChannel("whatsapp")}
-              title="וואטסאפ"
-              description="דורש מספר טלפון ייעודי לסוכן"
-            />
-          </div>
-          {channel === "whatsapp" ? (
-            <p className="mt-2 text-xs text-espresso-light leading-relaxed">
-              חשוב: אל תחברו את המספר האישי שלכם. וואטסאפ עלולה לחסום מספרים
-              שמריצים בוטים, לכן צריך מספר נפרד (SIM נוסף או מספר וירטואלי).
-            </p>
-          ) : null}
-        </fieldset>
-      )}
 
       <div className="rounded-2xl border border-sand-light/80 bg-cream/55 overflow-hidden">
         <button
@@ -214,22 +210,51 @@ export function CreateBotForm() {
   );
 }
 
-async function createBot(displayName: string, channel: BotChannel): Promise<void> {
+async function createBot(displayName: string): Promise<string> {
   const res = await fetch("/api/bot", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ displayName, channel }),
+    body: JSON.stringify({ displayName }),
   });
   const data: unknown = await res.json().catch(() => null);
   if (!res.ok) {
     throw new Error(codeToHe(errorCode(data)) ?? UNEXPECTED_ERROR_HE);
   }
+  return botIdOf(data);
+}
+
+type ReadyOutcome = "running" | "error" | "timeout";
+
+// Resolves once the orchestrator promotes the bot (health-gated), or when the bot fails to come up.
+async function waitUntilReady(botId: string, cancelled: () => boolean): Promise<ReadyOutcome> {
+  const deadline = Date.now() + READY_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await sleep(READY_POLL_MS);
+    if (cancelled()) return "timeout";
+    const res = await fetch(`/api/bot/${botId}`, { cache: "no-store" }).catch(() => null);
+    if (!res || !res.ok) continue;
+    const status = botStatusOf(await res.json().catch(() => null));
+    if (status === "running") return "running";
+    if (status === "error") return "error";
+  }
+  return "timeout";
+}
+
+function botIdOf(data: unknown): string {
+  const bot = (data as { bot?: { id?: unknown } } | null)?.bot;
+  if (bot && typeof bot.id === "string") return bot.id;
+  throw new Error(UNEXPECTED_ERROR_HE);
+}
+
+function botStatusOf(data: unknown): string | null {
+  const bot = (data as { bot?: { status?: unknown } } | null)?.bot;
+  return bot && typeof bot.status === "string" ? bot.status : null;
 }
 
 async function createBotFromBackup(
   displayName: string,
   backupFile: File,
-): Promise<void> {
+): Promise<string> {
   if (backupFile.size > MAX_BACKUP_FILE_BYTES) {
     throw new Error("קובץ הגיבוי גדול מדי.");
   }
@@ -260,6 +285,7 @@ async function createBotFromBackup(
   if (!restoreRes.ok) {
     throw new Error(codeToHe(errorCode(restoreData)) ?? UNEXPECTED_ERROR_HE);
   }
+  return botIdOf(restoreData);
 }
 
 function isBackupUploadSession(
@@ -379,49 +405,6 @@ function codeToHe(code: string | undefined): string | undefined {
     default:
       return undefined;
   }
-}
-
-function ChannelOption({
-  selected,
-  onSelect,
-  title,
-  description,
-  badge,
-}: {
-  selected: boolean;
-  onSelect: () => void;
-  title: string;
-  description: string;
-  badge?: string;
-}) {
-  return (
-    <label
-      className={`flex flex-col gap-1 rounded-2xl border px-4 py-3.5 cursor-pointer transition ${
-        selected
-          ? "border-terra bg-terra-pale/60 shadow-[inset_0_0_0_1px_var(--tw-shadow-color)] shadow-terra/40"
-          : "border-sand bg-white hover:border-terra-light"
-      }`}
-    >
-      <input
-        type="radio"
-        name="channel"
-        checked={selected}
-        onChange={onSelect}
-        className="sr-only"
-      />
-      <span className="flex items-center gap-2">
-        <span className="text-sm font-medium text-espresso">{title}</span>
-        {badge ? (
-          <span className="rounded-full bg-terra text-white text-[10px] font-medium px-2 py-0.5">
-            {badge}
-          </span>
-        ) : null}
-      </span>
-      <span className="text-xs text-espresso-light leading-relaxed">
-        {description}
-      </span>
-    </label>
-  );
 }
 
 function ChevronDownIcon({ open }: { open: boolean }) {

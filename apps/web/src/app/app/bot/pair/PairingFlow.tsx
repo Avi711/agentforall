@@ -229,8 +229,14 @@ export function PairingFlow({ botId }: Props) {
         <h1 className="font-display text-xl sm:text-2xl text-espresso mb-2 leading-tight">
           חיבור WhatsApp לבוט שלכם
         </h1>
-        <p className="text-espresso-light mb-6 italic">
+        <p className="text-espresso-light mb-3 italic">
           סרקו את הקוד בטלפון, או בקשו קוד בן 8 תווים אם סריקה לא נוחה.
+        </p>
+        <p className="mb-6 text-xs leading-relaxed">
+          <strong className="font-bold text-espresso">
+            חשוב: אל תחברו את המספר האישי שלכם. וואטסאפ עלולה לחסום מספרים שמריצים בוטים,
+            לכן צריך מספר נפרד (SIM נוסף או מספר וירטואלי).
+          </strong>
         </p>
 
         <TabBar value={tab} onChange={setTab} />
