@@ -54,6 +54,10 @@ export function ConnectChannelStep({ name, onLater }: { name: string; onLater: (
   );
 }
 
+// Equal weight on purpose: the user should weigh the choice, not follow a primary button.
+const CHOICE_BUTTON =
+  "px-4 py-3 rounded-lg border border-sand text-sm font-medium text-espresso hover:border-terra hover:bg-terra-pale/40 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra";
+
 function WhatsappNumberConfirmDialog({
   open,
   onClose,
@@ -96,20 +100,12 @@ function WhatsappNumberConfirmDialog({
             בוטים, לכן הסוכן צריך מספר נפרד — SIM נוסף או מספר וירטואלי — שמותקן עליו וואטסאפ.
           </p>
         </div>
-        <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 px-5 pb-5 sm:px-7 sm:pb-6">
-          <button
-            type="button"
-            onClick={onTelegram}
-            className="px-4 py-3 rounded-lg text-sm text-espresso-light hover:text-espresso hover:bg-cream-dark transition"
-          >
-            לא, נמשיך עם טלגרם
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className="px-4 py-3 rounded-lg text-sm font-medium bg-espresso text-cream hover:bg-espresso-light transition"
-          >
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 px-5 pb-5 sm:px-7 sm:pb-6">
+          <button type="button" onClick={onConfirm} className={CHOICE_BUTTON}>
             כן, יש לי מספר ייעודי
+          </button>
+          <button type="button" onClick={onTelegram} className={CHOICE_BUTTON}>
+            לא, נמשיך עם טלגרם
           </button>
         </div>
       </form>
