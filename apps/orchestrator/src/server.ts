@@ -9,10 +9,12 @@ import { createAuthHook } from "./middleware/auth.js";
 // Pairing-completion overrides per-route with MAX_CREDS_BYTES; everything else stays tight.
 const MAX_PUBLIC_BODY_BYTES = 64 * 1024;
 
-// Routes that authenticate themselves (per-session tokens) opt out of the global hook.
+// skipGlobalAuth: routes that authenticate themselves (per-session tokens).
+// serviceScope: platform-level routes (admin reporting) — service token only, no user impersonation.
 declare module "fastify" {
   interface FastifyContextConfig {
     skipGlobalAuth?: boolean;
+    serviceScope?: boolean;
   }
 }
 

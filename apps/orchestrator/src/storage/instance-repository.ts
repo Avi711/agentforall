@@ -194,6 +194,16 @@ export class InstanceRepository {
     return rows[0]?.count ?? 0;
   }
 
+  // Every live instance on this host, regardless of owner — admin reporting only.
+  async findAllActive(): Promise<Instance[]> {
+    const rows = await this.db
+      .select()
+      .from(instances)
+      .where(and(this.ownedByHost(), ne(instances.status, "destroyed")))
+      .orderBy(asc(instances.createdAt), asc(instances.id));
+    return this.toDomainSafe(rows);
+  }
+
   async findByStatuses(statuses: InstanceStatus[]): Promise<Instance[]> {
     const rows = await this.db
       .select()

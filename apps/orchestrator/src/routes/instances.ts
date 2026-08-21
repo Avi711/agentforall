@@ -136,7 +136,7 @@ export const instanceRoutes: FastifyPluginAsync<InstanceRouteDeps> = async (
     const body = CreateInstanceBody.parse(request.body);
     const userId = request.authenticatedUserId;
     const instance = await manager.create(userId, body);
-    return reply.status(201).send(sanitize(instance));
+    return reply.status(201).send(sanitizeInstance(instance));
   });
 
   app.get("/", async (request, reply) => {
@@ -145,13 +145,13 @@ export const instanceRoutes: FastifyPluginAsync<InstanceRouteDeps> = async (
     const list = await manager.list(userId, cursor, limit);
     const last = list[list.length - 1];
     const nextCursor = list.length === limit && last ? encodeCursor(last) : undefined;
-    return reply.send({ data: list.map(sanitize), cursor: nextCursor });
+    return reply.send({ data: list.map(sanitizeInstance), cursor: nextCursor });
   });
 
   app.get("/:id", async (request, reply) => {
     const { id } = UuidParam.parse(request.params);
     const instance = await manager.get(id, request.authenticatedUserId);
-    return reply.send(sanitize(instance));
+    return reply.send(sanitizeInstance(instance));
   });
 
   app.post("/:id/exports", async (request, reply) => {
@@ -210,7 +210,7 @@ export const instanceRoutes: FastifyPluginAsync<InstanceRouteDeps> = async (
       request.authenticatedUserId,
       body,
     );
-    return reply.send(sanitize(instance));
+    return reply.send(sanitizeInstance(instance));
   });
 
   app.patch("/:id/litellm-budget", async (request, reply) => {
@@ -221,7 +221,7 @@ export const instanceRoutes: FastifyPluginAsync<InstanceRouteDeps> = async (
       request.authenticatedUserId,
       body.budgetCents,
     );
-    return reply.send(sanitize(instance));
+    return reply.send(sanitizeInstance(instance));
   });
 
   app.get("/:id/usage", async (request, reply) => {
@@ -231,7 +231,7 @@ export const instanceRoutes: FastifyPluginAsync<InstanceRouteDeps> = async (
   });
 };
 
-function sanitize(inst: Instance): Record<string, unknown> {
+export function sanitizeInstance(inst: Instance): Record<string, unknown> {
   const { gatewayToken: _token, config, ...safe } = inst;
   return {
     ...safe,

@@ -42,8 +42,12 @@ export function createAuthHook(options: AuthHookOptions) {
     const token = header.slice(7);
     const tokenHash = hmac(token, options.hmacSecret);
 
+    const serviceScope = request.routeOptions?.config?.serviceScope === true;
+
     for (const entry of hashedApiKeys) {
       if (timingSafeEqual(tokenHash, entry.hash)) {
+        // Per-user keys never reach platform-level routes.
+        if (serviceScope) throw new AuthenticationError();
         request.authenticatedUserId = entry.userId;
         return;
       }
@@ -51,6 +55,10 @@ export function createAuthHook(options: AuthHookOptions) {
 
     for (const entry of hashedServiceTokens) {
       if (timingSafeEqual(tokenHash, entry.hash)) {
+        if (serviceScope) {
+          request.authenticatedUserId = entry.userId;
+          return;
+        }
         const actAs = request.headers["x-act-as-user"];
         if (typeof actAs !== "string" || !USER_ID_PATTERN.test(actAs)) {
           throw new AuthenticationError();

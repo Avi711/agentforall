@@ -1,5 +1,5 @@
 import type { AppConfig } from "../config.js";
-import type { Instance, ProviderConfig } from "../domain/types.js";
+import type { BotUsage, Instance, ProviderConfig } from "../domain/types.js";
 import {
   LiteLlmAdminClient,
   type LiteLlmKeyUsage,
@@ -21,6 +21,7 @@ export interface LlmKeyProvisioner {
   ): Promise<LiteLlmProvisionResult>;
   updateBudget(inst: Instance, budgetCents: number): Promise<void>;
   getUsage(inst: Instance): Promise<LiteLlmKeyUsage>;
+  getBotUsage(inst: Instance): Promise<BotUsage>;
   revoke(inst: Instance): Promise<void>;
   revokeKey(key: string): Promise<void>;
 }
@@ -117,6 +118,24 @@ export class LiteLlmKeyManager implements LlmKeyProvisioner {
       throw new Error("LiteLLM usage requires LITELLM_MASTER_KEY");
     }
     return this.adminClient.getKeyUsage(inst.config.provider.apiKey);
+  }
+
+  // Usage in the web-facing shape; callers decide how a LiteLLM failure is surfaced.
+  async getBotUsage(inst: Instance): Promise<BotUsage> {
+    if (inst.config.provider.name !== "litellm") {
+      return { supported: false, reason: "not_litellm" };
+    }
+    const usage = await this.getUsage(inst);
+    return {
+      supported: true,
+      spendCents: usage.spendCents,
+      maxBudgetCents: usage.maxBudgetCents,
+      budgetDuration: usage.budgetDuration,
+      budgetResetAt: usage.budgetResetAt,
+      keyAlias: usage.keyAlias ?? inst.litellm.keyAlias,
+      models: usage.models,
+      updatedAt: new Date().toISOString(),
+    };
   }
 
   async revoke(inst: Instance): Promise<void> {

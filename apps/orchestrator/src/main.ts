@@ -15,6 +15,8 @@ import { whatsappAccessRoutes } from "./routes/whatsapp-access.js";
 import { WhatsappAccessManager } from "./services/whatsapp-access-manager.js";
 import { ownerIdentityRoutes } from "./routes/owner-identity.js";
 import { OwnerIdentityManager } from "./services/owner-identity-manager.js";
+import { adminRoutes } from "./routes/admin.js";
+import { AdminOverviewService } from "./services/admin-overview.js";
 import { InstanceRepository } from "./storage/instance-repository.js";
 import { HealthRepository } from "./storage/health-repository.js";
 import { assertValidEncryptionKey } from "./services/crypto.js";
@@ -269,6 +271,10 @@ async function main(): Promise<void> {
   await app.register(ownerIdentityRoutes, {
     prefix: "/api/v1/instances",
     owner: new OwnerIdentityManager(manager, runtimeAdapters, eventLog, log),
+  });
+  await app.register(adminRoutes, {
+    prefix: "/api/v1/admin",
+    overview: new AdminOverviewService(repo, litellmKeys, log),
   });
   await app.register(internalPairRoutes, {
     prefix: "/internal",
