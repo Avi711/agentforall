@@ -125,7 +125,7 @@ export function WhatsAppAccessSection({
   const ownerIsBot = view.ownerNumber !== null && view.ownerNumber === view.botNumber;
 
   return (
-    <section className="mb-6 sm:mb-7 -mx-1 px-1" aria-labelledby="wa-access-title">
+    <section aria-labelledby="wa-access-title">
       <p
         id="wa-access-title"
         className="text-[11px] uppercase tracking-[0.22em] text-espresso-light/70 mb-2"
@@ -152,7 +152,7 @@ export function WhatsAppAccessSection({
         <LegacyPanel busy={busy} onRestrict={() => apply("claim", { access: "owner" })} />
       )}
 
-      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+      <div className="mt-1 flex flex-wrap items-center gap-x-4 text-sm">
         <button
           type="button"
           onClick={() => setManualOpen((v) => !v)}

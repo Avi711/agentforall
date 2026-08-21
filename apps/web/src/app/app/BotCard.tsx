@@ -356,7 +356,7 @@ function ChannelsSection({
       <p id="channels-title" className="text-[11px] uppercase tracking-[0.22em] text-espresso-light/70 mb-2">
         ערוצים
       </p>
-      <ul className="rounded-2xl border border-sand-light divide-y divide-sand-light/70 overflow-hidden">
+      <ul className="border-t border-sand-light/70 divide-y divide-sand-light/70">
         <ChannelRow
           glyph={<WhatsAppGlyph />}
           name="WhatsApp"
@@ -399,7 +399,7 @@ function ChannelsSection({
                 target="_blank"
                 rel="noopener noreferrer"
                 dir="ltr"
-                className="inline-block font-mono text-base sm:text-lg text-espresso hover:text-terra transition break-all"
+                className="inline-block font-mono text-sm text-espresso-light hover:text-terra transition break-all"
               >
                 @{bot.telegram.botUsername}
               </a>
@@ -472,7 +472,7 @@ function whatsappRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
       stale: false,
       primary: bot.whatsappAccountId
         ? {
-            label: "פתחו ב-WhatsApp ושלחו הודעה",
+            label: "פתיחה ב-WhatsApp",
             href: `https://wa.me/${bot.whatsappAccountId}?text=${encodeURIComponent("שלום!")}`,
             external: true,
             emphasis: "primary",
@@ -486,16 +486,17 @@ function whatsappRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
       connected: false,
       pending: true,
       stale: false,
-      primary: { label: "המשך התאמה", href: "/app/bot/pair", emphasis: "primary" },
+      primary: { label: "המשך התאמה", href: "/app/bot/pair", emphasis: "secondary" },
     };
   }
-  if (pairing === "expired" || pairing === "failed") {
+  // A dropped live session (creds still stored) is worth a reconnect; a cancelled attempt is just "not connected".
+  if ((pairing === "expired" || pairing === "failed") && bot.hasWhatsappCreds) {
     return {
       status: { tone: "warn", label: "החיבור נותק" },
       connected: false,
       pending: false,
       stale: true,
-      primary: { label: "חיבור מחדש", href: "/app/bot/pair", emphasis: "primary" },
+      primary: { label: "חיבור מחדש", href: "/app/bot/pair", emphasis: "secondary" },
     };
   }
   return {
@@ -515,7 +516,7 @@ function telegramRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
       pending: false,
       stale: false,
       primary: {
-        label: "פתחו בטלגרם ושלחו הודעה",
+        label: "פתיחה בטלגרם",
         href: `https://t.me/${bot.telegram.botUsername}`,
         external: true,
         emphasis: "primary",
@@ -528,7 +529,7 @@ function telegramRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
       connected: false,
       pending: true,
       stale: false,
-      primary: { label: "המשך חיבור", href: "/app/bot/telegram", emphasis: "primary" },
+      primary: { label: "המשך חיבור", href: "/app/bot/telegram", emphasis: "secondary" },
     };
   }
   return {
@@ -558,38 +559,40 @@ function ChannelRow({
   children?: ReactNode;
 }) {
   return (
-    <li className="p-4 sm:p-5">
-      <div className="flex items-start gap-3 sm:gap-4">
-        <span
-          aria-hidden
-          className="shrink-0 w-10 h-10 rounded-full bg-cream-dark text-espresso flex items-center justify-center"
-        >
-          {glyph}
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="font-medium text-espresso">{name}</span>
-            <StatusDot {...status} />
-          </div>
-          {detail ? <div className="mt-1.5">{detail}</div> : null}
-          {primary || secondary ? (
-            <div className="mt-3 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-4">
-              {primary ? <ActionLink action={primary} /> : null}
-              {secondary ? (
-                <button
-                  type="button"
-                  disabled={secondary.disabled}
-                  onClick={secondary.onClick}
-                  className="py-2 text-sm text-espresso-light underline-offset-4 hover:text-espresso hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-terra rounded disabled:opacity-60 disabled:cursor-wait"
-                >
-                  {secondary.label}
-                </button>
-              ) : null}
+    <li className="py-4 sm:py-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <span
+            aria-hidden
+            className="shrink-0 w-9 h-9 rounded-full bg-cream-dark text-espresso flex items-center justify-center"
+          >
+            {glyph}
+          </span>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="text-[15px] font-medium text-espresso">{name}</span>
+              <StatusDot {...status} />
             </div>
-          ) : null}
-          {children ? <div className="mt-5 border-t border-sand-light/70 pt-5">{children}</div> : null}
+            {detail ? <div className="mt-0.5">{detail}</div> : null}
+          </div>
         </div>
+        {primary || secondary ? (
+          <div className="flex items-center justify-between gap-3 sm:justify-end sm:shrink-0 ps-12 sm:ps-0">
+            {primary ? <ActionLink action={primary} /> : <span />}
+            {secondary ? (
+              <button
+                type="button"
+                disabled={secondary.disabled}
+                onClick={secondary.onClick}
+                className="py-2 text-sm text-espresso-light underline-offset-4 hover:text-espresso hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-terra rounded disabled:opacity-60 disabled:cursor-wait"
+              >
+                {secondary.label}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
+      {children ? <div className="mt-4 sm:ps-12">{children}</div> : null}
     </li>
   );
 }
@@ -597,12 +600,13 @@ function ChannelRow({
 function ActionLink({ action }: { action: RowAction }) {
   const className =
     action.emphasis === "primary"
-      ? "inline-flex w-full sm:w-auto items-center justify-center gap-2 px-5 py-3 rounded-xl bg-terra text-white font-medium text-center hover:bg-terra-light transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-      : "inline-flex w-full sm:w-auto items-center justify-center gap-2 px-5 py-3 rounded-xl border border-sand text-espresso font-medium text-center hover:bg-cream-dark transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra";
+      ? "inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-full bg-terra text-white text-sm font-medium hover:bg-terra-light transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+      : "inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-full border border-sand text-espresso text-sm font-medium hover:bg-cream-dark transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra";
   if (action.external) {
     return (
       <a href={action.href} target="_blank" rel="noopener noreferrer" className={className}>
         <span>{action.label}</span>
+        <ArrowOut />
       </a>
     );
   }
@@ -611,6 +615,14 @@ function ActionLink({ action }: { action: RowAction }) {
       <span>{action.label}</span>
       <ChevronEnd />
     </Link>
+  );
+}
+
+function ArrowOut() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" className="w-3.5 h-3.5 rtl:-scale-x-100" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M7 13 13 7M8 7h5v5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
@@ -650,12 +662,12 @@ function PhoneDetail({ accountId }: { accountId: string }) {
   };
   return (
     <div className="flex items-center gap-1">
-      <span dir="ltr" className="font-mono text-base sm:text-lg text-espresso break-all">{display}</span>
+      <span dir="ltr" className="font-mono text-sm text-espresso-light break-all">{display}</span>
       <button
         type="button"
         onClick={onCopy}
         aria-label={copied ? "המספר הועתק" : "העתקת המספר"}
-        className="shrink-0 w-11 h-11 -my-2 inline-flex items-center justify-center rounded-full text-espresso-light hover:text-espresso hover:bg-cream-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-terra transition"
+        className="shrink-0 w-10 h-10 -my-2.5 inline-flex items-center justify-center rounded-full text-espresso-light/80 hover:text-espresso hover:bg-cream-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-terra transition"
       >
         {copied ? <CheckIcon /> : <CopyIcon />}
       </button>
