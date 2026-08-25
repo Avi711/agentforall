@@ -10,7 +10,7 @@ export async function POST(
   const parsed = BotIdParamsSchema.safeParse(await ctx.params);
   if (!parsed.success) return errorJson("invalid_params", 400, parsed.error.flatten());
 
-  return authenticatedHandler({ requireConsent: true }, async ({ userId }) => {
+  return authenticatedHandler({ requireWhatsappConsent: true }, async ({ userId }) => {
     const result = await botService.startPairing(userId, parsed.data.id);
     return NextResponse.json(result);
   })(req);

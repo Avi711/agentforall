@@ -13,8 +13,8 @@ export type Handler<Body> = (ctx: {
 
 export interface HandlerOptions<Body> {
   bodySchema?: z.ZodType<Body, z.ZodTypeDef, unknown>;
-  /** Reject with 403 consent_required if user hasn't accepted current version. */
-  requireConsent?: boolean;
+  /** WhatsApp-only: the consent covers the account-suspension risk of pairing a real number. */
+  requireWhatsappConsent?: boolean;
 }
 
 export function authenticatedHandler<Body = undefined>(
@@ -27,7 +27,7 @@ export function authenticatedHandler<Body = undefined>(
       return errorJson("unauthorized", 401);
     }
 
-    if (opts.requireConsent) {
+    if (opts.requireWhatsappConsent) {
       const consent = await getConsentStatus(session.user.id);
       if (!consent.accepted || consent.stale) {
         return errorJson("consent_required", 403);

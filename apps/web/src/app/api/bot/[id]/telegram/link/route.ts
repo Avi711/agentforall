@@ -10,7 +10,8 @@ export async function POST(
   const parsed = BotIdParamsSchema.safeParse(await ctx.params);
   if (!parsed.success) return errorJson("invalid_params", 400, parsed.error.flatten());
 
-  return authenticatedHandler({ requireConsent: true }, async ({ userId }) => {
+  // The consent gate covers the WhatsApp account-suspension risk; a BotFather token has none of it.
+  return authenticatedHandler({}, async ({ userId }) => {
     const link = await botService.startTelegramLink(userId, parsed.data.id);
     return NextResponse.json(link, { status: 201 });
   })(req);

@@ -11,7 +11,7 @@ export async function POST(
   if (!parsed.success) return errorJson("invalid_params", 400, parsed.error.flatten());
 
   return authenticatedHandler(
-    { bodySchema: PhoneBodySchema, requireConsent: true },
+    { bodySchema: PhoneBodySchema, requireWhatsappConsent: true },
     async ({ userId, body }) => {
       const result = await botService.requestPairCode(userId, parsed.data.id, body);
       return NextResponse.json(result);

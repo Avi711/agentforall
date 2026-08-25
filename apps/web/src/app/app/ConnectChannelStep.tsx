@@ -30,7 +30,7 @@ export function ConnectChannelStep({ name, onLater }: { name: string; onLater: (
         <ChannelChoice
           onClick={() => setConfirmWhatsapp(true)}
           title="וואטסאפ"
-          description="סריקת QR עם מספר ייעודי לסוכן"
+          description="דורש מספר ייעודי לסוכן — לא המספר האישי שלכם"
         />
       </div>
 
@@ -91,21 +91,40 @@ function WhatsappNumberConfirmDialog({
       className="fixed inset-0 m-auto backdrop:bg-espresso/40 rounded-2xl p-0 w-[min(92vw,480px)] border border-sand-light shadow-[0_20px_48px_rgba(44,24,16,0.18)]"
     >
       <form method="dialog" onSubmit={(e) => e.preventDefault()} dir="rtl">
-        <div className="p-5 sm:p-7">
-          <h2 id={titleId} className="font-display text-xl text-espresso mb-2">
-            יש לכם מספר ייעודי לסוכן?
-          </h2>
-          <p className="text-sm text-espresso leading-relaxed">
-            <strong className="font-bold">אל תחברו את המספר האישי שלכם.</strong> וואטסאפ עלולה לחסום מספרים שמריצים
-            בוטים, לכן הסוכן צריך מספר נפרד — SIM נוסף או מספר וירטואלי — שמותקן עליו וואטסאפ.
-          </p>
+        <div className="rounded-t-2xl border-b-2 border-terra bg-terra-pale px-5 py-5 sm:px-7">
+          <div className="flex items-start gap-3">
+            <span
+              aria-hidden="true"
+              className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-terra text-base font-bold text-white"
+            >
+              !
+            </span>
+            <div>
+              <h2 id={titleId} className="font-display text-xl text-espresso leading-snug">
+                אל תחברו את הוואטסאפ האישי שלכם
+              </h2>
+              <p className="mt-1.5 text-sm font-semibold text-espresso leading-relaxed">
+                וואטסאפ חוסמת מספרים שמריצים בוטים. הסוכן חייב מספר טלפון משלו.
+              </p>
+            </div>
+          </div>
         </div>
+
+        <div className="px-5 py-5 sm:px-7">
+          <p className="text-sm font-semibold text-espresso mb-2">מה צריך כדי לחבר וואטסאפ:</p>
+          <ul className="space-y-1.5 list-disc ps-5 marker:text-terra text-sm text-espresso-light leading-relaxed">
+            <li>מספר נפרד — eSIM ייעודית, סים משני או מספר וירטואלי</li>
+            <li>אפליקציית וואטסאפ מותקנת ופעילה על אותו מספר</li>
+            <li>לא המספר שבו אתם מדברים עם המשפחה, הלקוחות או הבנק</li>
+          </ul>
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 px-5 pb-5 sm:px-7 sm:pb-6">
           <button type="button" onClick={onConfirm} className={CHOICE_BUTTON}>
-            כן, יש לי מספר ייעודי
+            יש לי מספר ייעודי, נמשיך
           </button>
           <button type="button" onClick={onTelegram} className={CHOICE_BUTTON}>
-            לא, נמשיך עם טלגרם
+            אין לי — נחבר טלגרם
           </button>
         </div>
       </form>

@@ -10,7 +10,7 @@ export async function GET(
   const parsed = BotIdParamsSchema.safeParse(await ctx.params);
   if (!parsed.success) return errorJson("invalid_params", 400, parsed.error.flatten());
 
-  return authenticatedHandler({ requireConsent: true }, async ({ userId }) => {
+  return authenticatedHandler({ requireWhatsappConsent: true }, async ({ userId }) => {
     const qr = await botService.getPairQr(userId, parsed.data.id);
     return NextResponse.json(qr);
   })(req);
