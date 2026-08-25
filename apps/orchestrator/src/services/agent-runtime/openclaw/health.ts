@@ -1,74 +1,63 @@
 import type { Instance } from "../../../domain/types.js";
 import type { ContainerRuntime } from "../../container-runtime.js";
-import type { RuntimeHealthResult } from "../types.js";
+import type { GatewayLiveness, WhatsappLinkState } from "../types.js";
+import {
+  buildGatewayProbeCommand,
+  parseGatewayProbeOutput,
+} from "./gateway-probe.js";
 import {
   OPENCLAW_HEALTH_PATH,
   OPENCLAW_INTERNAL_PORT,
+  OPENCLAW_READY_PATH,
+  OPENCLAW_WHATSAPP_CHANNEL,
 } from "./constants.js";
 
-export async function probeOpenclaw(
+export async function probeOpenclawGateway(
+  instance: Instance,
+  timeoutMs: number,
+  useDockerNetwork: boolean,
+): Promise<GatewayLiveness> {
+  const host = useDockerNetwork ? instance.containerName : "127.0.0.1";
+  const port = useDockerNetwork ? OPENCLAW_INTERNAL_PORT : instance.gatewayPort;
+  const base = `http://${host}:${port}`;
+
+  if (!(await isOk(`${base}${OPENCLAW_HEALTH_PATH}`, timeoutMs))) {
+    return { healthy: false, degraded: null };
+  }
+  // Readiness is observability only: it reports event-loop stalls and drain/startup states that
+  // liveness cannot see, and must never gate the health decision itself.
+  const ready = await isOk(`${base}${OPENCLAW_READY_PATH}`, timeoutMs);
+  return { healthy: true, degraded: !ready };
+}
+
+export async function probeOpenclawWhatsapp(
   runtime: ContainerRuntime,
   instance: Instance,
   timeoutMs: number,
-  useDockerNetwork: boolean,
-): Promise<RuntimeHealthResult> {
-  const gatewayHealthy = await checkGateway(
-    instance,
-    timeoutMs,
-    useDockerNetwork,
-  );
-  if (!gatewayHealthy || !needsWhatsappProbe(instance)) {
-    return { gatewayHealthy, whatsappState: "unknown" };
-  }
-  return {
-    gatewayHealthy,
-    whatsappState: await checkWhatsappChannel(runtime, instance, timeoutMs),
-  };
-}
-
-async function checkGateway(
-  instance: Instance,
-  timeoutMs: number,
-  useDockerNetwork: boolean,
-): Promise<boolean> {
-  const host = useDockerNetwork ? instance.containerName : "127.0.0.1";
-  const port = useDockerNetwork ? OPENCLAW_INTERNAL_PORT : instance.gatewayPort;
+): Promise<WhatsappLinkState> {
+  const containerId = await resolveRunningContainerId(runtime, instance);
+  if (!containerId) return "probe_failed";
 
   try {
-    const resp = await fetch(`http://${host}:${port}${OPENCLAW_HEALTH_PATH}`, {
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+    const result = await runtime.execCommandWithOutput(
+      containerId,
+      buildGatewayProbeCommand(OPENCLAW_WHATSAPP_CHANNEL, timeoutMs),
+      timeoutMs,
+    );
+    if (result.exitCode !== 0) return "probe_failed";
+    return parseGatewayProbeOutput(result.stdout);
+  } catch {
+    return "probe_failed";
+  }
+}
+
+async function isOk(url: string, timeoutMs: number): Promise<boolean> {
+  try {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
     return resp.ok;
   } catch {
     return false;
   }
-}
-
-async function checkWhatsappChannel(
-  runtime: ContainerRuntime,
-  instance: Instance,
-  timeoutMs: number,
-): Promise<RuntimeHealthResult["whatsappState"]> {
-  const containerId = await resolveRunningContainerId(runtime, instance);
-  if (!containerId) return "unknown";
-
-  const result = await runtime.execCommandWithOutput(
-    containerId,
-    [
-      "openclaw",
-      "channels",
-      "status",
-      "--channel",
-      "whatsapp",
-      "--probe",
-      "--json",
-      "--timeout",
-      String(Math.max(timeoutMs, 15_000)),
-    ],
-    Math.max(timeoutMs, 15_000),
-  );
-  if (result.exitCode !== 0) return "unknown";
-  return parseWhatsappState(result.stdout);
 }
 
 async function resolveRunningContainerId(
@@ -80,67 +69,4 @@ async function resolveRunningContainerId(
     if (current?.State.Running) return instance.containerId;
   }
   return runtime.findContainerByName(instance.containerName);
-}
-
-function parseWhatsappState(output: string): RuntimeHealthResult["whatsappState"] {
-  const jsonState = parseWhatsappJsonState(output);
-  if (jsonState !== "unknown") return jsonState;
-
-  const line = output
-    .replace(/\x1b\[[0-9;]*m/g, "")
-    .split(/\r?\n/)
-    .find((value) => /WhatsApp\s+default:/i.test(value));
-  if (!line) return "unknown";
-
-  const normalized = line.toLowerCase();
-  if (normalized.includes("disconnected") || normalized.includes("stopped")) {
-    return "disconnected";
-  }
-  if (
-    normalized.includes("connected") ||
-    normalized.includes("running") ||
-    normalized.includes("ready")
-  ) {
-    return "connected";
-  }
-  return "unknown";
-}
-
-function parseWhatsappJsonState(
-  output: string,
-): RuntimeHealthResult["whatsappState"] {
-  try {
-    const parsed: unknown = JSON.parse(output);
-    const text = JSON.stringify(parsed).toLowerCase();
-    if (!text.includes("whatsapp")) return "unknown";
-    if (
-      text.includes("disconnected") ||
-      text.includes("logged_out") ||
-      text.includes("logged out") ||
-      text.includes("not linked") ||
-      text.includes("stopped")
-    ) {
-      return "disconnected";
-    }
-    if (
-      text.includes("connected") ||
-      text.includes("running") ||
-      text.includes("ready") ||
-      text.includes("works") ||
-      text.includes("audit ok")
-    ) {
-      return "connected";
-    }
-    return "unknown";
-  } catch {
-    return "unknown";
-  }
-}
-
-function needsWhatsappProbe(instance: Instance): boolean {
-  return (
-    Boolean(instance.containerId) &&
-    instance.hasWhatsappCreds &&
-    instance.config.channels.some((ch) => ch.type === "whatsapp")
-  );
 }

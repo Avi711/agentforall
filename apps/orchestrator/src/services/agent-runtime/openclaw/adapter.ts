@@ -2,11 +2,18 @@ import type { Readable } from "node:stream";
 import type { ContainerArchiveFile } from "../../container-runtime.js";
 import type { ContainerRuntime } from "../../container-runtime.js";
 import type { Instance, InstanceConfig } from "../../../domain/types.js";
+import {
+  UpstreamUnavailableError,
+  ValidationError,
+  errorMessage,
+} from "../../../domain/errors.js";
 import type {
   AgentRuntimeAdapter,
+  ConfigApplyOutcome,
+  GatewayLiveness,
   RuntimeConfigFiles,
-  RuntimeHealthResult,
   WhatsappPairingRequest,
+  WhatsappLinkState,
 } from "../types.js";
 import {
   OPENCLAW_BACKUP_TIMEOUT_MS,
@@ -16,19 +23,25 @@ import {
 } from "./backup.js";
 import {
   buildOpenclawConfigTar,
+  buildOpenclawEnvTar,
   generateOpenclawFiles,
   generateRuntimePatchedOpenclawFiles,
   openclawReadConfigCommand,
+  openclawReadEnvCommand,
+  configMatches,
   readOwnerAllowFrom,
 } from "./config.js";
+import { buildConfigApplyCommand, parseConfigApplyOutput } from "./config-rpc.js";
+import type { ConfigApplyResult } from "./config-rpc.js";
 import {
+  OPENCLAW_CONFIG_APPLY_TIMEOUT_MS,
   OPENCLAW_HEALTH_PATH,
   OPENCLAW_INTERNAL_PORT,
   OPENCLAW_MAX_BACKUP_BYTES,
   OPENCLAW_STATE_PARENT,
   OPENCLAW_STATE_ROOT,
 } from "./constants.js";
-import { probeOpenclaw } from "./health.js";
+import { probeOpenclawGateway, probeOpenclawWhatsapp } from "./health.js";
 import {
   injectOpenclawWhatsappSession,
   listOpenclawWhatsappPairingRequests,
@@ -38,8 +51,6 @@ import {
 export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   readonly kind = "openclaw" as const;
   readonly maxBackupBytes = OPENCLAW_MAX_BACKUP_BYTES;
-  // The gateway watches openclaw.json (gateway.reload.mode=hybrid) and hot-applies channels/session/agents.
-  readonly hotReloadsConfig = true;
 
   constructor(
     private readonly runtime: ContainerRuntime,
@@ -91,9 +102,9 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     return generateOpenclawFiles(config, gatewayToken);
   }
 
-  // Writes the file; the gateway's own hot reload applies it. A stopped or crash-looping container
-  // can't be read (exec is refused), so it gets a freshly generated file instead — putArchive works either way.
-  async refreshConfig(containerId: string, instance: Instance): Promise<void> {
+  // Stages the config for the container's next boot. The merge carries forward what the runtime
+  // wrote for itself; the pristine config is only right for a container with no state to read.
+  async writeConfig(containerId: string, instance: Instance): Promise<void> {
     const existing = (await this.runtime.isRunning(containerId))
       ? await this.tryReadConfig(containerId)
       : null;
@@ -101,11 +112,112 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       existing === null
         ? generateOpenclawFiles(instance.config, instance.gatewayToken)
         : generateRuntimePatchedOpenclawFiles(existing, instance.config, instance.gatewayToken);
+
     await this.runtime.putArchive(
       containerId,
       OPENCLAW_STATE_PARENT,
       await buildOpenclawConfigTar(files),
     );
+  }
+
+  // The gateway validates and applies the change itself and says whether it worked; a file write
+  // only says the bytes landed, and nothing restarts a healthy container to make it read them.
+  async applyConfig(containerId: string, instance: Instance): Promise<ConfigApplyOutcome> {
+    if (!(await this.runtime.isRunning(containerId))) {
+      await this.writeConfig(containerId, instance);
+      return "restart_required";
+    }
+
+    // Staging a file a live gateway will never read is how a change disappears silently, so a
+    // container we cannot read is a failure rather than a fallback.
+    const existing = await this.readConfig(containerId).catch((err: unknown) => {
+      throw new UpstreamUnavailableError("openclaw", `config read failed: ${errorMessage(err)}`);
+    });
+    const files = generateRuntimePatchedOpenclawFiles(
+      existing,
+      instance.config,
+      instance.gatewayToken,
+    );
+
+    // Env vars are read once at start-up, so a changed env file is not live until the next boot.
+    // Reading it before the write keeps a read failure from stranding an applied config.
+    const envWasCurrent = await this.envMatches(containerId, files.dotEnv);
+    if (envWasCurrent && configMatches(existing, files.configJson)) {
+      // Nothing the runtime reads has changed, so there is no write to spend on it.
+      return "applied";
+    }
+
+    const applied = await this.execConfigApply(containerId, files.configJson);
+    if (applied.status === "rejected") {
+      throw new ValidationError(
+        `openclaw rejected the config: ${redact(applied.reason, instance)}`,
+      );
+    }
+    if (applied.status === "unreachable") {
+      // No session with the gateway, so the file its next boot reads is the way in.
+      await this.runtime.putArchive(
+        containerId,
+        OPENCLAW_STATE_PARENT,
+        await buildOpenclawConfigTar(files),
+      );
+      return "restart_required";
+    }
+    if (applied.status !== "applied" && !(await this.holdsConfig(containerId, files.configJson))) {
+      throw new UpstreamUnavailableError("openclaw", redact(applied.reason, instance));
+    }
+
+    await this.runtime.putArchive(
+      containerId,
+      OPENCLAW_STATE_PARENT,
+      await buildOpenclawEnvTar(files.dotEnv),
+    );
+    return envWasCurrent ? "applied" : "restart_required";
+  }
+
+  // A write can land and still lose its acknowledgement (the gateway restarts, or rate-limits the
+  // confirming call), so the running container decides whether the config is in place — including
+  // on a retry, where a previous attempt may already have delivered it.
+  private async holdsConfig(containerId: string, desired: string): Promise<boolean> {
+    const live = await this.tryReadConfig(containerId);
+    return live !== null && configMatches(live, desired);
+  }
+
+  // "could not read" is not "differs": inferring a difference restarts a healthy container and
+  // drops its WhatsApp socket for a change that was already live.
+  private async envMatches(containerId: string, dotEnv: string): Promise<boolean> {
+    const result = await this.runtime
+      .execCommandBuffer(containerId, openclawReadEnvCommand(), 15_000, 64 * 1024)
+      .catch((err: unknown) => {
+        throw new UpstreamUnavailableError("openclaw", `env read failed: ${errorMessage(err)}`);
+      });
+    if (result.exitCode !== 0) {
+      throw new UpstreamUnavailableError("openclaw", `env read exited ${result.exitCode}`);
+    }
+    return result.stdout.toString("utf8") === dotEnv;
+  }
+
+  private async execConfigApply(
+    containerId: string,
+    configJson: string,
+  ): Promise<ConfigApplyResult> {
+    try {
+      const result = await this.runtime.execCommandBuffer(
+        containerId,
+        buildConfigApplyCommand(OPENCLAW_CONFIG_APPLY_TIMEOUT_MS),
+        OPENCLAW_CONFIG_APPLY_TIMEOUT_MS + 5_000,
+        64 * 1024,
+        Buffer.from(configJson, "utf8"),
+      );
+      return result.exitCode === 0
+        ? parseConfigApplyOutput(result.stdout.toString("utf8"))
+        : {
+            status: "unreachable",
+            reason: result.stderr || `config apply exited ${result.exitCode}`,
+          };
+    } catch (err) {
+      // The program never ran, so the gateway holds no opinion on this config.
+      return { status: "unreachable", reason: errorMessage(err) };
+    }
   }
 
   private async tryReadConfig(containerId: string): Promise<string | null> {
@@ -148,17 +260,21 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     );
   }
 
-  probe(
+  probeGateway(
     instance: Instance,
     timeoutMs: number,
     useDockerNetwork: boolean,
-  ): Promise<RuntimeHealthResult> {
-    return probeOpenclaw(
-      this.runtime,
-      instance,
-      timeoutMs,
-      useDockerNetwork,
-    );
+  ): Promise<GatewayLiveness> {
+    return probeOpenclawGateway(instance, timeoutMs, useDockerNetwork);
+  }
+
+  // The probe runs inside the container, so it never depends on how the host reaches the gateway.
+  probeWhatsapp(
+    instance: Instance,
+    timeoutMs: number,
+    _useDockerNetwork: boolean,
+  ): Promise<WhatsappLinkState> {
+    return probeOpenclawWhatsapp(this.runtime, instance, timeoutMs);
   }
 
   logoutWhatsapp(containerId: string): Promise<boolean> {
@@ -199,4 +315,36 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     }
     return parseOpenclawArchiveFile(result.stdout);
   }
+}
+
+// Runtime config holds credentials and owner phone numbers in plaintext; gateway prose can quote
+// the value it refused, and none of it may reach logs, the error column, or an API response.
+function redact(text: string, instance: Instance): string {
+  return secretsOf(instance)
+    .filter((secret): secret is string => Boolean(secret))
+    .reduce((redacted, secret) => redacted.split(secret).join("[redacted]"), text);
+}
+
+function secretsOf(instance: Instance): (string | undefined)[] {
+  const secrets: (string | undefined)[] = [
+    instance.gatewayToken,
+    instance.config.provider.apiKey,
+  ];
+  for (const channel of instance.config.channels) {
+    switch (channel.type) {
+      case "telegram":
+        secrets.push(channel.botToken, ...(channel.allowFrom ?? []));
+        break;
+      case "discord":
+        secrets.push(channel.token);
+        break;
+      case "slack":
+        secrets.push(channel.botToken, channel.appToken);
+        break;
+      case "whatsapp":
+        secrets.push(channel.ownerNumber);
+        break;
+    }
+  }
+  return secrets;
 }

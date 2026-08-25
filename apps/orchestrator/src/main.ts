@@ -288,6 +288,10 @@ async function main(): Promise<void> {
     requestTimeoutMs: config.healthRequestTimeoutMs,
     useDockerNetwork: config.nodeEnv === "production",
     maxConcurrentChecks: config.healthMaxConcurrentChecks,
+    channelPollIntervalMs: config.healthChannelPollIntervalMs,
+    channelStateMaxAgeMs: config.healthChannelStateMaxAgeMs,
+    channelProbeMaxBackoffMs: config.healthChannelProbeMaxBackoffMs,
+    channelProbeTimeoutMs: config.healthChannelProbeTimeoutMs,
   });
   healthMonitor.start();
 

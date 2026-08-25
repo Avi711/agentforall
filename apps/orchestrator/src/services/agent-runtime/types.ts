@@ -9,9 +9,23 @@ export interface RuntimeConfigFiles {
   dotEnv: string;
 }
 
-export interface RuntimeHealthResult {
-  gatewayHealthy: boolean;
-  whatsappState: "connected" | "disconnected" | "unknown";
+// "unknown" means no state was established; the two failure states are kept distinct so a
+// broken probe is never mistaken for a genuinely disconnected channel.
+export type WhatsappLinkState =
+  | "connected"
+  | "disconnected"
+  | "unknown"
+  | "probe_failed"
+  | "protocol_error";
+
+// "restart_required" means the change is only staged on disk, so it is not live until the
+// container boots again. Only "applied" means a running runtime acknowledged it.
+export type ConfigApplyOutcome = "applied" | "restart_required";
+
+export interface GatewayLiveness {
+  healthy: boolean;
+  // null when the runtime exposes no readiness signal separate from liveness.
+  degraded: boolean | null;
 }
 
 export interface WhatsappPairingRequest {
@@ -25,18 +39,21 @@ export interface AgentRuntimeAdapter {
   kind: AgentRuntimeKind;
   image: string;
   maxBackupBytes: number;
-  // true when the runtime watches its config file and applies changes itself (no container restart).
-  hotReloadsConfig: boolean;
 
   containerName(instanceId: string): string;
   stateVolumeName(instanceId: string): string;
   buildContainerOptions(instance: Instance): Promise<ContainerCreateOptions>;
   generateConfig(config: InstanceConfig, gatewayToken: string): RuntimeConfigFiles;
-  refreshConfig(containerId: string, instance: Instance): Promise<void>;
+  // Writes config for the container's next boot. Callers that restart afterwards use this.
+  writeConfig(containerId: string, instance: Instance): Promise<void>;
+  // Applies config to a running runtime without restarting it, and reports what actually happened.
+  applyConfig(containerId: string, instance: Instance): Promise<ConfigApplyOutcome>;
   injectWhatsappSession(containerId: string, credsTar: Buffer): Promise<void>;
   exportState(containerId: string): Promise<ArchiveStreamResult>;
   restoreState(containerId: string, sourceTarGzip: Readable): Promise<void>;
-  probe(instance: Instance, timeoutMs: number, useDockerNetwork: boolean): Promise<RuntimeHealthResult>;
+  probeGateway(instance: Instance, timeoutMs: number, useDockerNetwork: boolean): Promise<GatewayLiveness>;
+  // Runs inside the container: the gateway only grants operator scopes to loopback callers.
+  probeWhatsapp(instance: Instance, timeoutMs: number, useDockerNetwork: boolean): Promise<WhatsappLinkState>;
   // true once the stored WhatsApp session is gone from the container (it cannot resurrect on restart).
   logoutWhatsapp(containerId: string): Promise<boolean>;
   // Senders waiting for DM approval (dmPolicy "pairing"); empty when the runtime has no pairing store.

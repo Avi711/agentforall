@@ -284,7 +284,7 @@ export class PairingManager {
   ): Promise<void> {
     try {
       const adapter = this.runtimes.get(instance.runtimeKind);
-      await adapter.refreshConfig(containerId, instance);
+      await adapter.writeConfig(containerId, instance);
       await adapter.injectWhatsappSession(containerId, creds);
       await this.runtime.restart(containerId);
     } catch (err) {

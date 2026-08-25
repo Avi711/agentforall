@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 import { LiteLlmAdminClient } from "../src/services/litellm-admin-client.js";
 
 test("LiteLLM key generation sends budget, models, and owner metadata", async () => {
-  let request: { url: string; body: unknown; authorization: string | null } | null =
-    null;
+  const captured: { request: { url: string; body?: unknown; authorization: string | null } | null } = {
+    request: null,
+  };
   const fetchImpl: typeof fetch = async (input, init) => {
-    request = {
+    captured.request = {
       url: input.toString(),
       body: JSON.parse(String(init?.body)),
       authorization: new Headers(init?.headers).get("authorization"),
@@ -40,9 +41,9 @@ test("LiteLLM key generation sends budget, models, and owner metadata", async ()
     keyAlias: "agentforall-test",
     keyHash: "hashed-key",
   });
-  assert.equal(request?.url, "https://litellm.example/key/generate");
-  assert.equal(request?.authorization, "Bearer master-key");
-  assert.deepEqual(request?.body, {
+  assert.equal(captured.request?.url, "https://litellm.example/key/generate");
+  assert.equal(captured.request?.authorization, "Bearer master-key");
+  assert.deepEqual(captured.request?.body, {
     key_alias: "agentforall-test",
     models: ["gemini-agentforall"],
     max_budget: 50,
@@ -57,9 +58,11 @@ test("LiteLLM key generation sends budget, models, and owner metadata", async ()
 });
 
 test("LiteLLM key usage reads spend and budget from key info", async () => {
-  let request: { url: string; authorization: string | null } | null = null;
+  const captured: { request: { url: string; body?: unknown; authorization: string | null } | null } = {
+    request: null,
+  };
   const fetchImpl: typeof fetch = async (input, init) => {
-    request = {
+    captured.request = {
       url: input.toString(),
       authorization: new Headers(init?.headers).get("authorization"),
     };
@@ -93,6 +96,6 @@ test("LiteLLM key usage reads spend and budget from key info", async () => {
     keyAlias: "agentforall-test",
     models: ["gemini-agentforall"],
   });
-  assert.equal(request?.url, "https://litellm.example/key/info?key=sk-bot");
-  assert.equal(request?.authorization, "Bearer master-key");
+  assert.equal(captured.request?.url, "https://litellm.example/key/info?key=sk-bot");
+  assert.equal(captured.request?.authorization, "Bearer master-key");
 });

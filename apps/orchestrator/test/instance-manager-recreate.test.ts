@@ -154,14 +154,17 @@ function adapter(): AgentRuntimeAdapter {
     stateVolumeName: (id) => `oc-${id.slice(0, 12)}-state`,
     buildContainerOptions: async () => ({}) as never,
     generateConfig: () => ({ configJson: "{}", dotEnv: "" }),
-    refreshConfig: async () => {},
+    writeConfig: async () => {},
+  applyConfig: async () => "applied" as const,
     injectWhatsappSession: async () => {},
     exportState: async () => {
       throw new Error("not implemented");
     },
     restoreState: async () => {},
-    probe: async () => ({ gatewayHealthy: true, whatsappState: "unknown" }),
+    probeGateway: async () => ({ healthy: true, degraded: null }),
+    probeWhatsapp: async () => "unknown" as const,
     logoutWhatsapp: async () => true,
+    readOwnerIds: async () => [],
     listWhatsappPairingRequests: async () => [],
   };
 }

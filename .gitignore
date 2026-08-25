@@ -21,3 +21,5 @@ infra/.terraform.lock.hcl
 /backups/
 /outputs/
 .env.local
+
+.codex-run/

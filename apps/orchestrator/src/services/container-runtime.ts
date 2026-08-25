@@ -399,13 +399,16 @@ export class ContainerRuntime {
     cmd: string[],
     timeoutMs: number,
     maxStdoutBytes: number,
+    input?: Buffer,
   ): Promise<ExecBufferResult> {
     const exec = await this.docker.getContainer(containerId).exec({
       Cmd: cmd,
       AttachStdout: true,
       AttachStderr: true,
+      AttachStdin: input !== undefined,
     });
-    const stream = await exec.start({ hijack: true, stdin: false });
+    const stream = await exec.start({ hijack: true, stdin: input !== undefined });
+    if (input !== undefined) stream.end(input);
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
     const boundedStdout = captureBoundedWritable(stdout, maxStdoutBytes);

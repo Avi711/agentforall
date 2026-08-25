@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import tar from "tar-stream";
 import type {
   InstanceConfig,
@@ -10,6 +11,7 @@ import { ownerIdentityOf, ownerPeerIds } from "../../../domain/owner.js";
 import type { RuntimeConfigFiles } from "../types.js";
 import {
   OPENCLAW_CONFIG_PATH,
+  OPENCLAW_ENV_PATH,
   OPENCLAW_INTERNAL_PORT,
   OPENCLAW_USER,
   OPENCLAW_WHATSAPP_SESSION_PATH,
@@ -59,6 +61,9 @@ export function generateRuntimePatchedOpenclawFiles(
     ...generated,
     ...existing,
   };
+  // Spreading `existing` last preserves whatever the runtime writes for itself (mcp, messages,
+  // meta, ...); every key the orchestrator renders is then taken back from `generated`, because a
+  // setting that loses to the copy on disk can never reach a container that already has one.
   const patched = {
     ...merged,
     agents: generated.agents,
@@ -68,10 +73,10 @@ export function generateRuntimePatchedOpenclawFiles(
     channels: mergeChannels(generated.channels, existing.channels),
     session: generated.session,
     commands: generated.commands,
-    plugins: mergeRecords(generated.plugins, existing.plugins),
-    web: mergeRecords(generated.web, existing.web),
-    browser: merged.browser,
-    logging: merged.logging,
+    plugins: mergePlugins(generated.plugins, existing.plugins),
+    web: generated.web,
+    browser: generated.browser,
+    logging: generated.logging,
   };
   return {
     configJson: JSON.stringify(patched, null, 2),
@@ -79,40 +84,62 @@ export function generateRuntimePatchedOpenclawFiles(
   };
 }
 
+export async function buildOpenclawEnvTar(dotEnv: string): Promise<Buffer> {
+  return packTar(async (pack) => {
+    await writeEntry(pack, {
+      name: ".openclaw/",
+      type: "directory",
+      mode: 0o755,
+      ...OPENCLAW_USER,
+    });
+    await writeEntry(pack, { name: ".openclaw/.env", mode: 0o600, ...OPENCLAW_USER }, dotEnv);
+  });
+}
+
 export async function buildOpenclawConfigTar(
   files: RuntimeConfigFiles,
 ): Promise<Buffer> {
-  const pack = tar.pack();
-  const owner = OPENCLAW_USER;
-
-  await writeEntry(pack, {
-    name: ".openclaw/",
-    type: "directory",
-    mode: 0o755,
-    ...owner,
+  return packTar(async (pack) => {
+    const owner = OPENCLAW_USER;
+    await writeEntry(pack, {
+      name: ".openclaw/",
+      type: "directory",
+      mode: 0o755,
+      ...owner,
+    });
+    await writeEntry(
+      pack,
+      { name: ".openclaw/openclaw.json", mode: 0o644, ...owner },
+      files.configJson,
+    );
+    await writeEntry(
+      pack,
+      { name: ".openclaw/.env", mode: 0o600, ...owner },
+      files.dotEnv,
+    );
   });
-  await writeEntry(
-    pack,
-    { name: ".openclaw/openclaw.json", mode: 0o644, ...owner },
-    files.configJson,
-  );
-  await writeEntry(
-    pack,
-    { name: ".openclaw/.env", mode: 0o600, ...owner },
-    files.dotEnv,
-  );
+}
 
-  pack.finalize();
-
-  const chunks: Buffer[] = [];
-  for await (const chunk of pack) {
-    chunks.push(chunk as Buffer);
+// The runtime stamps its own bookkeeping key on every write, so that one is ignored; everything
+// else is orchestrator-rendered and must match for the config to count as in place.
+export function configMatches(liveConfigJson: string, desiredConfigJson: string): boolean {
+  try {
+    return isDeepStrictEqual(
+      withoutRuntimeStamp(parseJsonRecord(liveConfigJson)),
+      withoutRuntimeStamp(parseJsonRecord(desiredConfigJson)),
+    );
+  } catch {
+    // An unreadable config cannot be proof that anything landed.
+    return false;
   }
-  return Buffer.concat(chunks);
 }
 
 export function openclawReadConfigCommand(): string[] {
   return ["cat", OPENCLAW_CONFIG_PATH];
+}
+
+export function openclawReadEnvCommand(): string[] {
+  return ["cat", OPENCLAW_ENV_PATH];
 }
 
 // Owner ids the live config actually holds; tolerant of a missing or hand-edited block.
@@ -392,6 +419,18 @@ function mediaModel(
   return { provider, model, capabilities: [capability] };
 }
 
+async function packTar(fill: (pack: tar.Pack) => Promise<void>): Promise<Buffer> {
+  const pack = tar.pack();
+  await fill(pack);
+  pack.finalize();
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of pack) {
+    chunks.push(chunk as Buffer);
+  }
+  return Buffer.concat(chunks);
+}
+
 function writeEntry(
   pack: tar.Pack,
   header: tar.Headers,
@@ -435,35 +474,45 @@ function parseJsonRecord(json: string): Record<string, unknown> {
   return parsed;
 }
 
-function mergeRecords(
-  generated: unknown,
-  existing: unknown,
-): Record<string, unknown> | undefined {
-  if (!isRecord(generated) && !isRecord(existing)) return undefined;
-  return {
-    ...(isRecord(generated) ? generated : {}),
-    ...(isRecord(existing) ? existing : {}),
-  };
-}
+// Channels the orchestrator renders in full: absent from the desired config means removed, and a
+// rotated credential must replace the one on disk rather than lose to it.
+const REPLACED_CHANNELS = ["telegram", "discord", "slack"] as const;
 
 function mergeChannels(generated: unknown, existing: unknown): unknown {
-  const merged = mergeRecords(generated, existing);
-  if (!merged) return generated ?? existing;
-  if (isRecord(generated) && isRecord(existing)) {
-    // Runtime-written WhatsApp keys survive, but presence + access policy are orchestrator-owned.
-    if (isRecord(generated.whatsapp)) {
-      merged.whatsapp = mergeRecords(existing.whatsapp, generated.whatsapp);
-      if (isRecord(merged.whatsapp) && !("allowFrom" in generated.whatsapp)) {
-        delete merged.whatsapp.allowFrom;
-      }
-    } else {
-      delete merged.whatsapp;
-    }
-    // Telegram is orchestrator-owned; replace (not merge) so stale keys can't survive.
-    merged.telegram = generated.telegram;
-    if (merged.telegram === undefined) delete merged.telegram;
+  const desired = isRecord(generated) ? generated : {};
+  const live = isRecord(existing) ? existing : {};
+  const merged: Record<string, unknown> = { ...live, ...desired };
+
+  for (const name of REPLACED_CHANNELS) {
+    if (!(name in desired)) delete merged[name];
   }
+
+  // WhatsApp is the exception: the runtime writes its own account and device state under it.
+  if (isRecord(desired.whatsapp)) {
+    const runtimeWritten = isRecord(live.whatsapp) ? live.whatsapp : {};
+    const whatsapp: Record<string, unknown> = { ...runtimeWritten, ...desired.whatsapp };
+    if (!("allowFrom" in desired.whatsapp)) delete whatsapp.allowFrom;
+    merged.whatsapp = whatsapp;
+  } else {
+    delete merged.whatsapp;
+  }
+
   return merged;
+}
+
+// The orchestrator only ever enables the plugins its channels need; anything else the runtime
+// installed stays enabled.
+function mergePlugins(generated: unknown, existing: unknown): unknown {
+  const desired = isRecord(generated) && isRecord(generated.entries) ? generated.entries : null;
+  const live = isRecord(existing) ? existing : undefined;
+  if (desired === null) return live;
+  const liveEntries = live && isRecord(live.entries) ? live.entries : {};
+  return { ...live, entries: { ...liveEntries, ...desired } };
+}
+
+function withoutRuntimeStamp(config: Record<string, unknown>): Record<string, unknown> {
+  const { meta: _meta, ...rest } = config;
+  return rest;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

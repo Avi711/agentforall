@@ -1,70 +1,56 @@
 import type { Instance } from "../../../domain/types.js";
-import type { ContainerRuntime } from "../../container-runtime.js";
-import type { RuntimeHealthResult } from "../types.js";
+import type { GatewayLiveness, WhatsappLinkState } from "../types.js";
 import {
   HERMES_HEALTH_PATH,
   HERMES_INTERNAL_PORT,
 } from "./constants.js";
 
-export async function probeHermes(
-  _runtime: ContainerRuntime,
+export async function probeHermesGateway(
   instance: Instance,
   timeoutMs: number,
   useDockerNetwork: boolean,
-): Promise<RuntimeHealthResult> {
-  const result = await checkGateway(instance, timeoutMs, useDockerNetwork);
-  if (!result.gatewayHealthy || !needsWhatsappProbe(instance)) return result;
-  return {
-    gatewayHealthy: true,
-    whatsappState: parseWhatsappState(result.detailedHealth),
-  };
+): Promise<GatewayLiveness> {
+  const base = baseUrl(instance, useDockerNetwork);
+  try {
+    const resp = await fetch(`${base}${HERMES_HEALTH_PATH}`, {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    // Hermes exposes no readiness signal separate from liveness.
+    return { healthy: resp.ok, degraded: null };
+  } catch {
+    return { healthy: false, degraded: null };
+  }
 }
 
-async function checkGateway(
+export async function probeHermesWhatsapp(
   instance: Instance,
   timeoutMs: number,
   useDockerNetwork: boolean,
-): Promise<RuntimeHealthResult & { detailedHealth?: unknown }> {
+): Promise<WhatsappLinkState> {
+  const base = baseUrl(instance, useDockerNetwork);
+  let detailed: unknown;
+  try {
+    const resp = await fetch(`${base}/health/detailed`, {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!resp.ok) return "probe_failed";
+    detailed = await resp.json();
+  } catch {
+    return "probe_failed";
+  }
+  return parseWhatsappState(detailed);
+}
+
+function baseUrl(instance: Instance, useDockerNetwork: boolean): string {
   const host = useDockerNetwork ? instance.containerName : "127.0.0.1";
   const port = useDockerNetwork ? HERMES_INTERNAL_PORT : instance.gatewayPort;
-
-  try {
-    const resp = await fetch(`http://${host}:${port}${HERMES_HEALTH_PATH}`, {
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!resp.ok) return { gatewayHealthy: false, whatsappState: "unknown" };
-    return {
-      gatewayHealthy: true,
-      whatsappState: "unknown",
-      detailedHealth: await fetchDetailedHealth(host, port, timeoutMs),
-    };
-  } catch {
-    return { gatewayHealthy: false, whatsappState: "unknown" };
-  }
+  return `http://${host}:${port}`;
 }
 
-async function fetchDetailedHealth(
-  host: string,
-  port: number,
-  timeoutMs: number,
-): Promise<unknown> {
-  try {
-    const resp = await fetch(`http://${host}:${port}/health/detailed`, {
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!resp.ok) return undefined;
-    return resp.json() as Promise<unknown>;
-  } catch {
-    return undefined;
-  }
-}
-
-function parseWhatsappState(
-  detailedHealth: unknown,
-): RuntimeHealthResult["whatsappState"] {
-  if (!isRecord(detailedHealth)) return "unknown";
+function parseWhatsappState(detailedHealth: unknown): WhatsappLinkState {
+  if (!isRecord(detailedHealth)) return "protocol_error";
   const platforms = detailedHealth.platforms;
-  if (!isRecord(platforms)) return "unknown";
+  if (!isRecord(platforms)) return "protocol_error";
   const whatsapp = platforms.whatsapp ?? platforms.WhatsApp;
   if (!whatsapp) return "unknown";
   const normalized =
@@ -91,14 +77,6 @@ function parseWhatsappState(
     return "connected";
   }
   return "unknown";
-}
-
-function needsWhatsappProbe(instance: Instance): boolean {
-  return (
-    Boolean(instance.containerId) &&
-    instance.hasWhatsappCreds &&
-    instance.config.channels.some((ch) => ch.type === "whatsapp")
-  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

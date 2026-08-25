@@ -121,6 +121,12 @@ const AppConfigSchema = z.object({
   // Runtime health can block during plugin installs and first-message processing.
   healthRequestTimeoutMs: z.coerce.number().int().min(1000).default(10_000),
   healthMaxConcurrentChecks: z.coerce.number().int().min(1).default(10),
+  // Channel link state changes rarely and costs far more to read than liveness, so it runs on its
+  // own cadence and its last answer is reused in between.
+  healthChannelPollIntervalMs: z.coerce.number().int().min(5000).default(60_000),
+  healthChannelStateMaxAgeMs: z.coerce.number().int().min(10_000).default(600_000),
+  healthChannelProbeMaxBackoffMs: z.coerce.number().int().min(10_000).default(900_000),
+  healthChannelProbeTimeoutMs: z.coerce.number().int().min(1000).default(10_000),
 
   shutdownTimeoutMs: z.coerce.number().int().min(1000).default(10_000),
 
@@ -246,6 +252,10 @@ export function loadConfig(): AppConfig {
     healthUnhealthyThreshold: process.env.HEALTH_UNHEALTHY_THRESHOLD,
     healthRequestTimeoutMs: process.env.HEALTH_REQUEST_TIMEOUT_MS,
     healthMaxConcurrentChecks: process.env.HEALTH_MAX_CONCURRENT_CHECKS,
+    healthChannelPollIntervalMs: process.env.HEALTH_CHANNEL_POLL_INTERVAL_MS,
+    healthChannelStateMaxAgeMs: process.env.HEALTH_CHANNEL_STATE_MAX_AGE_MS,
+    healthChannelProbeMaxBackoffMs: process.env.HEALTH_CHANNEL_PROBE_MAX_BACKOFF_MS,
+    healthChannelProbeTimeoutMs: process.env.HEALTH_CHANNEL_PROBE_TIMEOUT_MS,
     shutdownTimeoutMs: process.env.SHUTDOWN_TIMEOUT_MS,
     reconcileOnStartup: process.env.RECONCILE_ON_STARTUP,
     reconcileIntervalMs: process.env.RECONCILE_INTERVAL_MS,

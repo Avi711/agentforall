@@ -97,6 +97,7 @@ test("backup export job becomes ready without holding request open", async () =>
   assert.equal(started.status, "pending");
 
   const ready = await waitForJob(manager, started.id);
+  assert.ok(ready, "job never reached a terminal state");
   assert.equal(ready.status, "ready");
   if (ready.status === "ready") {
     assert.equal(ready.downloadUrl, "https://storage.example/job-download");

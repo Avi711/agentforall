@@ -168,14 +168,18 @@ const openclawAdapter: AgentRuntimeAdapter = {
     throw new Error("not implemented");
   },
   generateConfig: () => ({ configJson: "{}", dotEnv: "" }),
-  refreshConfig: async () => {},
+  writeConfig: async () => {},
+  applyConfig: async () => "applied" as const,
   injectWhatsappSession: async () => {},
   exportState: async () => {
     throw new Error("not implemented");
   },
   restoreState: async () => {},
-  probe: async () => ({ gatewayHealthy: true, whatsappState: "unknown" }),
+  probeGateway: async () => ({ healthy: true, degraded: null }),
+  probeWhatsapp: async () => "unknown" as const,
   logoutWhatsapp: async () => true,
+  listWhatsappPairingRequests: async () => [],
+  readOwnerIds: async () => [],
 };
 
 function createManager(

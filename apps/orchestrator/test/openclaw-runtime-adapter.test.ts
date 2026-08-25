@@ -4,6 +4,7 @@ import tar from "tar-stream";
 import { OpenClawRuntimeAdapter } from "../src/services/agent-runtime/openclaw/adapter.js";
 import type { ContainerRuntime } from "../src/services/container-runtime.js";
 import type { Instance, InstanceConfig } from "../src/domain/types.js";
+import { UpstreamUnavailableError, ValidationError } from "../src/domain/errors.js";
 
 test("generated config supports LiteLLM media provider", () => {
   const adapter = new OpenClawRuntimeAdapter({} as ContainerRuntime, "openclaw-image");
@@ -47,13 +48,13 @@ test("generated config supports LiteLLM media provider", () => {
   assert.equal(config.agents.defaults.model.primary, "litellm/gemini-agentforall");
   assert.equal(config.agents.defaults.imageModel?.primary, "litellm/gemini-agentforall");
   assert.equal(config.agents.defaults.pdfModel?.primary, "litellm/gemini-agentforall");
-  assert.equal(config.models?.providers.litellm.api, "openai-completions");
+  assert.equal(config.models?.providers.litellm?.api, "openai-completions");
   assert.equal(
-    config.models?.providers.litellm.baseUrl,
+    config.models?.providers.litellm?.baseUrl,
     "https://litellm-gateway.example/v1",
   );
-  assert.equal(config.models?.providers.litellm.apiKey, "${LITELLM_API_KEY}");
-  assert.deepEqual(config.models?.providers.litellm.models[0], {
+  assert.equal(config.models?.providers.litellm?.apiKey, "${LITELLM_API_KEY}");
+  assert.deepEqual(config.models?.providers.litellm?.models[0], {
     id: "gemini-agentforall",
     name: "gemini-agentforall",
     reasoning: false,
@@ -86,48 +87,327 @@ test("generated config supports LiteLLM media provider", () => {
   assert.match(files.dotEnv, /^LITELLM_API_KEY=litellm-key$/m);
 });
 
-test("runtime patch replaces imported provider config with platform LiteLLM config", async () => {
-  let configArchive: Buffer | null = null;
-  const runtime = {
-    isRunning: async () => true,
-    execCommandBuffer: async () => ({
-      exitCode: 0,
-      stdout: Buffer.from(JSON.stringify(existingConfig)),
-      stderr: "",
+interface SentConfig {
+  agents: { defaults: { model: { primary: string } } };
+  models: { providers: Record<string, { baseUrl?: string } | undefined> };
+  session: unknown;
+  gateway: { auth: { token: string } };
+  channels: { whatsapp: { dmPolicy: string; allowFrom: string[] } };
+}
+
+const failure = (fields: Record<string, unknown>) => JSON.stringify({ ok: false, ...fields });
+// What the adapter would write, so a container whose env already matches reports "applied".
+const desiredConfig = () =>
+  new OpenClawRuntimeAdapter({} as ContainerRuntime, "openclaw-image").generateConfig(
+    instanceConfig,
+    "new-token",
+  ).configJson;
+const currentEnv = () =>
+  new OpenClawRuntimeAdapter({} as ContainerRuntime, "openclaw-image").generateConfig(
+    instanceConfig,
+    "new-token",
+  ).dotEnv;
+
+test("a live change goes to the gateway carrying the merged config, not a file write", async () => {
+  const live = liveRuntime();
+  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+
+  assert.equal(await adapter.applyConfig("container-1", instance), "applied");
+
+  const sent = live.sent() as SentConfig;
+  assert.equal(sent.agents.defaults.model.primary, "litellm/gemini-agentforall");
+  assert.equal(sent.models.providers.litellm?.baseUrl, "https://litellm-gateway.example/v1");
+  assert.equal(sent.models.providers.google35, undefined);
+  assert.deepEqual(sent.session, { dmScope: "per-peer" });
+  assert.equal(sent.gateway.auth.token, "new-token");
+  // Access policy is orchestrator-owned: legacy channel (no dmAccess) stays open.
+  assert.equal(sent.channels.whatsapp.dmPolicy, "open");
+  assert.deepEqual(sent.channels.whatsapp.allowFrom, ["*"]);
+
+  const command = live.commands.find((cmd) => cmd[0] === "node");
+  assert.deepEqual(command?.slice(0, 2), ["node", "-e"]);
+  assert.match(String(command?.[2]), /config\.apply/);
+  assert.match(String(command?.[2]), /operator\.admin/);
+});
+
+// Only .env is staged on success: the gateway owns openclaw.json once it has accepted the change.
+test("an applied change stages env for the next boot and nothing else", async () => {
+  const live = liveRuntime();
+  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+
+  await adapter.applyConfig("container-1", instance);
+
+  const archive = live.archive();
+  assert.match(await readTarEntry(archive, ".openclaw/.env"), /^LITELLM_API_KEY=litellm-key$/m);
+  await assert.rejects(readTarEntry(archive, ".openclaw/openclaw.json"));
+});
+
+test("a config the gateway rejected fails loudly and writes nothing", async () => {
+  const live = liveRuntime({
+    applyResult: failure({ stage: "write", transport: false, code: "INVALID_REQUEST", message: "must be boolean" }),
+  });
+  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+
+  await assert.rejects(adapter.applyConfig("container-1", instance), ValidationError);
+  assert.equal(live.archiveOrNull(), null);
+});
+
+// A write can land and lose its acknowledgement, so the live config decides — not the missing answer.
+test("a lost acknowledgement is resolved by reading the live config", async () => {
+  const live = liveRuntime({
+    applyResult: failure({ stage: "write", transport: false, code: "UNAVAILABLE", message: "rate limit exceeded" }),
+    liveConfigHoldsChange: true,
+  });
+  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+
+  assert.equal(await adapter.applyConfig("container-1", instance), "applied");
+  assert.match(await readTarEntry(live.archive(), ".openclaw/.env"), /LITELLM_API_KEY/);
+});
+
+test("a change that neither landed nor was refused fails retryably and writes nothing", async () => {
+  for (const applyResult of [
+    failure({ stage: "write", transport: false, code: "UNAVAILABLE", message: "rate limit exceeded" }),
+    failure({ stage: "read", transport: false, code: "NOT_READY", message: "still starting" }),
+    "unreadable output",
+  ]) {
+    const live = liveRuntime({ applyResult });
+    const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+
+    await assert.rejects(adapter.applyConfig("container-1", instance), UpstreamUnavailableError);
+    assert.equal(live.archiveOrNull(), null);
+  }
+});
+
+// The program never ran, so the gateway holds no opinion: stage the file and let the restart
+// deliver it rather than dropping the change.
+test("an exec that could not run stages the config for a restart", async () => {
+  for (const live of [
+    liveRuntime({ applyExitCode: 1, applyStderr: "OCI runtime exec failed" }),
+    liveRuntime({ applyThrows: new Error("docker daemon unavailable") }),
+  ]) {
+    const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+    assert.equal(await adapter.applyConfig("container-1", instance), "restart_required");
+    await readTarEntry(live.archive(), ".openclaw/openclaw.json");
+  }
+});
+
+// Gateway prose can quote the config it refused, and that config carries every channel secret.
+test("no secret from the config reaches the error message", async () => {
+  const live = liveRuntime({
+    applyResult: failure({
+      stage: "write",
+      transport: false,
+      code: "INVALID_REQUEST",
+      message: "invalid near new-token and telegram-secret and openai-key",
     }),
-    putArchive: async (
-      _containerId: string,
-      _targetPath: string,
-      archive: Buffer,
-    ) => {
-      configArchive = archive;
+  });
+  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+  const withSecrets: Instance = {
+    ...instance,
+    config: {
+      ...instanceConfig,
+      provider: { ...instanceConfig.provider, apiKey: "openai-key" },
+      channels: [
+        { type: "whatsapp" },
+        { type: "telegram", botToken: "telegram-secret", dmPolicy: "allowlist", allowFrom: ["tg:1"] },
+      ],
+    },
+  };
+
+  const error = await adapter.applyConfig("container-1", withSecrets).then(
+    () => null,
+    (err: unknown) => err,
+  );
+  assert.ok(error instanceof Error);
+  for (const secret of ["new-token", "telegram-secret", "openai-key"]) {
+    assert.doesNotMatch(error.message, new RegExp(secret));
+  }
+});
+
+// A change that only moves .env is not live until the runtime restarts, so it must never be
+// reported as applied — the env file is read once at start-up.
+test("a change the running gateway cannot make live asks for a restart", async () => {
+  const live = liveRuntime({ envOnDisk: "LITELLM_API_KEY=a-previous-key\n" });
+  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+
+  assert.equal(await adapter.applyConfig("container-1", instance), "restart_required");
+});
+
+test("a change that is fully live reports applied", async () => {
+  const live = liveRuntime();
+  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+
+  assert.equal(await adapter.applyConfig("container-1", instance), "applied");
+});
+
+// A running container whose config cannot be read is not a stopped container: staging a file it
+// will never read is how a change disappears silently.
+test("a running container that cannot be read is never reported as staged", async () => {
+  const live = liveRuntime({ configReadThrows: new Error("exec timeout") });
+  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+
+  await assert.rejects(adapter.applyConfig("container-1", instance), UpstreamUnavailableError);
+  assert.equal(live.archiveOrNull(), null);
+});
+
+// The question is whether the agent HOLDS the config, not whether this particular write put it
+// there: a retry after a partial failure must succeed, not fail forever.
+test("a config the container already holds is reported applied, not failed", async () => {
+  const live = liveRuntime({
+    applyResult: failure({ stage: "write", transport: false, code: "UNAVAILABLE", message: "rate limit exceeded" }),
+    changeIsNoop: true,
+  });
+  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+
+  assert.equal(await adapter.applyConfig("container-1", instance), "applied");
+});
+
+// No session with the gateway is not the same as a gateway that refused: staging the file and
+// restarting is how the change still reaches the agent.
+test("a gateway that cannot be reached stages the config for a restart", async () => {
+  const live = liveRuntime({
+    applyResult: failure({ stage: "connect", transport: true, code: null, message: "gateway-disconnected" }),
+  });
+  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+
+  assert.equal(await adapter.applyConfig("container-1", instance), "restart_required");
+  const written = JSON.parse(await readTarEntry(live.archive(), ".openclaw/openclaw.json")) as {
+    channels: { whatsapp: Record<string, unknown> };
+  };
+  assert.equal(written.channels.whatsapp.runtimeOnlyKey, "keep-me");
+});
+
+// A gateway that answered but never ruled still gets no blind write.
+test("a gateway that gave no verdict and does not hold the config fails retryably", async () => {
+  const live = liveRuntime({
+    applyResult: failure({ stage: "write", transport: false, code: "UNAVAILABLE", message: "rate limit exceeded" }),
+  });
+  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+
+  await assert.rejects(adapter.applyConfig("container-1", instance), UpstreamUnavailableError);
+  assert.equal(live.archiveOrNull(), null);
+});
+
+// Nothing the runtime reads changed, so there is no reason to spend a gateway write on it.
+test("a change the container already matches never touches the gateway", async () => {
+  const live = liveRuntime({ changeIsNoop: true });
+  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+
+  assert.equal(await adapter.applyConfig("container-1", instance), "applied");
+  assert.deepEqual(live.commands.filter((cmd) => cmd[0] === "node"), []);
+});
+
+// Nothing is running to accept the change, so the file its next boot reads is the way in.
+test("a stopped container is staged, never reported as applied", async () => {
+  let archive: Buffer | null = null;
+  const runtime = {
+    isRunning: async () => false,
+    execCommandBuffer: async () => {
+      throw new Error("exec must not be attempted on a stopped container");
+    },
+    putArchive: async (_id: string, _path: string, content: Buffer) => {
+      archive = content;
     },
   } as unknown as ContainerRuntime;
 
   const adapter = new OpenClawRuntimeAdapter(runtime, "openclaw-image");
-  await adapter.refreshConfig("container-1", instance);
+  assert.equal(await adapter.applyConfig("container-1", instance), "restart_required");
 
-  assert.ok(configArchive);
-  const patched = JSON.parse(
-    await readTarEntry(configArchive, ".openclaw/openclaw.json"),
+  assert.ok(archive);
+  const written = JSON.parse(
+    await readTarEntry(archive, ".openclaw/openclaw.json"),
   ) as typeof existingConfig;
-
-  assert.equal(patched.agents.defaults.model.primary, "litellm/gemini-agentforall");
-  assert.equal(
-    patched.models.providers.litellm.baseUrl,
-    "https://litellm-gateway.example/v1",
-  );
-  assert.equal(patched.models.providers.google35, undefined);
-  assert.deepEqual(patched.session, { dmScope: "per-peer" });
-  assert.equal(patched.gateway.auth.token, "new-token");
-  // Access policy is orchestrator-owned: legacy channel (no dmAccess) stays open, runtime value does not win.
-  assert.equal(patched.channels.whatsapp.dmPolicy, "open");
-  assert.deepEqual(patched.channels.whatsapp.allowFrom, ["*"]);
-  assert.match(
-    await readTarEntry(configArchive, ".openclaw/.env"),
-    /^LITELLM_API_KEY=litellm-key$/m,
-  );
+  assert.equal(written.gateway.auth.token, "new-token");
+  assert.match(await readTarEntry(archive, ".openclaw/.env"), /^LITELLM_API_KEY=litellm-key$/m);
 });
+
+// Callers that restart afterwards stage the file, and it must carry the runtime's own state.
+test("writeConfig preserves runtime-written config on a running container", async () => {
+  const live = liveRuntime();
+  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+
+  await adapter.writeConfig("container-1", instance);
+
+  const written = JSON.parse(await readTarEntry(live.archive(), ".openclaw/openclaw.json")) as {
+    channels: { whatsapp: Record<string, unknown> };
+    gateway: { auth: { token: string } };
+  };
+  assert.equal(written.channels.whatsapp.runtimeOnlyKey, "keep-me");
+  assert.equal(written.gateway.auth.token, "new-token");
+});
+
+test("writeConfig never opens the gateway RPC", async () => {
+  const live = liveRuntime();
+  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+
+  await adapter.writeConfig("container-1", instance);
+
+  assert.deepEqual(live.commands.map((cmd) => cmd[0]), ["cat"]);
+});
+
+function liveRuntime(
+  options: {
+    applyResult?: string;
+    applyExitCode?: number;
+    applyStderr?: string;
+    applyThrows?: Error;
+    liveConfigHoldsChange?: boolean;
+    changeIsNoop?: boolean;
+    configReadThrows?: Error;
+    envOnDisk?: string;
+    envReadThrows?: Error;
+  } = {},
+) {
+  const commands: string[][] = [];
+  let sentConfig: string | null = null;
+  let archive: Buffer | null = null;
+
+  const runtime = {
+    isRunning: async () => true,
+    execCommandBuffer: async (
+      _containerId: string,
+      cmd: string[],
+      _timeoutMs: number,
+      _maxBytes: number,
+      input?: Buffer,
+    ) => {
+      commands.push(cmd);
+      if (cmd[0] === "cat") {
+        if (options.configReadThrows) throw options.configReadThrows;
+        if (String(cmd[1]).endsWith(".env")) {
+          if (options.envReadThrows) throw options.envReadThrows;
+          return { exitCode: 0, stdout: Buffer.from(options.envOnDisk ?? currentEnv()), stderr: "" };
+        }
+        // A no-op change is already in place before the write, so a read-back proves nothing.
+        const base = options.changeIsNoop ? desiredConfig() : JSON.stringify(existingConfig);
+        // The verification read sees whatever the gateway ended up holding.
+        const held = options.liveConfigHoldsChange && sentConfig !== null ? sentConfig : base;
+        return { exitCode: 0, stdout: Buffer.from(held), stderr: "" };
+      }
+      if (options.applyThrows) throw options.applyThrows;
+      sentConfig = input?.toString("utf8") ?? null;
+      return {
+        exitCode: options.applyExitCode ?? 0,
+        stdout: Buffer.from(options.applyResult ?? '{"ok":true}'),
+        stderr: options.applyStderr ?? "",
+      };
+    },
+    putArchive: async (_id: string, _path: string, content: Buffer) => {
+      archive = content;
+    },
+  } as unknown as ContainerRuntime;
+
+  return {
+    runtime,
+    commands,
+    sent: () => JSON.parse(sentConfig ?? "null") as unknown,
+    archive: () => {
+      assert.ok(archive);
+      return archive;
+    },
+    archiveOrNull: () => archive,
+  };
+}
 
 const liteLlmConfig: InstanceConfig = {
   displayName: "LiteLLM",
@@ -215,6 +495,7 @@ const existingConfig = {
       enabled: true,
       dmPolicy: "open",
       allowFrom: ["9725"],
+      runtimeOnlyKey: "keep-me",
       defaultAccount: "default",
       accounts: {
         default: {

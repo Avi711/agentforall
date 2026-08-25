@@ -4,8 +4,10 @@ import type { ContainerRuntime } from "../../container-runtime.js";
 import type { Instance, InstanceConfig } from "../../../domain/types.js";
 import type {
   AgentRuntimeAdapter,
+  ConfigApplyOutcome,
   RuntimeConfigFiles,
-  RuntimeHealthResult,
+  GatewayLiveness,
+  WhatsappLinkState,
   WhatsappPairingRequest,
 } from "../types.js";
 import {
@@ -25,7 +27,7 @@ import {
   HERMES_STATE_PARENT,
   HERMES_STATE_ROOT,
 } from "./constants.js";
-import { probeHermes } from "./health.js";
+import { probeHermesGateway, probeHermesWhatsapp } from "./health.js";
 import {
   injectHermesWhatsappSession,
   logoutHermesWhatsapp,
@@ -35,7 +37,6 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
   readonly kind = "hermes" as const;
   readonly maxBackupBytes = HERMES_MAX_BACKUP_BYTES;
   // Hermes reads config at boot only.
-  readonly hotReloadsConfig = false;
 
   constructor(
     private readonly runtime: ContainerRuntime,
@@ -96,7 +97,13 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
     return generateHermesFiles(config, gatewayToken);
   }
 
-  async refreshConfig(containerId: string, instance: Instance): Promise<void> {
+  // Hermes has no live-config channel; a change is only live once the container boots again.
+  async applyConfig(containerId: string, instance: Instance): Promise<ConfigApplyOutcome> {
+    await this.writeConfig(containerId, instance);
+    return "restart_required";
+  }
+
+  async writeConfig(containerId: string, instance: Instance): Promise<void> {
     const files = this.generateConfig(instance.config, instance.gatewayToken);
     await this.runtime.putArchive(
       containerId,
@@ -136,12 +143,20 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
     );
   }
 
-  probe(
+  probeGateway(
     instance: Instance,
     timeoutMs: number,
     useDockerNetwork: boolean,
-  ): Promise<RuntimeHealthResult> {
-    return probeHermes(this.runtime, instance, timeoutMs, useDockerNetwork);
+  ): Promise<GatewayLiveness> {
+    return probeHermesGateway(instance, timeoutMs, useDockerNetwork);
+  }
+
+  probeWhatsapp(
+    instance: Instance,
+    timeoutMs: number,
+    useDockerNetwork: boolean,
+  ): Promise<WhatsappLinkState> {
+    return probeHermesWhatsapp(instance, timeoutMs, useDockerNetwork);
   }
 
   logoutWhatsapp(containerId: string): Promise<boolean> {

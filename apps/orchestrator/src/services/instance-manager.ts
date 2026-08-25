@@ -8,6 +8,7 @@ import type { EventRepository, ProvisioningEvent } from "../storage/event-reposi
 import type { PairingManager } from "./pairing-manager.js";
 import type { AppConfig } from "../config.js";
 import type { AgentRuntimeRegistry } from "./agent-runtime/registry.js";
+import type { ConfigApplyOutcome } from "./agent-runtime/types.js";
 import type {
   LlmKeyProvisioner,
   LiteLlmProvisionResult,
@@ -15,6 +16,7 @@ import type {
 import {
   NotFoundError,
   InvalidStateError,
+  ValidationError,
   QuotaExceededError,
   InvalidBackupError,
   UpstreamUnavailableError,
@@ -465,16 +467,38 @@ export class InstanceManager {
         : inst.config.resources,
     };
 
-    await this.repo.updateConfig(id, merged);
+    // Container limits are fixed when the container is created, so accepting one here would report
+    // success for a change the running container can never pick up.
+    if (
+      inst.containerId &&
+      (merged.resources.memoryMb !== inst.config.resources.memoryMb ||
+        merged.resources.cpuShares !== inst.config.resources.cpuShares)
+    ) {
+      throw new ValidationError("changing resources needs a recreate, not a config update");
+    }
 
     // Config can be injected into stopped containers too. A hot-reloading runtime applies the file
     // itself; restarting it would only cause an outage (and can wedge a still-booting container).
-    if (inst.containerId) {
-      const adapter = this.runtimes.get(inst.runtimeKind);
-      await adapter.refreshConfig(inst.containerId, { ...inst, config: merged });
-      if (!adapter.hotReloadsConfig && isContainerUp(inst.status)) {
-        await this.restartContainer(inst.containerId);
-      }
+    // The container has to take the config before the row claims it: persisting first would leave
+    // the DB describing a bot that does not exist.
+    const adapter = inst.containerId ? this.runtimes.get(inst.runtimeKind) : null;
+    let outcome: ConfigApplyOutcome | null = null;
+    if (adapter && inst.containerId) {
+      outcome = await adapter.applyConfig(inst.containerId, { ...inst, config: merged });
+      await this.eventLog.append(id, `config.${outcome}`);
+      this.logger.info({ instanceId: id, outcome }, "runtime config change");
+    }
+
+    await this.repo.updateConfig(id, merged);
+
+    // A staged change is only on disk; a running container has to boot again to read it. The row
+    // can lag reality (a reconciler can mark a serving container "error"), so the container decides.
+    if (
+      outcome === "restart_required" &&
+      inst.containerId &&
+      (await this.runtime.isRunning(inst.containerId))
+    ) {
+      await this.restartContainer(inst.containerId);
     }
 
     return this.requireOwnedInstance(id, userId);
@@ -815,7 +839,7 @@ export class InstanceManager {
 
   private async refreshRuntimeConfig(inst: Instance): Promise<void> {
     if (!inst.containerId) return;
-    await this.runtimes.get(inst.runtimeKind).refreshConfig(inst.containerId, inst);
+    await this.runtimes.get(inst.runtimeKind).writeConfig(inst.containerId, inst);
   }
 
   private async injectWhatsappCreds(

@@ -151,7 +151,100 @@ interface Overrides {
   whatsappAccountId?: string | null;
   logoutCleared?: boolean;
   hotReload?: boolean;
+  refreshConfigError?: Error;
+  containerRunning?: boolean;
+  applyOutcome?: "applied" | "restart_required";
 }
+
+// The row must never claim a config the container refused, or the dashboard shows a bot that
+// does not exist.
+test("a config the container refused is not persisted", async () => {
+  const h = harness({
+    channels: [{ type: "whatsapp" }],
+    refreshConfigError: new Error("openclaw rejected the config: must be boolean"),
+  });
+
+  await assert.rejects(
+    h.manager.updateConfig(h.instance().id, h.instance().userId, {
+      channels: [{ type: "whatsapp" }, { type: "telegram", botToken: "t" }],
+    }),
+    /must be boolean/,
+  );
+  assert.deepEqual(h.instance().config.channels, [{ type: "whatsapp" }]);
+});
+
+// A row can say "error" while the container is happily serving; a staged change still has to be
+// made live, or it is the silent-failure shape all over again.
+test("a staged change restarts a container that is actually running, whatever the row says", async () => {
+  const h = harness({
+    channels: [{ type: "whatsapp" }],
+    status: "error",
+    applyOutcome: "restart_required",
+    containerRunning: true,
+  });
+
+  await h.manager.updateConfig(h.instance().id, h.instance().userId, {
+    channels: [{ type: "whatsapp" }, { type: "telegram", botToken: "t" }],
+  });
+
+  assert.deepEqual(h.calls.restarted, ["container-1"]);
+});
+
+test("a staged change does not restart a container that is not running", async () => {
+  const h = harness({
+    channels: [{ type: "whatsapp" }],
+    status: "stopped",
+    applyOutcome: "restart_required",
+    containerRunning: false,
+  });
+
+  await h.manager.updateConfig(h.instance().id, h.instance().userId, {
+    channels: [{ type: "whatsapp" }, { type: "telegram", botToken: "t" }],
+  });
+
+  assert.deepEqual(h.calls.restarted, []);
+});
+
+// The split is the whole design: a caller that restarts anyway must never pay for the live RPC,
+// and a live change must never be silently staged instead of applied.
+test("only a live config change uses the gateway; restart and start stage a file", async () => {
+  const live = harness({ channels: [{ type: "whatsapp" }] });
+  await live.manager.updateConfig(live.instance().id, live.instance().userId, {
+    channels: [{ type: "whatsapp" }, { type: "telegram", botToken: "t" }],
+  });
+  assert.deepEqual(live.calls.appliedLive, ["container-1"]);
+  assert.deepEqual(live.calls.staged, []);
+
+  const restarted = harness({ channels: [{ type: "whatsapp" }] });
+  await restarted.manager.restart(restarted.instance().id, restarted.instance().userId);
+  assert.deepEqual(restarted.calls.staged, ["container-1"]);
+  assert.deepEqual(restarted.calls.appliedLive, []);
+});
+
+// Container limits are set when the container is created, so accepting a change here would report
+// success for something the running container can never pick up.
+test("a resources change is refused instead of being reported as applied", async () => {
+  const h = harness({ channels: [{ type: "whatsapp" }] });
+
+  await assert.rejects(
+    h.manager.updateConfig(h.instance().id, h.instance().userId, {
+      resources: { memoryMb: 8192 },
+    }),
+    /recreate/i,
+  );
+  assert.deepEqual(h.calls.appliedLive, []);
+  assert.equal(h.instance().config.resources.memoryMb, 4096);
+});
+
+test("an unchanged resources block is not mistaken for a change", async () => {
+  const h = harness({ channels: [{ type: "whatsapp" }] });
+
+  await h.manager.updateConfig(h.instance().id, h.instance().userId, {
+    resources: { memoryMb: 4096, cpuShares: 512 },
+  });
+
+  assert.deepEqual(h.calls.appliedLive, ["container-1"]);
+});
 
 function harness(overrides: Overrides) {
   let instance = makeInstance(overrides);
@@ -161,6 +254,8 @@ function harness(overrides: Overrides) {
     waited: [] as string[],
     restarted: [] as string[],
     refreshedConfigs: [] as string[],
+    staged: [] as string[],
+    appliedLive: [] as string[],
     revokedBots: [] as number[],
     events: [] as string[],
   };
@@ -179,11 +274,13 @@ function harness(overrides: Overrides) {
       };
       return true;
     },
+    updateStatus: async () => true,
     updateConfig: async (_id: string, config: InstanceConfig) => {
       instance = { ...instance, config };
     },
   };
   const runtime = {
+    isRunning: async () => overrides.containerRunning ?? true,
     waitForHealthy: async (containerId: string) => {
       calls.waited.push(containerId);
       return true;
@@ -195,8 +292,15 @@ function harness(overrides: Overrides) {
   const registry = {
     get: () => ({
       hotReloadsConfig: overrides.hotReload ?? true,
-      refreshConfig: async (containerId: string) => {
+      writeConfig: async (containerId: string) => {
         calls.refreshedConfigs.push(containerId);
+        calls.staged.push(containerId);
+      },
+      applyConfig: async (containerId: string) => {
+        if (overrides.refreshConfigError) throw overrides.refreshConfigError;
+        calls.refreshedConfigs.push(containerId);
+        calls.appliedLive.push(containerId);
+        return overrides.applyOutcome ?? ((overrides.hotReload ?? true) ? "applied" : "restart_required");
       },
     }),
   } as unknown as AgentRuntimeRegistry;

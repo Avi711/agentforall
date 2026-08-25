@@ -75,8 +75,8 @@ export class UpstreamUnavailableError extends DomainError {
   readonly statusCode = 502;
   readonly code = "UPSTREAM_UNAVAILABLE";
 
-  constructor(service: string) {
-    super(`${service} unavailable`);
+  constructor(service: string, detail?: string) {
+    super(detail ? `${service} unavailable: ${detail}` : `${service} unavailable`);
   }
 }
 
