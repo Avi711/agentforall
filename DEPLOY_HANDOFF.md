@@ -249,7 +249,16 @@ VM startup script reads these on every boot via `gcloud secrets versions access 
 
 ---
 
-## Integrations (2026-08-27, built, NOT yet deployed)
+## Integrations (2026-08-27, DEPLOYED — commit `2e148d5`, orchestrator `cb685b59…`)
+
+Deployed 2026-08-27 01:30 IL: migration 0011 applied to Supabase; GSM `composio-api-key` created + IAM binding applied (targeted `terraform apply`); VM `.env.runtime` got `INTEGRATIONS_PROVIDER=composio`, `COMPOSIO_API_KEY`, `DASHBOARD_ORIGIN` by hand; Caddyfile got the `/api/v1/mcp/*` → 404 block by hand. Orchestrator `orchestrator@sha256:cb685b59b8f5f57e19d9c9b5bbe318ed6b7c3012cf89b650dd09a6e2245e9370` (Cloud Build from `2e148d5`) force-recreated: healthy in 4s, both networks, log `integrations provider: composio`, `GET /api/v1/integrations/catalog` returns the live catalog, public relay path → 404 from Caddy. Web deployed to Vercel `agentforall` (`https://agentforall-nwpkfhjdm-avi711s-projects.vercel.app`, aliased to `https://agentforall.co.il`).
+
+Gotchas learned:
+- `docker exec agent-forall-caddy caddy reload` exits 0 but did NOT apply the new Caddyfile; `docker compose restart caddy` did (≈3s API blip).
+- **Do not `terraform apply` the `google_compute_instance.platform` change.** The startup-script edit shows as `forces replacement` — it would destroy the VM and every tenant volume. The script in git is the source of truth for a fresh VM; the live VM was patched by hand. Fix later by moving the script to `metadata = { startup-script = … }` (in-place update) before any full apply. `terraform plan` also shows unrelated drift (monitoring alert policies, a `litellm-master-key` IAM member) — review before applying anything untargeted.
+- On a VM reboot the old startup script would regenerate the Caddyfile WITHOUT the relay block (env vars survive). Re-add the block or land the startup-script fix first.
+
+### Original build notes
 
 One-click third-party app connections per bot via Composio Tool Router sessions, behind a provider port with a mock adapter; design and security model in `docs/integrations.md`. The Composio project key authenticates every session's MCP URL, so tenant containers never hold it: OpenClaw talks to the orchestrator's relay (`/api/v1/mcp/:instanceId`, per-bot bearer in `InstanceConfig.integrations`, encrypted at rest) and the orchestrator forwards with the key. Verified in the pinned `openclaw-browser:2026.7.1` image that `mcp.servers.<name>` with `streamable-http` + `headers` passes `openclaw config validate`.
 
