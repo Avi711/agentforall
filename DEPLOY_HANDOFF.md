@@ -261,6 +261,10 @@ Provider-agnostic subscription billing landed in `apps/web/src/lib/billing/` wit
 
 ---
 
+## Blog (2026-08-26)
+
+`/blog` + `/blog/<slug>` via the official `@next/mdx` setup (`createMDX` in `next.config.ts`, `src/mdx-components.tsx` for prose styling + the `Figure` component). Posts live in `apps/web/src/content/blog/<slug>.mdx`, each exporting `metadata` (`PostMeta` in `src/lib/blog/index.ts`); adding a post = one MDX file + its slug in `POST_SLUGS` (sitemap, index, and static params derive from it). Article/Breadcrumb/FAQ JSON-LD per post; `public/llms.txt` lists them. Images are Nano Banana Pro (Compledio) illustrations in the site palette, stored as 1600px webp under `public/blog/<slug>/{cover,inline-1}.webp`. Eight posts: personal-agent explainer, pricing/credits, WhatsApp uses, Telegram vs WhatsApp, small-business agent, service-bot vs personal-agent, OpenClaw in Hebrew, privacy.
+
 ## Open issues
 
 ### 1. First-message-lost on fresh tenant containers (PARTIALLY MITIGATED — STILL OPEN)

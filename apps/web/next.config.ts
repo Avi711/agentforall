@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import createMDX from "@next/mdx";
 
 const isDev = process.env.NODE_ENV !== "production";
 const orchestratorOrigin = readOrigin(
@@ -40,4 +41,4 @@ function readOrigin(url: string): string {
   }
 }
 
-export default nextConfig;
+export default createMDX({})(nextConfig);

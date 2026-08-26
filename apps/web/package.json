@@ -13,6 +13,10 @@
   },
   "dependencies": {
     "@agent-forall/db": "*",
+    "@mdx-js/loader": "^3.1.1",
+    "@mdx-js/react": "^3.1.1",
+    "@next/mdx": "^16.3.3",
+    "@types/mdx": "^2.0.14",
     "better-auth": "1.6.11",
     "drizzle-orm": "^0.45.0",
     "embla-carousel-react": "^8.6.0",

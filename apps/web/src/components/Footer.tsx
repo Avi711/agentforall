@@ -22,6 +22,8 @@ export function Footer() {
             <ul className="space-y-2 text-sm text-espresso-light">
               <li><Link href="/#features" className="transition hover:text-terra">יכולות</Link></li>
               <li><Link href="/#how-it-works" className="transition hover:text-terra">איך זה עובד</Link></li>
+              <li><Link href="/#pricing" className="transition hover:text-terra">מחירים</Link></li>
+              <li><Link href="/blog" className="transition hover:text-terra">בלוג</Link></li>
               <li><Link href="/#faq" className="transition hover:text-terra">שאלות נפוצות</Link></li>
               <li><Link href="/#signup" className="transition hover:text-terra">הצטרפו לרשימה</Link></li>
             </ul>

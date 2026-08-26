@@ -4,10 +4,11 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 
 const links = [
-  { label: "יכולות", href: "#features" },
-  { label: "איך זה עובד", href: "#how-it-works" },
-  { label: "מחירים", href: "#pricing" },
-  { label: "שאלות נפוצות", href: "#faq" },
+  { label: "יכולות", href: "/#features" },
+  { label: "איך זה עובד", href: "/#how-it-works" },
+  { label: "מחירים", href: "/#pricing" },
+  { label: "בלוג", href: "/blog" },
+  { label: "שאלות נפוצות", href: "/#faq" },
 ];
 
 // Signed out → login, signed in → dashboard; the route decides, so the landing stays static.
@@ -33,9 +34,9 @@ export function Navbar() {
       }`}
     >
       <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4 sm:px-8">
-        <a href="#" className="text-xl text-espresso" style={{ letterSpacing: '-0.02em' }}>
+        <Link href="/" className="text-xl text-espresso" style={{ letterSpacing: '-0.02em' }}>
           <span className="font-extrabold">Agent</span><span className="font-normal text-espresso-light">for</span><span className="font-extrabold text-terra">All</span>
-        </a>
+        </Link>
 
         <div className="hidden items-center gap-7 sm:flex">
           {links.map((link) => (

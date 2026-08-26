@@ -1,6 +1,6 @@
 # Agent For All
 
-> A personal AI agent for Israeli consumers that lives inside the messaging app they already use — WhatsApp or Telegram. No app to install, Hebrew-first, available 24/7. Subscriptions start at ₪199/month including VAT. Site language: Hebrew (he-IL).
+> A personal AI agent for Israeli consumers that lives inside the messaging app they already use — WhatsApp or Telegram. No app to install, Hebrew-first, available 24/7. Plans: ₪100, ₪200 or ₪400 per month including VAT, with 1,000 / 2,500 / 6,000 monthly credits (a typical message costs about 2 credits); 7-day free trial with 400 credits and no credit card; credit top-ups from ₪20 (₪1 = 20 credits) that never expire. Site language: Hebrew (he-IL).
 
 Agent For All gives each customer their own private AI assistant. The agent runs in an isolated per-customer container on a private server, and it is reached by sending an ordinary chat message — there is no separate app, dashboard chat, or browser extension required.
 
@@ -20,7 +20,19 @@ Business use: the agent handles the operational load of running a small business
 
 Positioning: most Hebrew-language AI offerings for businesses are customer-facing bots that answer *your customers* (סוכן AI לעסקים — customer service, lead qualification, sales automation). Agent For All is the other direction: a private agent that works for *you* — the owner, the freelancer, the person — on your own work and your own life, in the messaging app you already use.
 
-Company facts: Israeli company serving customers in Israel, Hebrew and English support, contact phone +972-55-250-6938. Pricing starts at ₪199/month including VAT and scales with usage; early customers receive a founders' rate.
+Company facts: Israeli company serving customers in Israel, Hebrew and English support, contact phone +972-55-250-6938. Pricing: three plans — ₪100, ₪200 or ₪400 per month including VAT — with 1,000 / 2,500 / 6,000 monthly credits; 7-day free trial (400 credits, no card); top-ups from ₪20, ₪1 = 20 credits, never expire. Cancel any time; access continues to the end of the paid period.
+
+## Blog (Hebrew guides)
+
+- [Blog index](https://agentforall.co.il/blog)
+- [What is a personal AI agent, and why it is not just another ChatGPT](https://agentforall.co.il/blog/what-is-a-personal-ai-agent)
+- [How much does a personal AI agent cost — plans and credits explained](https://agentforall.co.il/blog/how-much-does-a-personal-ai-agent-cost)
+- [An AI agent in WhatsApp: 12 things it does for you every day](https://agentforall.co.il/blog/whatsapp-ai-agent-what-it-can-do)
+- [Telegram or WhatsApp for your personal agent](https://agentforall.co.il/blog/telegram-or-whatsapp-for-your-agent)
+- [A personal AI agent for small businesses and freelancers: what it actually does for you](https://agentforall.co.il/blog/ai-agent-for-small-business)
+- [Customer-service bot or an AI agent that works for you? The difference most businesses miss](https://agentforall.co.il/blog/customer-service-bot-vs-personal-agent)
+- [OpenClaw in Hebrew: what it is, how it works, who it is for](https://agentforall.co.il/blog/openclaw-hebrew-guide)
+- [Privacy: where your agent's data lives and who can see it](https://agentforall.co.il/blog/privacy-where-your-data-lives)
 
 ## Main pages
 
