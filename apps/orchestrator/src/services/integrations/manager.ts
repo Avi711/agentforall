@@ -23,7 +23,7 @@ import type { IntegrationSessions } from "./sessions.js";
 const CATALOG_TTL_MS = 60 * 60 * 1000;
 const DASHBOARD_CONNECTIONS_PATH = "/app/bot/connections";
 
-type Manager = Pick<InstanceManager, "get" | "updateConfig">;
+type Manager = Pick<InstanceManager, "get" | "updateConfig" | "restart">;
 type Instances = Pick<InstanceRepository, "findById">;
 type EventLog = Pick<EventRepository, "append">;
 type Config = Pick<AppConfig, "orchestratorInternalUrl" | "dashboardOrigin">;
@@ -109,6 +109,10 @@ export class IntegrationsManager {
             relayToken: randomBytes(32).toString("hex"),
             relayUrl: this.relayUrl(instanceId),
           },
+        });
+        // OpenClaw only wires new MCP servers at gateway startup; restart while the user is on the consent page.
+        void this.manager.restart(instanceId, userId).catch((err) => {
+          this.log.warn({ instanceId, err }, "restart after relay binding failed");
         });
       }
 

@@ -62,6 +62,10 @@ container ──Bearer relayToken──▶ routes/mcp-relay.ts ──x-api-key�
 If the provider forgets a session (404 on link creation) `connect` recreates it once. The relay passes
 upstream 404 through so OpenClaw re-initializes its MCP session.
 
+OpenClaw 2026.7.1 wires new `mcp.servers` entries only at gateway startup (the config-apply RPC accepts
+them but the running gateway ignores them), so the first connect on a bot triggers a detached container
+restart — it completes while the user is on the provider's consent page. Later connects don't restart.
+
 ## Environment
 
 Orchestrator: `INTEGRATIONS_PROVIDER` (`composio` | `mock` | unset), `COMPOSIO_API_KEY`, `COMPOSIO_BASE_URL`,

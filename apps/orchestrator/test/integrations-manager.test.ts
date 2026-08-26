@@ -34,6 +34,7 @@ function harness(overrides: Overrides = {}) {
     revoked: [] as string[],
     updateConfig: [] as ConfigPatch[],
     events: [] as string[],
+    restarts: 0,
   };
   let connections: IntegrationConnection[] = [];
   let linkFailures = overrides.linkFailures ?? 0;
@@ -101,6 +102,9 @@ function harness(overrides: Overrides = {}) {
       };
       return instance;
     },
+    restart: async () => {
+      calls.restarts += 1;
+    },
   };
   const instances = { findById: async (id: string) => (id === instance.id ? instance : null) };
 
@@ -150,6 +154,10 @@ test("first connect creates one session, binds the relay once, and returns the h
   assert.deepEqual(h.calls.links.map((l) => l.callbackUrl), [RETURN_URL, RETURN_URL]);
   assert.ok(h.calls.events.includes("integration.session_created"));
   assert.ok(h.calls.events.includes("integration.connect_requested"));
+
+  // The gateway loads MCP servers only at startup: exactly one restart, on the first bind.
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(h.calls.restarts, 1);
 });
 
 test("a vanished upstream session is recreated once and the link still comes back", async () => {
