@@ -302,6 +302,7 @@ test("a stopped container is staged, never reported as applied", async () => {
   let archive: Buffer | null = null;
   const runtime = {
     isRunning: async () => false,
+    readFile: async () => Buffer.from(JSON.stringify(existingConfig)),
     execCommandBuffer: async () => {
       throw new Error("exec must not be attempted on a stopped container");
     },
@@ -342,7 +343,70 @@ test("writeConfig never opens the gateway RPC", async () => {
 
   await adapter.writeConfig("container-1", instance);
 
-  assert.deepEqual(live.commands.map((cmd) => cmd[0]), ["cat"]);
+  assert.deepEqual(live.commands, []);
+});
+
+// start / restart / restore all stage the config while the container is down. Reading it only
+// over exec meant they saw nothing and wrote the pristine file, erasing everything the tenant had.
+test("staging a stopped container keeps the config it already has", async () => {
+  let archive: Buffer | null = null;
+  const tenantEdited = {
+    ...existingConfig,
+    browser: { headless: false },
+    channels: {
+      ...existingConfig.channels,
+      whatsapp: { ...existingConfig.channels.whatsapp, groups: { "-42": { requireMention: false } } },
+    },
+  };
+  const runtime = {
+    isRunning: async () => false,
+    readFile: async () => Buffer.from(JSON.stringify(tenantEdited)),
+    putArchive: async (_id: string, _path: string, content: Buffer) => {
+      archive = content;
+    },
+  } as unknown as ContainerRuntime;
+
+  await new OpenClawRuntimeAdapter(runtime, "openclaw-image").writeConfig("container-1", instance);
+
+  assert.ok(archive);
+  const written = JSON.parse(await readTarEntry(archive, ".openclaw/openclaw.json")) as {
+    browser: { headless: boolean };
+    channels: { whatsapp?: { groups?: unknown } };
+  };
+  assert.equal(written.browser.headless, false);
+  assert.deepEqual(written.channels.whatsapp?.groups, { "-42": { requireMention: false } });
+});
+
+// A container created moments ago has no config yet; that is the one time the pristine file is
+// the right thing to write.
+test("a container with no config yet gets the freshly generated one", async () => {
+  let archive: Buffer | null = null;
+  const runtime = {
+    isRunning: async () => false,
+    readFile: async () => null,
+    putArchive: async (_id: string, _path: string, content: Buffer) => {
+      archive = content;
+    },
+  } as unknown as ContainerRuntime;
+
+  await new OpenClawRuntimeAdapter(runtime, "openclaw-image").writeConfig("container-1", instance);
+
+  assert.ok(archive);
+  const written = JSON.parse(await readTarEntry(archive, ".openclaw/openclaw.json")) as {
+    gateway: { auth: { token: string } };
+    browser: { headless: boolean };
+  };
+  assert.equal(written.gateway.auth.token, "new-token");
+  assert.equal(written.browser.headless, true);
+});
+
+// Applying a change to a container we cannot read from would mean guessing at its config.
+test("a live change to a container with no readable config fails loudly", async () => {
+  const live = liveRuntime({ configMissing: true });
+  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+
+  await assert.rejects(() => adapter.applyConfig("container-1", instance), /no config/);
+  assert.deepEqual(live.commands, []);
 });
 
 function liveRuntime(
@@ -354,7 +418,8 @@ function liveRuntime(
     liveConfigHoldsChange?: boolean;
     changeIsNoop?: boolean;
     configReadThrows?: Error;
-    envOnDisk?: string;
+    configMissing?: boolean;
+    envOnDisk?: string | null;
     envReadThrows?: Error;
   } = {},
 ) {
@@ -362,8 +427,23 @@ function liveRuntime(
   let sentConfig: string | null = null;
   let archive: Buffer | null = null;
 
+  const reads: string[] = [];
+
   const runtime = {
     isRunning: async () => true,
+    readFile: async (_containerId: string, path: string) => {
+      reads.push(path);
+      if (path.endsWith(".env")) {
+        if (options.envReadThrows) throw options.envReadThrows;
+        return options.envOnDisk === null ? null : Buffer.from(options.envOnDisk ?? currentEnv());
+      }
+      if (options.configReadThrows) throw options.configReadThrows;
+      if (options.configMissing) return null;
+      // A no-op change is already in place before the write, so a read-back proves nothing.
+      const base = options.changeIsNoop ? desiredConfig() : JSON.stringify(existingConfig);
+      // The verification read sees whatever the gateway ended up holding.
+      return Buffer.from(options.liveConfigHoldsChange && sentConfig !== null ? sentConfig : base);
+    },
     execCommandBuffer: async (
       _containerId: string,
       cmd: string[],
@@ -372,18 +452,6 @@ function liveRuntime(
       input?: Buffer,
     ) => {
       commands.push(cmd);
-      if (cmd[0] === "cat") {
-        if (options.configReadThrows) throw options.configReadThrows;
-        if (String(cmd[1]).endsWith(".env")) {
-          if (options.envReadThrows) throw options.envReadThrows;
-          return { exitCode: 0, stdout: Buffer.from(options.envOnDisk ?? currentEnv()), stderr: "" };
-        }
-        // A no-op change is already in place before the write, so a read-back proves nothing.
-        const base = options.changeIsNoop ? desiredConfig() : JSON.stringify(existingConfig);
-        // The verification read sees whatever the gateway ended up holding.
-        const held = options.liveConfigHoldsChange && sentConfig !== null ? sentConfig : base;
-        return { exitCode: 0, stdout: Buffer.from(held), stderr: "" };
-      }
       if (options.applyThrows) throw options.applyThrows;
       sentConfig = input?.toString("utf8") ?? null;
       return {
@@ -400,6 +468,7 @@ function liveRuntime(
   return {
     runtime,
     commands,
+    reads,
     sent: () => JSON.parse(sentConfig ?? "null") as unknown,
     archive: () => {
       assert.ok(archive);

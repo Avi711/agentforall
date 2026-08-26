@@ -40,6 +40,23 @@ const TRANSIENT_MAX_ATTEMPTS = 4;
 const TRANSIENT_BACKOFF_BASE_MS = 1_000;
 const WELCOME_MAX_ATTEMPTS = 8;
 const WELCOME_RETRY_INTERVAL_MS = 15_000;
+const USERNAME_PREFIX_FALLBACK = "agentforall";
+const USERNAME_PREFIX_MAX = 12;
+const USERNAME_PREFIX_MIN = 3;
+
+// Telegram usernames are 5-32 chars of Latin letters, digits and underscores and must end in
+// "bot", so a Hebrew display name leaves nothing usable and keeps the brand prefix instead.
+export function suggestedUsernamePrefix(displayName: string): string {
+  const slug = displayName
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .replace(/^[0-9]+/, "")
+    .slice(0, USERNAME_PREFIX_MAX);
+  // "robot_1a2b_bot" beats "..._bot_bot", but only while enough of the name is left.
+  const withoutBot = slug.replace(/bot$/, "");
+  const chosen = withoutBot.length >= USERNAME_PREFIX_MIN ? withoutBot : slug;
+  return chosen.length >= USERNAME_PREFIX_MIN ? chosen : USERNAME_PREFIX_FALLBACK;
+}
 
 // Matches Telegram's managed_bot updates back to instances via the random suggested username.
 export class ManagedBotLinker {
@@ -74,7 +91,10 @@ export class ManagedBotLinker {
     if (existing) return toTelegramLink(existing);
 
     const managerUsername = await this.requireManagerUsername();
-    const suggestedUsername = `agentforall_${randomBytes(4).toString("hex")}_bot`;
+    // The random half keeps the name globally free: a taken username forces the user to edit it,
+    // and an edited username is one this linker can no longer match. Telegram reserves usernames
+    // forever, so the collision risk accumulates over the product's life — keep all 4 bytes.
+    const suggestedUsername = `${suggestedUsernamePrefix(inst.config.displayName)}_${randomBytes(4).toString("hex")}_bot`;
     // Telegram caps bot display names at 64 chars.
     const name = encodeURIComponent(inst.config.displayName.slice(0, 64));
     const link: PendingLink = {

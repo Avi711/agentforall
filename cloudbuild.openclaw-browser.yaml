@@ -1,0 +1,13 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - infra/images/openclaw-browser/Dockerfile
+      - -t
+      - europe-west4-docker.pkg.dev/agent-for-all/agent-forall/openclaw-browser:latest
+      - .
+images:
+  - europe-west4-docker.pkg.dev/agent-for-all/agent-forall/openclaw-browser:latest
+options:
+  machineType: E2_HIGHCPU_8

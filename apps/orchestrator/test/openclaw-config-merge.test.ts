@@ -1,15 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { generateRuntimePatchedOpenclawFiles } from "../src/services/agent-runtime/openclaw/config.js";
+import {
+  generateOpenclawFiles,
+  generateRuntimePatchedOpenclawFiles,
+} from "../src/services/agent-runtime/openclaw/config.js";
 import { configWith } from "./helpers/fixtures.js";
 import type { ChannelConfig } from "../src/domain/types.js";
 
 interface Patched {
   channels: Record<string, Record<string, unknown> | undefined>;
-  plugins?: { entries?: Record<string, unknown> };
-  web?: { reconnect?: { maxMs?: number } };
-  browser?: { headless?: boolean };
-  logging?: { redactSensitive?: string };
+  plugins?: { allow?: string[]; entries?: Record<string, unknown> };
+  web?: unknown;
+  browser?: unknown;
+  logging?: unknown;
+  agents?: { defaults?: Record<string, unknown>; list?: unknown };
   mcp?: unknown;
   messages?: unknown;
 }
@@ -78,19 +82,103 @@ test("runtime-written whatsapp state survives while access policy stays orchestr
   assert.deepEqual(patched.channels.whatsapp?.allowFrom, ["+972501234567"]);
 });
 
-// These blocks carry platform hardening; if the on-disk copy wins, an existing tenant can never
-// receive it. The WhatsApp reconnect backoff exists to stop a 405 throttle becoming permanent.
-test("platform settings reach a container that already has older values", () => {
+// The container is the tenant's: they and the runtime both write to this file, and a config change
+// must not be a silent factory reset. This is the whole point of the owned-paths patch.
+test("settings the dashboard does not render survive a config change untouched", () => {
   const existing = {
-    web: { reconnect: { initialMs: 1000, maxMs: 30000, factor: 2, jitter: 0.1, maxAttempts: 3 } },
-    browser: { headless: false, noSandbox: false },
+    web: { reconnect: { maxMs: 30000 } },
+    browser: { headless: false },
     logging: { redactSensitive: "none" },
+    agents: { defaults: { model: "stale", maxConcurrent: 8 }, list: [{ id: "main" }, { id: "side" }] },
   };
   const patched = patch(existing, [{ type: "whatsapp" }]);
 
-  assert.equal(patched.web?.reconnect?.maxMs, 600000);
-  assert.equal(patched.browser?.headless, true);
-  assert.equal(patched.logging?.redactSensitive, "tools");
+  assert.deepEqual(patched.web, { reconnect: { maxMs: 30000 } });
+  assert.deepEqual(patched.browser, { headless: false });
+  assert.deepEqual(patched.logging, { redactSensitive: "none" });
+  assert.deepEqual(patched.agents?.list, [{ id: "main" }, { id: "side" }]);
+  assert.equal(patched.agents?.defaults?.maxConcurrent, 8);
+  // The model is the one field under agents the dashboard does render.
+  assert.deepEqual(patched.agents?.defaults?.model, { primary: "openai/gpt-5" });
+});
+
+// The bug this whole change exists for: OpenClaw writes group allowlists into the telegram block
+// itself, and replacing the block wholesale deleted them.
+test("a group allowlist the runtime wrote survives a telegram credential change", () => {
+  const existing = {
+    channels: {
+      telegram: {
+        enabled: true,
+        botToken: "old",
+        groups: { "-5312959760": { requireMention: false } },
+        groupPolicy: "allowlist",
+      },
+    },
+  };
+  const patched = patch(existing, [{ type: "telegram", botToken: "new" }]);
+
+  assert.equal(patched.channels.telegram?.botToken, "new");
+  assert.deepEqual(patched.channels.telegram?.groups, {
+    "-5312959760": { requireMention: false },
+  });
+  assert.equal(patched.channels.telegram?.groupPolicy, "allowlist");
+});
+
+// Group access is a creation-time default, not a dashboard control. An owner who shut groups off
+// keeps them off: re-asserting our default would silently reopen the bot to every group member.
+test("an owner who turned groups off is not overridden by a config change", () => {
+  const existing = {
+    channels: {
+      telegram: {
+        enabled: true,
+        botToken: "t",
+        groupPolicy: "disabled",
+        groups: { "*": { requireMention: false } },
+      },
+    },
+  };
+  const patched = patch(existing, [{ type: "telegram", botToken: "t" }]);
+
+  assert.equal(patched.channels.telegram?.groupPolicy, "disabled");
+  assert.deepEqual(patched.channels.telegram?.groups, { "*": { requireMention: false } });
+});
+
+// Telegram is never part of creation: the bot link attaches it later through this patch path, so
+// if the group defaults were not delivered here they would never be delivered at all.
+test("linking telegram to a bot that had none delivers the group defaults", () => {
+  const existing = { channels: { whatsapp: { enabled: true, dmPolicy: "open" } } };
+  const patched = patch(existing, [{ type: "whatsapp" }, { type: "telegram", botToken: "t" }]);
+
+  assert.equal(patched.channels.telegram?.groupPolicy, "open");
+  assert.deepEqual(patched.channels.telegram?.groups, { "*": { requireMention: true } });
+});
+
+// A bot whose owner approved one group from the chat before the defaults existed has a `groups`
+// map and no `groupPolicy`. Delivering the policy is safe: `groups` is the group allowlist and
+// stays as it is, so no other group opens; `groupPolicy` only widens who may talk inside the
+// groups already listed, which OpenClaw's own default already allows for an explicit entry.
+test("a runtime-written group allowlist keeps its groups and gains only the missing policy", () => {
+  const existing = {
+    channels: {
+      telegram: { enabled: true, botToken: "t", groups: { "-5312959760": { requireMention: false } } },
+    },
+  };
+  const patched = patch(existing, [{ type: "telegram", botToken: "t" }]);
+
+  assert.equal(patched.channels.telegram?.groupPolicy, "open");
+  assert.deepEqual(patched.channels.telegram?.groups, { "-5312959760": { requireMention: false } });
+});
+
+// The state of every bot linked before the defaults existed: a telegram block with neither key.
+// Deciding per block would leave them silent in groups forever; deciding per key reaches them.
+test("a telegram block that predates the group defaults receives them", () => {
+  const existing = {
+    channels: { telegram: { enabled: true, botToken: "t", errorPolicy: "once" } },
+  };
+  const patched = patch(existing, [{ type: "telegram", botToken: "t" }]);
+
+  assert.equal(patched.channels.telegram?.groupPolicy, "open");
+  assert.deepEqual(patched.channels.telegram?.groups, { "*": { requireMention: true } });
 });
 
 test("the plugin a channel needs is enabled without dropping the runtime's other plugins", () => {
@@ -100,7 +188,33 @@ test("the plugin a channel needs is enabled without dropping the runtime's other
   assert.deepEqual(patched.plugins?.entries, {
     somethingElse: { enabled: true },
     whatsapp: { enabled: true },
+    "agentforall-credit": {
+      enabled: true,
+      hooks: { allowConversationAccess: true, timeoutMs: 3000 },
+    },
   });
+});
+
+// Without allowConversationAccess the plugin never receives before_agent_reply, so it would
+// silently stop answering when the budget runs out — the one case it exists for.
+test("the credit plugin ships on every bot with conversation access", () => {
+  const patched = patch({}, [{ type: "telegram", botToken: "t" }]);
+  const credit = patched.plugins?.entries?.["agentforall-credit"] as
+    | { enabled: boolean; hooks?: { allowConversationAccess?: boolean } }
+    | undefined;
+
+  assert.equal(credit?.enabled, true);
+  assert.equal(credit?.hooks?.allowConversationAccess, true);
+});
+
+// `plugins.allow` looks like a trust pin for our plugin but OpenClaw treats it as the whole plugin
+// set: a live gateway went from 10 plugins to 3, losing memory-core. It must never be rendered,
+// and a tenant who set it themselves keeps it.
+test("plugins.allow is never written and a tenant's own value is left alone", () => {
+  assert.equal(patch({}, [{ type: "whatsapp" }]).plugins?.allow, undefined);
+
+  const existing = { plugins: { allow: ["their-plugin"], entries: {} } };
+  assert.deepEqual(patch(existing, [{ type: "whatsapp" }]).plugins?.allow, ["their-plugin"]);
 });
 
 // Anything the runtime writes that the orchestrator does not render must survive untouched.
@@ -114,3 +228,37 @@ test("config the orchestrator does not render is left alone", () => {
   assert.deepEqual(patched.mcp, { servers: { local: { command: "x" } } });
   assert.deepEqual(patched.messages, { history: 50 });
 });
+
+// The patch delivers a fixed list of paths. A field added to the generator but not to that list
+// would silently never reach a container that already exists, which is invisible until a customer
+// reports it — so patching an empty config must reproduce everything the generator renders.
+const FROZEN_AFTER_CREATION = ["web", "browser", "logging"];
+
+test("every field the generator renders is one a config change can deliver", () => {
+  const cases: ChannelConfig[][] = [
+    [{ type: "telegram", botToken: "t", allowFrom: ["123"] }],
+    [{ type: "discord", token: "d", guildId: "g" }],
+    [{ type: "slack", botToken: "b", appToken: "a" }],
+    [{ type: "whatsapp", dmAccess: "owner", ownerNumber: "+972501234567" }],
+  ];
+
+  for (const channels of cases) {
+    const pristine = JSON.parse(
+      generateOpenclawFiles(configWith(channels), "token").configJson,
+    ) as Record<string, unknown>;
+    const deliverable: Record<string, unknown> = {
+      ...pristine,
+      agents: { defaults: { model: agentModel(pristine) } },
+    };
+    for (const key of FROZEN_AFTER_CREATION) delete deliverable[key];
+
+    assert.deepEqual(patch({}, channels), deliverable, channels[0]?.type);
+  }
+});
+
+// agents carries both rendered settings (the model) and creation-time ones (workspace, the agent
+// list) that a running container keeps for itself.
+function agentModel(pristine: Record<string, unknown>): unknown {
+  const agents = pristine.agents as { defaults: { model: unknown } };
+  return agents.defaults.model;
+}

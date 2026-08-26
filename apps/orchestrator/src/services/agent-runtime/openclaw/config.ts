@@ -1,6 +1,8 @@
 import { isDeepStrictEqual } from "node:util";
 import tar from "tar-stream";
+import { CHANNEL_TYPES } from "../../../domain/types.js";
 import type {
+  ChannelType,
   InstanceConfig,
   LlmProvider,
   ProviderConfig,
@@ -10,8 +12,6 @@ import type {
 import { ownerIdentityOf, ownerPeerIds } from "../../../domain/owner.js";
 import type { RuntimeConfigFiles } from "../types.js";
 import {
-  OPENCLAW_CONFIG_PATH,
-  OPENCLAW_ENV_PATH,
   OPENCLAW_INTERNAL_PORT,
   OPENCLAW_USER,
   OPENCLAW_WHATSAPP_SESSION_PATH,
@@ -32,6 +32,8 @@ const PROVIDER_ENV_KEY: Record<LlmProvider, string> = {
   litellm: "LITELLM_API_KEY",
 };
 
+const CREDIT_HOOK_TIMEOUT_MS = 3000;
+
 const OPENCLAW_PROVIDER_PREFIX: Record<LlmProvider, string> = {
   anthropic: "anthropic",
   openai: "openai",
@@ -50,34 +52,20 @@ export function generateOpenclawFiles(
   };
 }
 
+// The container owns its config file: the tenant edits it and the runtime writes to it. Only the
+// fields the dashboard renders belong to us, so a change sets exactly those paths on the live
+// config and leaves everything else — group allowlists, mcp servers, hand edits — as it found them.
 export function generateRuntimePatchedOpenclawFiles(
   existingConfigJson: string,
   config: InstanceConfig,
   gatewayToken: string,
 ): RuntimeConfigFiles {
-  const existing = parseJsonRecord(existingConfigJson);
+  const live = parseJsonRecord(existingConfigJson);
   const generated = parseJsonRecord(generateOpenclawConfig(config, gatewayToken));
-  const merged = {
-    ...generated,
-    ...existing,
-  };
-  // Spreading `existing` last preserves whatever the runtime writes for itself (mcp, messages,
-  // meta, ...); every key the orchestrator renders is then taken back from `generated`, because a
-  // setting that loses to the copy on disk can never reach a container that already has one.
-  const patched = {
-    ...merged,
-    agents: generated.agents,
-    models: generated.models,
-    tools: generated.tools,
-    gateway: generated.gateway,
-    channels: mergeChannels(generated.channels, existing.channels),
-    session: generated.session,
-    commands: generated.commands,
-    plugins: mergePlugins(generated.plugins, existing.plugins),
-    web: generated.web,
-    browser: generated.browser,
-    logging: generated.logging,
-  };
+  const patched = structuredClone(live);
+  for (const path of ownedPaths(generated, live)) {
+    setPath(patched, path, readPath(generated, path));
+  }
   return {
     configJson: JSON.stringify(patched, null, 2),
     dotEnv: generateOpenclawEnv(config, gatewayToken),
@@ -134,14 +122,6 @@ export function configMatches(liveConfigJson: string, desiredConfigJson: string)
   }
 }
 
-export function openclawReadConfigCommand(): string[] {
-  return ["cat", OPENCLAW_CONFIG_PATH];
-}
-
-export function openclawReadEnvCommand(): string[] {
-  return ["cat", OPENCLAW_ENV_PATH];
-}
-
 // Owner ids the live config actually holds; tolerant of a missing or hand-edited block.
 export function readOwnerAllowFrom(configJson: string): string[] {
   const parsed = parseJsonRecord(configJson);
@@ -175,9 +155,7 @@ function generateOpenclawConfig(
     ...(models ? { models } : {}),
     channels: buildChannels(config.channels),
     ...(tools ? { tools } : {}),
-    ...(config.channels.some((ch) => ch.type === "whatsapp")
-      ? { plugins: { entries: { whatsapp: { enabled: true } } } }
-      : {}),
+    plugins: buildPlugins(config.channels),
     gateway: {
       port: OPENCLAW_INTERNAL_PORT,
       mode: "local",
@@ -221,6 +199,12 @@ function generateOpenclawEnv(
   addEnvLine(lines, "OPENCLAW_GATEWAY_TOKEN", gatewayToken);
   lines.push("OPENCLAW_HEADLESS=true");
   addEnvLine(lines, providerEnvKey(config.provider), config.provider.apiKey);
+  // The credit plugin gets its own names: the model client's key variable is derived from the
+  // provider id, so sharing it would break the plugin silently the day that id changes.
+  if (config.provider.name === "litellm" && config.provider.baseUrl) {
+    addEnvLine(lines, "AGENTFORALL_CREDIT_BASE_URL", config.provider.baseUrl);
+    addEnvLine(lines, "AGENTFORALL_CREDIT_API_KEY", config.provider.apiKey);
+  }
 
   for (const ch of config.channels) {
     switch (ch.type) {
@@ -244,6 +228,24 @@ function generateOpenclawEnv(
   return lines.join("\n") + "\n";
 }
 
+// The credit plugin answers the user itself once the budget is spent, which is exactly when the
+// model cannot. A plugin outside the OpenClaw bundle only receives before_agent_reply with
+// allowConversationAccess, and the timeout keeps a slow budget lookup from holding up a reply.
+// No `plugins.allow` here: OpenClaw reads it as the complete plugin set and drops bundled
+// defaults such as memory-core (a live gateway went from 10 plugins to 3). The boot warning
+// about an unpinned non-bundled plugin is the price.
+function buildPlugins(channels: InstanceConfig["channels"]): OpenclawConfig["plugins"] {
+  return {
+    entries: {
+      "agentforall-credit": {
+        enabled: true,
+        hooks: { allowConversationAccess: true, timeoutMs: CREDIT_HOOK_TIMEOUT_MS },
+      },
+      ...(channels.some((ch) => ch.type === "whatsapp") ? { whatsapp: { enabled: true } } : {}),
+    },
+  };
+}
+
 function buildChannels(channels: InstanceConfig["channels"]): ChannelsConfig {
   const block: ChannelsConfig = {};
 
@@ -258,6 +260,11 @@ function buildChannels(channels: InstanceConfig["channels"]): ChannelsConfig {
           ...(ch.allowFrom?.length ? { allowFrom: ch.allowFrom } : {}),
           // One error notice per incident instead of a reply to every message.
           errorPolicy: "once",
+          // Every group is blocked until listed, so without these the bot is silent in any group
+          // the owner adds it to. The wildcard admits the group; "open" lets its other members
+          // talk to the bot there, and the mention keeps it quiet until addressed.
+          groupPolicy: "open",
+          groups: { "*": { requireMention: true } },
         };
         break;
       case "discord":
@@ -474,40 +481,102 @@ function parseJsonRecord(json: string): Record<string, unknown> {
   return parsed;
 }
 
-// Channels the orchestrator renders in full: absent from the desired config means removed, and a
-// rotated credential must replace the one on disk rather than lose to it.
-const REPLACED_CHANNELS = ["telegram", "discord", "slack"] as const;
+// Everything the orchestrator renders, addressed by path. `gateway` is here because it is the
+// control plane rather than a preference: losing it would lock us out of the container.
+const OWNED_PATHS: readonly (readonly string[])[] = [
+  ["agents", "defaults", "model"],
+  ["agents", "defaults", "imageModel"],
+  ["agents", "defaults", "pdfModel"],
+  ["models"],
+  ["tools"],
+  ["gateway"],
+  ["session"],
+  ["commands", "ownerAllowFrom"],
+  ["plugins", "entries", "whatsapp"],
+  ["plugins", "entries", "agentforall-credit"],
+];
 
-function mergeChannels(generated: unknown, existing: unknown): unknown {
-  const desired = isRecord(generated) ? generated : {};
-  const live = isRecord(existing) ? existing : {};
-  const merged: Record<string, unknown> = { ...live, ...desired };
+// Per channel, the keys the dashboard sets. Anything else under a channel — the per-group entries
+// the runtime writes, the WhatsApp device state — belongs to the container.
+const CHANNEL_OWNED_PATHS: Record<ChannelType, readonly (readonly string[])[]> = {
+  telegram: [["enabled"], ["botToken"], ["dmPolicy"], ["allowFrom"], ["errorPolicy"]],
+  discord: [["enabled"], ["token"], ["groupPolicy"], ["guilds"]],
+  slack: [["enabled"], ["botToken"], ["appToken"]],
+  whatsapp: [
+    ["enabled"],
+    ["dmPolicy"],
+    ["allowFrom"],
+    ["defaultAccount"],
+    ["actions"],
+    ["accounts", "default", "enabled"],
+    ["accounts", "default", "authDir"],
+  ],
+};
 
-  for (const name of REPLACED_CHANNELS) {
-    if (!(name in desired)) delete merged[name];
-  }
+// Defaults delivered only while the tenant has said nothing about them. No dashboard control
+// renders Telegram's group access, so an owner who turned groups off from the chat keeps that;
+// a block that simply predates the default — every bot linked before it existed — still gets it.
+const CHANNEL_DEFAULT_PATHS: Partial<Record<ChannelType, readonly (readonly string[])[]>> = {
+  telegram: [["groupPolicy"], ["groups"]],
+};
 
-  // WhatsApp is the exception: the runtime writes its own account and device state under it.
-  if (isRecord(desired.whatsapp)) {
-    const runtimeWritten = isRecord(live.whatsapp) ? live.whatsapp : {};
-    const whatsapp: Record<string, unknown> = { ...runtimeWritten, ...desired.whatsapp };
-    if (!("allowFrom" in desired.whatsapp)) delete whatsapp.allowFrom;
-    merged.whatsapp = whatsapp;
-  } else {
-    delete merged.whatsapp;
-  }
-
-  return merged;
+function ownedPaths(
+  generated: Record<string, unknown>,
+  live: Record<string, unknown>,
+): (readonly string[])[] {
+  const channels = isRecord(generated.channels) ? generated.channels : {};
+  const liveChannels = isRecord(live.channels) ? live.channels : {};
+  return [
+    ...OWNED_PATHS,
+    ...CHANNEL_TYPES.flatMap((type) => {
+      // A channel the dashboard no longer renders is removed whole, which is what disconnecting it
+      // means; while it exists, only its own keys are ours.
+      if (!isRecord(channels[type])) return [["channels", type]];
+      const liveEntry = liveChannels[type];
+      const liveBlock = isRecord(liveEntry) ? liveEntry : {};
+      const paths = [
+        ...CHANNEL_OWNED_PATHS[type],
+        ...(CHANNEL_DEFAULT_PATHS[type] ?? []).filter(
+          (path) => readPath(liveBlock, path) === undefined,
+        ),
+      ];
+      return paths.map((path) => ["channels", type, ...path]);
+    }),
+  ];
 }
 
-// The orchestrator only ever enables the plugins its channels need; anything else the runtime
-// installed stays enabled.
-function mergePlugins(generated: unknown, existing: unknown): unknown {
-  const desired = isRecord(generated) && isRecord(generated.entries) ? generated.entries : null;
-  const live = isRecord(existing) ? existing : undefined;
-  if (desired === null) return live;
-  const liveEntries = live && isRecord(live.entries) ? live.entries : {};
-  return { ...live, entries: { ...liveEntries, ...desired } };
+function readPath(source: Record<string, unknown>, path: readonly string[]): unknown {
+  let cursor: unknown = source;
+  for (const key of path) {
+    if (!isRecord(cursor)) return undefined;
+    cursor = cursor[key];
+  }
+  return cursor;
+}
+
+// An undefined value means the orchestrator does not render that field, so it is removed rather
+// than left behind: that is how clearing a setting in the dashboard actually takes effect.
+function setPath(
+  target: Record<string, unknown>,
+  path: readonly string[],
+  value: unknown,
+): void {
+  const [key, ...rest] = path;
+  if (key === undefined) return;
+  if (rest.length === 0) {
+    if (value === undefined) delete target[key];
+    else target[key] = value;
+    return;
+  }
+  if (!isRecord(target[key])) {
+    if (value === undefined) return;
+    target[key] = {};
+  }
+  const child = target[key] as Record<string, unknown>;
+  setPath(child, rest, value);
+  // A block we emptied was only ever holding our field, so it goes with it; one the tenant also
+  // writes to still has their keys and stays.
+  if (value === undefined && Object.keys(child).length === 0) delete target[key];
 }
 
 function withoutRuntimeStamp(config: Record<string, unknown>): Record<string, unknown> {

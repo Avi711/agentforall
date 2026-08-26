@@ -66,7 +66,7 @@ variable "pairing_image" {
 variable "agent_runtime_image" {
   description = "Legacy OpenClaw runtime image ref. Kept for existing OpenClaw instances only."
   type        = string
-  default     = "europe-west4-docker.pkg.dev/agent-for-all/agent-forall/openclaw-browser@sha256:6eb75c5ce581e2a971abaee2c9be55e77c8948511e4b758daf662d7cd720654d"
+  default     = "europe-west4-docker.pkg.dev/agent-for-all/agent-forall/openclaw-browser@sha256:d99dec8d55379dcce9cc35a8971675ce38b37d4ee8c5c876fb3bcf879359844f"
 }
 
 variable "hermes_runtime_image" {

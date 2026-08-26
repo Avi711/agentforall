@@ -26,8 +26,6 @@ import {
   buildOpenclawEnvTar,
   generateOpenclawFiles,
   generateRuntimePatchedOpenclawFiles,
-  openclawReadConfigCommand,
-  openclawReadEnvCommand,
   configMatches,
   readOwnerAllowFrom,
 } from "./config.js";
@@ -35,6 +33,8 @@ import { buildConfigApplyCommand, parseConfigApplyOutput } from "./config-rpc.js
 import type { ConfigApplyResult } from "./config-rpc.js";
 import {
   OPENCLAW_CONFIG_APPLY_TIMEOUT_MS,
+  OPENCLAW_CONFIG_PATH,
+  OPENCLAW_ENV_PATH,
   OPENCLAW_HEALTH_PATH,
   OPENCLAW_INTERNAL_PORT,
   OPENCLAW_MAX_BACKUP_BYTES,
@@ -47,6 +47,9 @@ import {
   listOpenclawWhatsappPairingRequests,
   logoutOpenclawWhatsapp,
 } from "./whatsapp.js";
+
+const CONFIG_READ_LIMIT_BYTES = 1024 * 1024;
+const ENV_READ_LIMIT_BYTES = 64 * 1024;
 
 export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   readonly kind = "openclaw" as const;
@@ -102,12 +105,11 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     return generateOpenclawFiles(config, gatewayToken);
   }
 
-  // Stages the config for the container's next boot. The merge carries forward what the runtime
-  // wrote for itself; the pristine config is only right for a container with no state to read.
+  // Stages the config for the container's next boot, patching the fields we own onto whatever is
+  // there. The pristine config is only ever right for a container that has none — writing it over
+  // an existing one would discard the tenant's own settings.
   async writeConfig(containerId: string, instance: Instance): Promise<void> {
-    const existing = (await this.runtime.isRunning(containerId))
-      ? await this.tryReadConfig(containerId)
-      : null;
+    const existing = await this.readConfig(containerId);
     const files =
       existing === null
         ? generateOpenclawFiles(instance.config, instance.gatewayToken)
@@ -129,10 +131,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     }
 
     // Staging a file a live gateway will never read is how a change disappears silently, so a
-    // container we cannot read is a failure rather than a fallback.
-    const existing = await this.readConfig(containerId).catch((err: unknown) => {
-      throw new UpstreamUnavailableError("openclaw", `config read failed: ${errorMessage(err)}`);
-    });
+    // container whose config we cannot read is a failure rather than a fallback.
+    const existing = await this.requireConfig(containerId);
     const files = generateRuntimePatchedOpenclawFiles(
       existing,
       instance.config,
@@ -178,22 +178,19 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   // confirming call), so the running container decides whether the config is in place — including
   // on a retry, where a previous attempt may already have delivered it.
   private async holdsConfig(containerId: string, desired: string): Promise<boolean> {
-    const live = await this.tryReadConfig(containerId);
+    const live = await this.readConfig(containerId).catch(() => null);
     return live !== null && configMatches(live, desired);
   }
 
   // "could not read" is not "differs": inferring a difference restarts a healthy container and
-  // drops its WhatsApp socket for a change that was already live.
+  // drops its WhatsApp socket for a change that was already live. A missing file is a real answer.
   private async envMatches(containerId: string, dotEnv: string): Promise<boolean> {
-    const result = await this.runtime
-      .execCommandBuffer(containerId, openclawReadEnvCommand(), 15_000, 64 * 1024)
+    const live = await this.runtime
+      .readFile(containerId, OPENCLAW_ENV_PATH, ENV_READ_LIMIT_BYTES)
       .catch((err: unknown) => {
         throw new UpstreamUnavailableError("openclaw", `env read failed: ${errorMessage(err)}`);
       });
-    if (result.exitCode !== 0) {
-      throw new UpstreamUnavailableError("openclaw", `env read exited ${result.exitCode}`);
-    }
-    return result.stdout.toString("utf8") === dotEnv;
+    return live !== null && live.toString("utf8") === dotEnv;
   }
 
   private async execConfigApply(
@@ -217,15 +214,6 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     } catch (err) {
       // The program never ran, so the gateway holds no opinion on this config.
       return { status: "unreachable", reason: errorMessage(err) };
-    }
-  }
-
-  private async tryReadConfig(containerId: string): Promise<string | null> {
-    try {
-      return await this.readConfig(containerId);
-    } catch {
-      // Docker refuses exec while a container is restarting; the fresh file is the safe fallback.
-      return null;
     }
   }
 
@@ -286,20 +274,27 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   async readOwnerIds(containerId: string): Promise<string[]> {
-    return readOwnerAllowFrom(await this.readConfig(containerId));
+    return readOwnerAllowFrom(await this.requireConfig(containerId));
   }
 
-  private async readConfig(containerId: string): Promise<string> {
-    const result = await this.runtime.execCommandBuffer(
+  // Null means the container genuinely has no config yet, which only a freshly created one can be.
+  private async readConfig(containerId: string): Promise<string | null> {
+    const live = await this.runtime.readFile(
       containerId,
-      openclawReadConfigCommand(),
-      15_000,
-      1024 * 1024,
+      OPENCLAW_CONFIG_PATH,
+      CONFIG_READ_LIMIT_BYTES,
     );
-    if (result.exitCode !== 0) {
-      throw new Error(result.stderr || "openclaw config read failed");
+    return live === null ? null : live.toString("utf8");
+  }
+
+  private async requireConfig(containerId: string): Promise<string> {
+    const live = await this.readConfig(containerId).catch((err: unknown) => {
+      throw new UpstreamUnavailableError("openclaw", `config read failed: ${errorMessage(err)}`);
+    });
+    if (live === null) {
+      throw new UpstreamUnavailableError("openclaw", "container has no config to change");
     }
-    return result.stdout.toString("utf8");
+    return live;
   }
 
   private async createStateArchiveFile(

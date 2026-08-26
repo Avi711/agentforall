@@ -279,7 +279,7 @@ export class InstanceManager {
     }
 
     try {
-      // buildContainerOptions bakes fresh config at create; no refresh needed (readConfig requires a running container).
+      // buildContainerOptions bakes the config in at create, so there is nothing to refresh.
       const containerId = await this.ensureContainerExists({
         ...inst,
         containerId: null,

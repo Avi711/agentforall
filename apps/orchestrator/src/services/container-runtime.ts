@@ -288,6 +288,23 @@ export class ContainerRuntime {
     return this.execCommandStream(containerId, ["cat", path], timeoutMs);
   }
 
+  // Reads one file straight off the container filesystem, which works whether or not it is
+  // running; exec only works on a running container. Null means the file is not there.
+  async readFile(
+    containerId: string,
+    path: string,
+    maxBytes: number,
+  ): Promise<Buffer | null> {
+    let archive: NodeJS.ReadableStream;
+    try {
+      archive = await this.docker.getContainer(containerId).getArchive({ path });
+    } catch (err) {
+      if (isNotFound(err)) return null;
+      throw err;
+    }
+    return readSingleFile(archive, path, maxBytes);
+  }
+
   async removeFile(containerId: string, path: string): Promise<void> {
     await this.execCommand(containerId, ["rm", "-f", path], 15_000);
   }
@@ -651,4 +668,51 @@ function isSafeLinkName(linkname: string | null | undefined): boolean {
     normalized.includes("\0") ||
     normalized.split("/").some((part) => part === "..")
   );
+}
+
+function isNotFound(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    (err as { statusCode?: unknown }).statusCode === 404
+  );
+}
+
+function readSingleFile(
+  archive: NodeJS.ReadableStream,
+  path: string,
+  maxBytes: number,
+): Promise<Buffer | null> {
+  return new Promise((resolve, reject) => {
+    const extract = tar.extract();
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let found = false;
+
+    extract.on("entry", (header, stream, next) => {
+      if (found || header.type !== "file") {
+        stream.on("end", next);
+        stream.resume();
+        return;
+      }
+      found = true;
+      stream.on("data", (chunk: Buffer) => {
+        size += chunk.length;
+        if (size <= maxBytes) chunks.push(chunk);
+      });
+      stream.on("end", next);
+      stream.on("error", reject);
+    });
+    extract.on("error", reject);
+    extract.on("finish", () => {
+      if (!found) return resolve(null);
+      if (size > maxBytes) {
+        return reject(new Error(`${path} is larger than ${maxBytes} bytes`));
+      }
+      resolve(Buffer.concat(chunks));
+    });
+
+    archive.on("error", reject);
+    archive.pipe(extract);
+  });
 }

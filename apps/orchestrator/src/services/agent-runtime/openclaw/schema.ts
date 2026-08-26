@@ -19,7 +19,10 @@ export interface OpenclawConfig {
     auth: { mode: "token"; token: string };
   };
   plugins?: {
-    entries: Record<string, { enabled: boolean }>;
+    entries: Record<
+      string,
+      { enabled: boolean; hooks?: { allowConversationAccess?: boolean; timeoutMs?: number } }
+    >;
   };
   browser?: BrowserConfig;
   logging: { redactSensitive: "tools" | "all" | "none" };
@@ -125,6 +128,9 @@ export interface ChannelsConfig {
     dmPolicy?: "open" | "allowlist" | "pairing";
     allowFrom?: string[];
     errorPolicy?: "always" | "once" | "silent";
+    groupPolicy?: "open" | "allowlist" | "disabled";
+    // Chat id → per-group settings; "*" matches any group.
+    groups?: Record<string, { requireMention?: boolean }>;
   };
   discord?: {
     enabled: boolean;
