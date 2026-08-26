@@ -3,7 +3,7 @@ import { botService } from "@/lib/bots/service";
 import { BackupUploadSessionBodySchema } from "@/lib/bots/schemas";
 
 export const POST = authenticatedHandler(
-  { bodySchema: BackupUploadSessionBodySchema },
+  { bodySchema: BackupUploadSessionBodySchema, requireEntitlement: true },
   async ({ userId, body }) => {
     const session = await botService.createBackupUploadSession(
       userId,

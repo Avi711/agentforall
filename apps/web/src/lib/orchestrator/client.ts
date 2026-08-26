@@ -157,6 +157,16 @@ export class OrchestratorClient {
     });
   }
 
+  async updateBotBudget(userId: string, id: string, budgetCents: number): Promise<void> {
+    await this.call({
+      method: "PATCH",
+      path: instancePath(id, "/litellm-budget"),
+      userId,
+      body: { budgetCents },
+      schema: z.unknown(),
+    });
+  }
+
   startBotBackupExport(userId: string, id: string): Promise<BackupExportJob> {
     return this.call({
       method: "POST",

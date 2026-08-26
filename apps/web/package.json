@@ -7,8 +7,9 @@
     "build": "npm run build -w @agent-forall/db && next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test \"test/**/*.test.ts\"",
-    "indexnow": "node scripts/indexnow.mjs"
+    "test": "node --conditions=react-server --import tsx --test \"test/**/*.test.ts\"",
+    "indexnow": "node scripts/indexnow.mjs",
+    "test:integration": "node --conditions=react-server --import tsx --test \"test-integration/**/*.test.ts\""
   },
   "dependencies": {
     "@agent-forall/db": "*",
@@ -28,8 +29,8 @@
     "@types/pg": "^8.11.10",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "tailwindcss": "^4.2.0",
     "server-only": "^0.0.1",
+    "tailwindcss": "^4.2.0",
     "typescript": "^5.7.0"
   }
 }

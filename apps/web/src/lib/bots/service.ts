@@ -7,7 +7,6 @@ import {
 import type {
   Instance,
   BotChannel,
-  BotUsage,
   PairCode,
   PairQr,
   PairStatus,
@@ -19,6 +18,8 @@ import type {
   OwnerIdentity,
   OwnerIdentityUpdate,
 } from "../orchestrator/types";
+import { getBotLifecycleHooks, type BotLifecycleHooks } from "../billing";
+import type { BillingUser } from "../billing/domain";
 import type {
   CreateBotBody,
   OwnerIdentityBody,
@@ -38,7 +39,6 @@ export interface BotOrchestratorPort {
     input: { displayName: string; channel: BotChannel },
   ): Promise<Instance>;
   getBot(userId: string, id: string): Promise<Instance>;
-  getBotUsage(userId: string, id: string): Promise<BotUsage>;
   deleteBot(userId: string, id: string): Promise<void>;
   restartBot(userId: string, id: string): Promise<void>;
   startBotBackupExport(userId: string, id: string): Promise<BackupExportJob>;
@@ -82,6 +82,7 @@ export interface BotOrchestratorPort {
 export class BotService {
   constructor(
     private readonly orchestrator: BotOrchestratorPort = getOrchestratorClient(),
+    private readonly hooks: BotLifecycleHooks = getBotLifecycleHooks(),
   ) {}
 
   findActiveBot(userId: string): Promise<Instance | null> {
@@ -94,13 +95,15 @@ export class BotService {
     return this.orchestrator.listBots(userId);
   }
 
-  async createBot(userId: string, input: CreateBotBody): Promise<CreateBotResult> {
-    const active = await this.findActiveBot(userId);
+  async createBot(owner: BillingUser, input: CreateBotBody): Promise<CreateBotResult> {
+    const active = await this.findActiveBot(owner.id);
     if (active) return { bot: active, created: false };
-    const bot = await this.orchestrator.createBot(userId, {
+    await this.hooks.beforeBotCreate(owner);
+    const bot = await this.orchestrator.createBot(owner.id, {
       displayName: input.displayName,
       channel: input.channel,
     });
+    await this.afterBotCreated(owner.id);
     return { bot, created: true };
   }
 
@@ -108,12 +111,12 @@ export class BotService {
     return this.orchestrator.getBot(userId, id);
   }
 
-  getBotUsage(userId: string, id: string): Promise<BotUsage> {
-    return this.orchestrator.getBotUsage(userId, id);
-  }
-
-  deleteBot(userId: string, id: string): Promise<void> {
-    return this.orchestrator.deleteBot(userId, id);
+  // Spend is charged to the ledger before the key is revoked; a failed read keeps the bot.
+  // An `error` bot's key was already revoked by the failed destroy, so there is nothing left to read.
+  async deleteBot(userId: string, id: string): Promise<void> {
+    const bot = await this.orchestrator.getBot(userId, id);
+    if (bot.status !== "error") await this.hooks.beforeBotDelete(userId, id);
+    await this.orchestrator.deleteBot(userId, id);
   }
 
   restartBot(userId: string, id: string): Promise<void> {
@@ -147,8 +150,23 @@ export class BotService {
     });
   }
 
-  restoreBackupUpload(userId: string, restoreToken: string): Promise<Instance> {
-    return this.orchestrator.restoreBackupUpload(userId, restoreToken);
+  async restoreBackupUpload(owner: BillingUser, restoreToken: string): Promise<Instance> {
+    await this.hooks.beforeBotCreate(owner);
+    const bot = await this.orchestrator.restoreBackupUpload(owner.id, restoreToken);
+    await this.afterBotCreated(owner.id);
+    return bot;
+  }
+
+  // The bot exists either way; the ledger is already written, so a failed cap is repaired by the next sync.
+  private async afterBotCreated(userId: string): Promise<void> {
+    try {
+      await this.hooks.afterBotCreated(userId);
+    } catch (err) {
+      console.error("[bots] post-create billing sync failed", {
+        userId,
+        message: err instanceof Error ? err.message : "unknown",
+      });
+    }
   }
 
   async deleteAllForUser(userId: string): Promise<void> {

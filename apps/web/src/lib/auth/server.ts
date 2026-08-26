@@ -1,10 +1,15 @@
 import "server-only";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { APIError } from "better-auth/api";
 import { magicLink } from "better-auth/plugins";
 import { Resend } from "resend";
 import { getDb } from "../db";
 import { botService } from "../bots/service";
+import { getBillingService } from "../billing";
+import { PendingCheckoutError } from "../billing/errors";
+
+const PENDING_CHECKOUT_HE = "יש תשלום שעדיין בתהליך. נסו למחוק את החשבון שוב בעוד כמה דקות.";
 
 const RESEND_FROM = process.env.AUTH_EMAIL_FROM ?? "login@agentforall.co.il";
 
@@ -103,6 +108,12 @@ export const auth = betterAuth({
         await sendDeleteAccountEmail(user.email, url);
       },
       beforeDelete: async (user) => {
+        try {
+          await getBillingService().cancelForAccountDeletion(user.id);
+        } catch (err) {
+          if (err instanceof PendingCheckoutError) throw new APIError("CONFLICT", { message: PENDING_CHECKOUT_HE });
+          throw err;
+        }
         await botService.deleteAllForUser(user.id);
       },
     },

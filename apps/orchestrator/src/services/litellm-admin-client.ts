@@ -60,7 +60,7 @@ export class LiteLlmAdminClient {
       key_alias: input.keyAlias,
       models: input.models,
       max_budget: input.maxBudgetCents / 100,
-      budget_duration: input.budgetDuration,
+      ...(input.budgetDuration ? { budget_duration: input.budgetDuration } : {}),
       user_id: input.userId,
       metadata: {
         service: "agentforall",
@@ -78,15 +78,11 @@ export class LiteLlmAdminClient {
     };
   }
 
-  async updateKeyBudget(
-    key: string,
-    maxBudgetCents: number,
-    budgetDuration: string,
-  ): Promise<void> {
+  // Never resend budget_duration: LiteLLM rewrites budget_reset_at on every update that carries it.
+  async updateKeyBudget(key: string, maxBudgetCents: number): Promise<void> {
     await this.request("/key/update", {
       key,
       max_budget: maxBudgetCents / 100,
-      budget_duration: budgetDuration,
     });
   }
 

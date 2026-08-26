@@ -103,11 +103,7 @@ export class LiteLlmKeyManager implements LlmKeyProvisioner {
     if (!this.adminClient) {
       throw new Error("LiteLLM budget updates require LITELLM_MASTER_KEY");
     }
-    await this.adminClient.updateKeyBudget(
-      inst.config.provider.apiKey,
-      budgetCents,
-      inst.litellm.budgetDuration ?? this.appConfig.litellmDefaultBudgetDuration,
-    );
+    await this.adminClient.updateKeyBudget(inst.config.provider.apiKey, budgetCents);
   }
 
   async getUsage(inst: Instance): Promise<LiteLlmKeyUsage> {

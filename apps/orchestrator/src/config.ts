@@ -196,7 +196,8 @@ const AppConfigSchema = z.object({
     .int()
     .min(1)
     .default(5000),
-  litellmDefaultBudgetDuration: z.string().min(1).default("30d"),
+  // Empty (the default) = no gateway-side reset; the web credit ledger owns budgets. Set e.g. "30d" without it.
+  litellmDefaultBudgetDuration: z.string().default(""),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;

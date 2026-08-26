@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { authenticatedHandler } from "@/lib/auth/api";
 import { botService } from "@/lib/bots/service";
 import { CreateBotBodySchema } from "@/lib/bots/schemas";
+import { toBillingUser } from "@/lib/billing/user";
 
 // Orchestrator returns the row after reserve, before container start; the
 // 60s budget is now headroom for a slow round-trip, not the provision itself.
@@ -13,9 +14,9 @@ export const GET = authenticatedHandler({}, async ({ userId }) => {
 });
 
 export const POST = authenticatedHandler(
-  { bodySchema: CreateBotBodySchema },
-  async ({ userId, body }) => {
-    const result = await botService.createBot(userId, body);
+  { bodySchema: CreateBotBodySchema, requireEntitlement: true },
+  async ({ user, body }) => {
+    const result = await botService.createBot(toBillingUser(user), body);
     return NextResponse.json(
       { bot: result.bot },
       { status: result.created ? 201 : 200 },

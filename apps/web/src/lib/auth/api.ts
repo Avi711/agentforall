@@ -4,6 +4,9 @@ import { ZodError, z } from "zod";
 import { getServerSession, type AuthenticatedUser } from "./session";
 import { OrchestratorError } from "../orchestrator/client";
 import { getConsentStatus } from "../consent/service";
+import { getBillingService } from "../billing";
+import { BillingError } from "../billing/errors";
+import { toBillingUser } from "../billing/user";
 
 export type Handler<Body> = (ctx: {
   userId: string;
@@ -13,8 +16,10 @@ export type Handler<Body> = (ctx: {
 
 export interface HandlerOptions<Body> {
   bodySchema?: z.ZodType<Body, z.ZodTypeDef, unknown>;
-  /** WhatsApp-only: the consent covers the account-suspension risk of pairing a real number. */
+  // WhatsApp-only: the consent covers the account-suspension risk of pairing a real number.
   requireWhatsappConsent?: boolean;
+  // Paid-only actions (creating a bot). No-op while BILLING_REQUIRED is off.
+  requireEntitlement?: boolean;
 }
 
 export function authenticatedHandler<Body = undefined>(
@@ -31,6 +36,15 @@ export function authenticatedHandler<Body = undefined>(
       const consent = await getConsentStatus(session.user.id);
       if (!consent.accepted || consent.stale) {
         return errorJson("consent_required", 403);
+      }
+    }
+
+    if (opts.requireEntitlement) {
+      try {
+        const entitled = await getBillingService().isEntitled(toBillingUser(session.user));
+        if (!entitled) return errorJson("payment_required", 402);
+      } catch (err) {
+        return renderError(err);
       }
     }
 
@@ -70,9 +84,13 @@ export function errorJson(
   );
 }
 
-function renderError(err: unknown): NextResponse {
+export function renderError(err: unknown): NextResponse {
   if (err instanceof ZodError) {
     return errorJson("invalid_body", 400, err.flatten());
+  }
+  if (err instanceof BillingError) {
+    if (err.status >= 500) console.error("[billing] request failed", { code: err.code, message: err.message });
+    return errorJson(err.code, err.status, err.details);
   }
   if (err instanceof OrchestratorError) {
     const code =

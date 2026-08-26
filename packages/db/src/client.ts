@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "./schema/index.js";
 
 export type Database = ReturnType<typeof createDb>;
+export type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 export function createDb(connectionString: string) {
   const pool = new Pool({ connectionString, max: 20 });

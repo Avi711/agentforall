@@ -12,25 +12,17 @@ import { buildTimeline } from "@/lib/bots/creation-progress";
 import { WhatsAppAccessDialog, accessLabel } from "./WhatsAppAccessSection";
 import { OwnerIdentityDialog, IDENTITY_HINT } from "./OwnerIdentityDialog";
 import { InfoHint } from "./InfoHint";
-import type { BotUsage } from "@/lib/orchestrator/types";
-
-const USD_TO_ILS_RATE = 3;
-const USAGE_LABEL = "נוצל";
-const LIMIT_LABEL = "מסגרת";
-const NO_LIMIT_LABEL = "ללא מסגרת";
-const CURRENT_PERIOD_LABEL = "התקופה הנוכחית";
-const PERIOD_LABEL = "תקופה";
-const THIRTY_DAYS_LABEL = "30 יום";
-const RESET_LABEL = "מתחדש ב-";
+import { CreditsSection } from "./CreditsSection";
+import type { CreditSummary } from "@/lib/billing/credits/service";
 
 type Channel = "whatsapp" | "telegram";
 
 export function BotCard({
   bot: initialBot,
-  usage,
+  credits,
 }: {
   bot: BotSnapshot;
-  usage: BotUsage | null;
+  credits: CreditSummary;
 }) {
   const router = useRouter();
   const bot = useBotStatus(initialBot);
@@ -308,7 +300,7 @@ export function BotCard({
 
           <OwnerSection bot={bot} onEdit={() => setIdentityOpen(true)} />
 
-          {usage?.supported ? <UsageSection usage={usage} /> : null}
+          <CreditsSection credits={credits} />
 
           {state.restart ? (
             <button
@@ -861,82 +853,6 @@ function PhoneDetail({ accountId, meta }: { accountId: string; meta: string | nu
       {meta ? <span className="text-xs text-espresso-light/80">{meta}</span> : null}
     </div>
   );
-}
-
-function UsageSection({ usage }: { usage: Extract<BotUsage, { supported: true }> }) {
-  const percent =
-    usage.maxBudgetCents && usage.maxBudgetCents > 0
-      ? Math.min(100, Math.round((usage.spendCents / usage.maxBudgetCents) * 100))
-      : null;
-  return (
-    <section className="mb-6 sm:mb-7 border-t border-sand-light/70 pt-6 sm:pt-7">
-      <div className="grid grid-cols-2 items-end gap-4 mb-3" dir="ltr">
-        <div className="text-left">
-          <p className="text-[11px] tracking-[0.16em] text-espresso-light/70 mb-1">
-            {LIMIT_LABEL}
-          </p>
-          <p className="font-medium text-espresso tabular-nums">
-            {usage.maxBudgetCents === null ? NO_LIMIT_LABEL : formatShekels(usage.maxBudgetCents)}
-          </p>
-        </div>
-        <div className="text-right">
-          <p className="text-[11px] tracking-[0.16em] text-espresso-light/70 mb-1">
-            {USAGE_LABEL}
-          </p>
-          <p className="text-2xl font-medium text-espresso tabular-nums">
-            {formatShekels(usage.spendCents)}
-          </p>
-        </div>
-      </div>
-      <div
-        className="h-2 rounded-full bg-cream-dark overflow-hidden"
-        dir="rtl"
-        role={percent === null ? undefined : "meter"}
-        aria-valuemin={percent === null ? undefined : 0}
-        aria-valuemax={percent === null ? undefined : 100}
-        aria-valuenow={percent === null ? undefined : percent}
-      >
-        <div
-          className="h-full rounded-full bg-terra transition-[width]"
-          style={{ width: `${percent ?? 0}%` }}
-        />
-      </div>
-      <div className="mt-2 flex items-center justify-between gap-4 text-xs text-espresso-light">
-        <span>{periodLabel(usage)}</span>
-        {percent === null ? null : <span dir="ltr">{percent}%</span>}
-      </div>
-    </section>
-  );
-}
-
-function formatShekels(usdCents: number): string {
-  const amount = new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 0,
-  }).format((usdCents / 100) * USD_TO_ILS_RATE);
-  return `${amount} ₪`;
-}
-
-function periodLabel(usage: Extract<BotUsage, { supported: true }>): string {
-  if (usage.budgetResetAt) {
-    const reset = new Date(usage.budgetResetAt);
-    if (!Number.isNaN(reset.getTime())) return `${RESET_LABEL} ${formatResetDate(reset)}`;
-  }
-  if (usage.budgetDuration) return `${PERIOD_LABEL}: ${formatBudgetDuration(usage.budgetDuration)}`;
-  return CURRENT_PERIOD_LABEL;
-}
-
-// Fixed time zone so the server render and the client hydration agree.
-function formatResetDate(date: Date): string {
-  return new Intl.DateTimeFormat("he-IL", {
-    day: "numeric",
-    month: "long",
-    timeZone: "Asia/Jerusalem",
-  }).format(date);
-}
-
-function formatBudgetDuration(duration: string): string {
-  if (duration === "30d") return THIRTY_DAYS_LABEL;
-  return duration;
 }
 
 async function waitForExportDownloadUrl(

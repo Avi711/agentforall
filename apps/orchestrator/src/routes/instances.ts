@@ -98,8 +98,9 @@ const PatchConfigBody = z
   });
 type PatchConfigBody = z.infer<typeof PatchConfigBody>;
 
+// 0 is a real value: the web's credit ledger caps a bot at its current spend when credits run out.
 const LiteLlmBudgetBody = z.object({
-  budgetCents: z.number().int().min(1).max(1_000_000),
+  budgetCents: z.number().int().min(0).max(1_000_000),
 });
 
 // Composite cursor `<iso>:<uuid>` — stable-sorts same-ms peers.
