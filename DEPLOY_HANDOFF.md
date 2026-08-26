@@ -243,10 +243,26 @@ Pattern: secrets created once with `gcloud secrets create`; values populated via
 | `encryption-key` | 64-hex-chars; encrypts `instances.gateway_token` + `instances.whatsapp_creds`. ⚠️ Rotation requires re-encrypting all rows. |
 | `dashboard-service-token` | bearer token Vercel uses to call orchestrator. Matches Vercel env `ORCHESTRATOR_SERVICE_TOKEN`. |
 | `default-provider-api-key` | LLM provider API key (currently Gemini, switching to OpenAI) |
+| `composio-api-key` | Composio project API key for integrations. Never enters a tenant container (see `docs/integrations.md`). Create before deploying the integrations orchestrator image; `startup.sh` reads it on every boot. |
 
 VM startup script reads these on every boot via `gcloud secrets versions access latest`. Restart the VM to pick up rotated values.
 
 ---
+
+## Integrations (2026-08-27, built, NOT yet deployed)
+
+One-click third-party app connections per bot via Composio Tool Router sessions, behind a provider port with a mock adapter; design and security model in `docs/integrations.md`. The Composio project key authenticates every session's MCP URL, so tenant containers never hold it: OpenClaw talks to the orchestrator's relay (`/api/v1/mcp/:instanceId`, per-bot bearer in `InstanceConfig.integrations`, encrypted at rest) and the orchestrator forwards with the key. Verified in the pinned `openclaw-browser:2026.7.1` image that `mcp.servers.<name>` with `streamable-http` + `headers` passes `openclaw config validate`.
+
+Deploy order:
+1. `npm run -w @agent-forall/db db:migrate` — applies `0011_integration_sessions` (one new table, no changes to `instances`).
+2. Create a Composio project (keep `require_mcp_api_key: true`; scope the key to Sessions, Connected accounts, Toolkits) and `gcloud secrets create composio-api-key` + `versions add`; `terraform -chdir=infra apply` for the new IAM binding (`vm_secret_ids`).
+3. Build + deploy the orchestrator image; `startup.sh` now writes `INTEGRATIONS_PROVIDER=composio`, `COMPOSIO_API_KEY`, `DASHBOARD_ORIGIN` and blocks `/api/v1/mcp/*` at Caddy (regenerated on reboot — for a no-reboot deploy, patch `.env.runtime` and `Caddyfile` by hand and `docker compose up -d`). Without the env the orchestrator boots with integrations disabled (routes answer 503 `FEATURE_UNAVAILABLE`, dashboard page shows "עוד לא זמין").
+4. Deploy web; no new Vercel env.
+5. Smoke: create bot → `/app/bot/connections` → connect Gmail → back with `?connected=gmail` → tile shows מחובר; in the container `openclaw.json` has `mcp.servers.agentforall` with the relay URL and NO `x-api-key`; `curl https://api.agentforall.co.il/api/v1/mcp/<id>` → 404 from Caddy; delete bot → Composio shows no connected accounts for that `user_id`.
+
+Verified against the live Composio API on 2026-08-27 with the project key: session create → `{session_id, mcp.url}`; the MCP URL answers 401 without `x-api-key` and 200 (SSE `initialize` result) with it — the relay is mandatory, not optional; `/link` → `{redirect_url, connected_account_id}`; connected accounts carry `toolkit.slug`, `status` (`INITIALIZING` before OAuth completes → shown as pending), `created_at`; toolkits: 1,412 managed, logo lives at `meta.logo`. Probe session and account were deleted afterwards.
+
+Known follow-ups: connection-expiry webhook, relay-token rotation, own Google OAuth app (consent screen branding; CASA needed for Gmail read).
 
 ## Billing (2026-08-26, deployed to Vercel in `0d2a8ab`; billing disabled until `PAYMENT_PROVIDER` is set)
 

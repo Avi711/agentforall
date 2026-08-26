@@ -145,6 +145,7 @@ locals {
     "dashboard-service-token",
     "default-provider-api-key",
     "litellm-master-key",
+    "composio-api-key",
   ]
 }
 

@@ -40,6 +40,13 @@ import { BackupExportManager } from "./services/backup-export-manager.js";
 import { LiteLlmKeyManager } from "./services/litellm-key-manager.js";
 import { TelegramBotApi } from "./services/telegram/bot-api.js";
 import { ManagedBotLinker } from "./services/telegram/managed-bot-linker.js";
+import { IntegrationSessionRepository } from "./storage/integration-session-repository.js";
+import { createIntegrationProvider } from "./services/integrations/registry.js";
+import { IntegrationSessions } from "./services/integrations/sessions.js";
+import { IntegrationsManager } from "./services/integrations/manager.js";
+import { createRelayFetch } from "./services/integrations/relay-fetch.js";
+import { integrationsRoutes } from "./routes/integrations.js";
+import { mcpRelayRoutes } from "./routes/mcp-relay.js";
 
 const MAX_STARTUP_RETRIES = 10;
 const STARTUP_BACKOFF_BASE_MS = 1000;
@@ -190,6 +197,15 @@ async function main(): Promise<void> {
   const telegramApi = config.telegramManagerBotToken
     ? new TelegramBotApi(config.telegramManagerBotToken)
     : null;
+  const integrationProvider = createIntegrationProvider(config);
+  const integrationSessions = integrationProvider
+    ? new IntegrationSessions(
+        new IntegrationSessionRepository(db, encryptionKey),
+        integrationProvider,
+        eventLog,
+        log,
+      )
+    : null;
   const manager = new InstanceManager(
     repo,
     runtime,
@@ -203,7 +219,13 @@ async function main(): Promise<void> {
     backupStorage,
     undefined,
     telegramApi,
+    integrationSessions,
   );
+  const integrations =
+    integrationProvider && integrationSessions
+      ? new IntegrationsManager(manager, repo, integrationSessions, integrationProvider, eventLog, config, log)
+      : null;
+  log.info({ provider: integrationProvider?.name ?? null }, "integrations provider");
   const backupTransferTokens = new BackupTransferTokenService(
     config.serviceTokens,
   );
@@ -276,6 +298,14 @@ async function main(): Promise<void> {
     prefix: "/api/v1/admin",
     overview: new AdminOverviewService(repo, litellmKeys, log),
   });
+  await app.register(integrationsRoutes, { prefix: "/api/v1", integrations });
+  if (integrations) {
+    await app.register(mcpRelayRoutes, {
+      prefix: "/api/v1/mcp",
+      resolveRelay: (instanceId, bearer) => integrations.resolveRelay(instanceId, bearer),
+      fetchImpl: createRelayFetch(),
+    });
+  }
   await app.register(internalPairRoutes, {
     prefix: "/internal",
     pairingManager,

@@ -78,6 +78,13 @@
       "when": 1787764731981,
       "tag": "0010_billing",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1787780086546,
+      "tag": "0011_integration_sessions",
+      "breakpoints": true
     }
   ]
 }

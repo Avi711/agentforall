@@ -7,6 +7,7 @@ const migration0006 = readFileSync(new URL("../drizzle/0006_host_scoped_ports.sq
 const migration0007 = readFileSync(new URL("../drizzle/0007_backup_import_state.sql", import.meta.url), "utf8");
 const migration0008 = readFileSync(new URL("../drizzle/0008_agent_runtime_kind.sql", import.meta.url), "utf8");
 const migration0009 = readFileSync(new URL("../drizzle/0009_litellm_key_metadata.sql", import.meta.url), "utf8");
+const migration0011 = readFileSync(new URL("../drizzle/0011_integration_sessions.sql", import.meta.url), "utf8");
 const journal = readFileSync(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8");
 
 test("duplicate bootstrap migration is idempotent for clean databases", () => {
@@ -40,4 +41,14 @@ test("LiteLLM key metadata migration records per-bot budget fields", () => {
   assert.match(migration0009, /"litellm_budget_cents"/);
   assert.match(migration0009, /"idx_instances_litellm_key_hash"/);
   assert.match(journal, /"tag": "0009_litellm_key_metadata"/);
+});
+
+test("integration sessions migration creates the per-bot provider session table", () => {
+  assert.match(migration0011, /CREATE TABLE "integration_sessions"/);
+  assert.match(migration0011, /"instance_id" uuid PRIMARY KEY NOT NULL/);
+  assert.match(migration0011, /"provider_session_id" varchar\(128\) NOT NULL/);
+  assert.match(migration0011, /"upstream_mcp_url" text NOT NULL/);
+  assert.match(migration0011, /REFERENCES "public"\."instances"\("id"\) ON DELETE cascade/);
+  assert.match(migration0011, /"idx_integration_sessions_provider_session"/);
+  assert.match(journal, /"tag": "0011_integration_sessions"/);
 });

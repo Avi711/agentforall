@@ -99,6 +99,7 @@ ENCRYPTION_KEY=$(gcloud secrets versions access latest --secret=encryption-key -
 DASHBOARD_SERVICE_TOKEN=$(gcloud secrets versions access latest --secret=dashboard-service-token --project=${project_id})
 DEFAULT_PROVIDER_API_KEY=$(gcloud secrets versions access latest --secret=default-provider-api-key --project=${project_id})
 LITELLM_MASTER_KEY=$(gcloud secrets versions access latest --secret=litellm-master-key --project=${project_id})
+COMPOSIO_API_KEY=$(gcloud secrets versions access latest --secret=composio-api-key --project=${project_id})
 LITELLM_GATEWAY_URL="${litellm_gateway_url}"
 DEFAULT_PROVIDER_BASE_URL="$LITELLM_GATEWAY_URL/v1"
 
@@ -153,6 +154,9 @@ DEFAULT_PROVIDER_MEDIA=image,audio,video,pdf
 LITELLM_MASTER_KEY=$LITELLM_MASTER_KEY
 LITELLM_DEFAULT_BUDGET_CENTS=5000
 LITELLM_DEFAULT_BUDGET_DURATION=30d
+INTEGRATIONS_PROVIDER=composio
+COMPOSIO_API_KEY=$COMPOSIO_API_KEY
+DASHBOARD_ORIGIN=https://agentforall.co.il
 RUNTIMEEOF
   chmod 600 .env.runtime
 
@@ -170,6 +174,7 @@ else
       -e "s|^DEFAULT_PROVIDER_API_KEY=.*|DEFAULT_PROVIDER_API_KEY=$DEFAULT_PROVIDER_API_KEY|" \
       -e "s|^DEFAULT_PROVIDER_MODEL=.*|DEFAULT_PROVIDER_MODEL=gemini-agentforall|" \
       -e "s|^LITELLM_MASTER_KEY=.*|LITELLM_MASTER_KEY=$LITELLM_MASTER_KEY|" \
+      -e "s|^COMPOSIO_API_KEY=.*|COMPOSIO_API_KEY=$COMPOSIO_API_KEY|" \
       .env.runtime > "$TMP_RUNTIME"
   mv "$TMP_RUNTIME" .env.runtime
 
@@ -194,6 +199,9 @@ else
   set_runtime_env LITELLM_MASTER_KEY "$LITELLM_MASTER_KEY"
   set_runtime_env LITELLM_DEFAULT_BUDGET_CENTS 5000
   set_runtime_env LITELLM_DEFAULT_BUDGET_DURATION 30d
+  set_runtime_env INTEGRATIONS_PROVIDER composio
+  set_runtime_env COMPOSIO_API_KEY "$COMPOSIO_API_KEY"
+  set_runtime_env DASHBOARD_ORIGIN https://agentforall.co.il
 
   # Self-heal: ensure host id is present on VMs bootstrapped before this var existed.
   if ! grep -q '^ORCHESTRATOR_HOST_ID=' .env.runtime; then
@@ -322,6 +330,10 @@ COMPOSEEOF
 if [ -n "$DOMAIN" ]; then
   cat > Caddyfile <<CADDYEOF
 $DOMAIN {
+  # The MCP relay is for tenant containers on tenant-net only; never expose it publicly.
+  @mcp path /api/v1/mcp/*
+  respond @mcp 404
+
   reverse_proxy orchestrator:3000
 
   request_body {
@@ -343,6 +355,10 @@ CADDYEOF
 else
   cat > Caddyfile <<'CADDYEOF'
 :80 {
+  # The MCP relay is for tenant containers on tenant-net only; never expose it publicly.
+  @mcp path /api/v1/mcp/*
+  respond @mcp 404
+
   reverse_proxy orchestrator:3000
 
   request_body {

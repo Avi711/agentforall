@@ -6,6 +6,7 @@ import {
   PROVIDER_MEDIA_CAPABILITIES,
   USER_ID_PATTERN,
 } from "./domain/types.js";
+import { INTEGRATION_PROVIDERS } from "./domain/integrations.js";
 
 const hex256 = z
   .string()
@@ -198,6 +199,22 @@ const AppConfigSchema = z.object({
     .default(5000),
   // Empty (the default) = no gateway-side reset; the web credit ledger owns budgets. Set e.g. "30d" without it.
   litellmDefaultBudgetDuration: z.string().default(""),
+
+  // Unset = integrations disabled (routes answer 503 FEATURE_UNAVAILABLE).
+  integrationsProvider: z.preprocess(
+    emptyToUndefined,
+    z.enum(INTEGRATION_PROVIDERS).optional(),
+  ),
+  composioApiKey: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+  composioBaseUrl: z.preprocess(
+    emptyToUndefined,
+    z.string().url().default("https://backend.composio.dev"),
+  ),
+  // Only origin the dashboard may ask an OAuth flow to return to.
+  dashboardOrigin: z.preprocess(
+    emptyToUndefined,
+    z.string().url().default("https://agentforall.co.il"),
+  ),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;
@@ -286,6 +303,10 @@ export function loadConfig(): AppConfig {
     litellmMasterKey: process.env.LITELLM_MASTER_KEY,
     litellmDefaultBudgetCents: process.env.LITELLM_DEFAULT_BUDGET_CENTS,
     litellmDefaultBudgetDuration: process.env.LITELLM_DEFAULT_BUDGET_DURATION,
+    integrationsProvider: process.env.INTEGRATIONS_PROVIDER,
+    composioApiKey: process.env.COMPOSIO_API_KEY,
+    composioBaseUrl: process.env.COMPOSIO_BASE_URL,
+    dashboardOrigin: process.env.DASHBOARD_ORIGIN,
   });
 
   if (!result.success) {
@@ -293,6 +314,13 @@ export function loadConfig(): AppConfig {
       .map((i) => `  ${i.path.join(".")}: ${i.message}`)
       .join("\n");
     throw new Error(`Invalid configuration:\n${formatted}`);
+  }
+
+  if (result.data.integrationsProvider === "composio" && !result.data.composioApiKey) {
+    throw new Error("INTEGRATIONS_PROVIDER=composio requires COMPOSIO_API_KEY");
+  }
+  if (result.data.integrationsProvider === "mock" && result.data.nodeEnv === "production") {
+    throw new Error("INTEGRATIONS_PROVIDER=mock is not allowed in production");
   }
 
   if (result.data.portRangeEnd <= result.data.portRangeStart) {

@@ -29,6 +29,15 @@ export interface OpenclawConfig {
   web?: WebConfig;
   session: SessionConfig;
   commands?: CommandsConfig;
+  mcp?: { servers: Record<string, McpServerConfig> };
+}
+
+export interface McpServerConfig {
+  transport: "streamable-http";
+  url: string;
+  headers?: Record<string, string>;
+  requestTimeoutMs?: number;
+  connectionTimeoutMs?: number;
 }
 
 export interface CommandsConfig {

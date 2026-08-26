@@ -324,6 +324,7 @@ function secretsOf(instance: Instance): (string | undefined)[] {
   const secrets: (string | undefined)[] = [
     instance.gatewayToken,
     instance.config.provider.apiKey,
+    instance.config.integrations?.relayToken,
   ];
   for (const channel of instance.config.channels) {
     switch (channel.type) {

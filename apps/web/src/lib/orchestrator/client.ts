@@ -26,6 +26,12 @@ import {
   type CreateInstanceInput,
   type TelegramLink,
   type TelegramLinkStatus,
+  CatalogResponseSchema,
+  IntegrationsResponseSchema,
+  ConnectLinkSchema,
+  type CatalogApp,
+  type IntegrationConnection,
+  type ConnectLink,
 } from "./types";
 
 const BackupUploadSessionSchema = z.object({
@@ -282,6 +288,54 @@ export class OrchestratorClient {
       path: instancePath(id, "/telegram/status"),
       userId,
       schema: TelegramLinkStatusSchema,
+    });
+  }
+
+  async listIntegrationCatalog(userId: string): Promise<CatalogApp[]> {
+    const result = await this.call({
+      method: "GET",
+      path: "/api/v1/integrations/catalog",
+      userId,
+      schema: CatalogResponseSchema,
+      timeoutMs: 30_000,
+    });
+    return result.data;
+  }
+
+  async listIntegrations(userId: string, id: string): Promise<IntegrationConnection[]> {
+    const result = await this.call({
+      method: "GET",
+      path: instancePath(id, "/integrations"),
+      userId,
+      schema: IntegrationsResponseSchema,
+    });
+    return result.data;
+  }
+
+  // First call per bot creates the provider session and hot-applies the relay config.
+  async connectIntegration(
+    userId: string,
+    id: string,
+    app: string,
+    returnUrl: string,
+  ): Promise<ConnectLink> {
+    return this.call({
+      method: "POST",
+      path: instancePath(id, `/integrations/${encodeURIComponent(app)}/connect`),
+      userId,
+      body: { returnUrl },
+      schema: ConnectLinkSchema,
+      timeoutMs: 30_000,
+    });
+  }
+
+  async disconnectIntegration(userId: string, id: string, ref: string): Promise<void> {
+    await this.call({
+      method: "DELETE",
+      path: instancePath(id, `/integrations/${encodeURIComponent(ref)}`),
+      userId,
+      schema: z.unknown(),
+      allowEmptyBody: true,
     });
   }
 

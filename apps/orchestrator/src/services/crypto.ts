@@ -93,6 +93,9 @@ export function encryptConfig(
       apiKey: encrypt(config.provider.apiKey, key),
     },
     channels: config.channels.map((ch) => encryptChannel(ch, key)),
+    ...(config.integrations
+      ? { integrations: { ...config.integrations, relayToken: encrypt(config.integrations.relayToken, key) } }
+      : {}),
   };
 }
 
@@ -107,6 +110,9 @@ export function decryptConfig(
       apiKey: decrypt(config.provider.apiKey, key),
     },
     channels: config.channels.map((ch) => decryptChannel(ch, key)),
+    ...(config.integrations
+      ? { integrations: { ...config.integrations, relayToken: decrypt(config.integrations.relayToken, key) } }
+      : {}),
   };
 }
 

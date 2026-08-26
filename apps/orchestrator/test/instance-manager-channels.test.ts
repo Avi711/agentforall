@@ -371,3 +371,16 @@ function makeInstance(overrides: Overrides): Instance {
     destroyedAt: null,
   };
 }
+
+test("channel patches keep the relay binding; an explicit null clears it", async () => {
+  const h = harness({ channels: [{ type: "whatsapp" }] });
+  const { id, userId } = h.instance();
+  const binding = { relayToken: "t", relayUrl: "http://orchestrator:3000/api/v1/mcp/x" };
+
+  await h.manager.updateConfig(id, userId, { integrations: binding });
+  await h.manager.updateConfig(id, userId, { channels: [{ type: "whatsapp", dmAccess: "owner" }] });
+  assert.deepEqual(h.instance().config.integrations, binding);
+
+  await h.manager.updateConfig(id, userId, { integrations: null });
+  assert.equal("integrations" in h.instance().config, false);
+});

@@ -139,6 +139,7 @@ function generateOpenclawConfig(
   const model = buildModelSelection(provider);
   const models = buildModelsConfig(provider);
   const tools = buildToolsConfig(provider);
+  const mcp = buildMcp(config);
   const media = new Set(provider.media ?? []);
   const owner = ownerPeerIds(ownerIdentityOf(config.channels));
   const openclawConfig: OpenclawConfig = {
@@ -155,6 +156,7 @@ function generateOpenclawConfig(
     ...(models ? { models } : {}),
     channels: buildChannels(config.channels),
     ...(tools ? { tools } : {}),
+    ...(mcp ? { mcp } : {}),
     plugins: buildPlugins(config.channels),
     gateway: {
       port: OPENCLAW_INTERNAL_PORT,
@@ -381,6 +383,24 @@ function buildModelsConfig(provider: ProviderConfig): OpenclawConfig["models"] {
   };
 }
 
+export const MCP_RELAY_SERVER_NAME = "agentforall";
+
+// The container talks only to the orchestrator's relay; the provider key never reaches it.
+function buildMcp(config: InstanceConfig): OpenclawConfig["mcp"] {
+  if (!config.integrations) return undefined;
+  return {
+    servers: {
+      [MCP_RELAY_SERVER_NAME]: {
+        transport: "streamable-http",
+        url: config.integrations.relayUrl,
+        headers: { Authorization: `Bearer ${config.integrations.relayToken}` },
+        requestTimeoutMs: 120_000,
+        connectionTimeoutMs: 15_000,
+      },
+    },
+  };
+}
+
 function buildToolsConfig(provider: ProviderConfig): OpenclawConfig["tools"] {
   const media = new Set(provider.media ?? []);
   const providerId = openclawProviderId(provider);
@@ -494,6 +514,7 @@ const OWNED_PATHS: readonly (readonly string[])[] = [
   ["commands", "ownerAllowFrom"],
   ["plugins", "entries", "whatsapp"],
   ["plugins", "entries", "agentforall-credit"],
+  ["mcp", "servers", MCP_RELAY_SERVER_NAME],
 ];
 
 // Per channel, the keys the dashboard sets. Anything else under a channel — the per-group entries

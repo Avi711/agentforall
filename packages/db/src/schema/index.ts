@@ -7,6 +7,7 @@ export {
   PAIRING_STATUSES,
 } from "./instances.js";
 export { instanceEvents } from "./instance-events.js";
+export { integrationSessions, INTEGRATION_PROVIDERS } from "./integrations.js";
 export { leads, PLATFORMS } from "./leads.js";
 export {
   billingCheckoutSessions,

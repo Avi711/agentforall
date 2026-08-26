@@ -86,14 +86,24 @@ export const DEFAULT_RESOURCE_LIMITS: ResourceLimits = {
   cpuShares: 512,
 };
 
+// What the container needs to reach the orchestrator's MCP relay; the provider behind it stays server-side.
+export interface IntegrationsBinding {
+  relayToken: string;
+  relayUrl: string;
+}
+
 export interface InstanceConfig {
   displayName: string;
   provider: ProviderConfig;
   channels: ChannelConfig[];
   resources: ResourceLimits;
+  integrations?: IntegrationsBinding;
 }
 
 export const InstanceConfigSchema: z.ZodType<InstanceConfig> = z.object({
+  integrations: z
+    .object({ relayToken: z.string().min(1), relayUrl: z.string().url() })
+    .optional(),
   displayName: z.string(),
   provider: z.object({
     name: z.enum(LLM_PROVIDERS),
@@ -135,6 +145,7 @@ export interface ConfigPatch {
   provider?: Partial<ProviderConfig>;
   channels?: ChannelConfig[];
   resources?: Partial<ResourceLimits>;
+  integrations?: IntegrationsBinding | null;
 }
 
 export interface CreateInstanceInput {

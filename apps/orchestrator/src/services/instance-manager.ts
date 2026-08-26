@@ -82,6 +82,7 @@ export class InstanceManager {
     private readonly backupRestoreStorage: AgentBackupRestoreStorage | null = null,
     private readonly operationLock = new InstanceOperationLock(),
     private readonly telegramApi: TelegramBotApi | null = null,
+    private readonly integrationCleanup: IntegrationCleanup | null = null,
   ) {}
 
   async create(userId: string, rawInput: CreateInstanceInput): Promise<Instance> {
@@ -368,6 +369,9 @@ export class InstanceManager {
       this.logger.warn({ instanceId: id, err }, "failed to revoke LiteLLM key"),
     );
     await this.revokeTelegramBot(inst);
+    await this.integrationCleanup?.revokeAll(inst).catch((err) =>
+      this.logger.warn({ instanceId: id, err }, "failed to revoke integrations"),
+    );
 
     try {
       if (inst.containerId) {
@@ -465,6 +469,7 @@ export class InstanceManager {
       resources: patch.resources
         ? { ...inst.config.resources, ...patch.resources }
         : inst.config.resources,
+      ...integrationsAfterPatch(inst.config, patch),
     };
 
     // Container limits are fixed when the container is created, so accepting one here would report
@@ -897,6 +902,21 @@ export class InstanceManager {
     }
   }
 
+}
+
+// Destroy-time hook only; anything needing updateConfig would deadlock on the instance lock.
+export interface IntegrationCleanup {
+  revokeAll(instance: Instance): Promise<void>;
+}
+
+function integrationsAfterPatch(
+  current: InstanceConfig,
+  patch: ConfigPatch,
+): Pick<InstanceConfig, "integrations"> {
+  if (patch.integrations === undefined) {
+    return current.integrations ? { integrations: current.integrations } : {};
+  }
+  return patch.integrations ? { integrations: patch.integrations } : {};
 }
 
 function isUniqueViolation(err: unknown): boolean {

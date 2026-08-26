@@ -196,3 +196,27 @@ export interface CreateInstanceInput {
   displayName: string;
   channel: BotChannel;
 }
+
+export const CatalogAppSchema = z.object({
+  slug: z.string().min(1),
+  name: z.string(),
+  logo: z.string().nullable(),
+  description: z.string().nullable(),
+  categories: z.array(z.string()),
+  noAuth: z.boolean(),
+});
+export type CatalogApp = z.infer<typeof CatalogAppSchema>;
+
+export const IntegrationConnectionSchema = z.object({
+  ref: z.string().min(1),
+  app: z.string().min(1),
+  status: z.enum(["active", "pending", "expired", "failed", "inactive"]),
+  createdAt: z.string().nullable(),
+});
+export type IntegrationConnection = z.infer<typeof IntegrationConnectionSchema>;
+
+export const ConnectLinkSchema = z.object({ url: z.string().url(), ref: z.string().min(1) });
+export type ConnectLink = z.infer<typeof ConnectLinkSchema>;
+
+export const CatalogResponseSchema = z.object({ data: z.array(CatalogAppSchema) });
+export const IntegrationsResponseSchema = z.object({ data: z.array(IntegrationConnectionSchema) });

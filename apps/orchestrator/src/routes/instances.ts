@@ -234,10 +234,12 @@ export const instanceRoutes: FastifyPluginAsync<InstanceRouteDeps> = async (
 
 export function sanitizeInstance(inst: Instance): Record<string, unknown> {
   const { gatewayToken: _token, config, ...safe } = inst;
+  // The relay token is a container-only credential; the dashboard never needs it.
+  const { integrations: _relay, ...visibleConfig } = config;
   return {
     ...safe,
     config: {
-      ...config,
+      ...visibleConfig,
       provider: { ...config.provider, apiKey: "***" },
       channels: config.channels.map(maskChannel),
     },

@@ -300,6 +300,8 @@ export function BotCard({
 
           <OwnerSection bot={bot} onEdit={() => setIdentityOpen(true)} />
 
+          <IntegrationsSection />
+
           <CreditsSection credits={credits} />
 
           {state.restart ? (
@@ -627,6 +629,36 @@ function whatsappRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
     stale: false,
     primary: { kind: "link", label: "חיבור WhatsApp", href: "/app/bot/pair", emphasis: "secondary" },
   };
+}
+
+function IntegrationsSection() {
+  const titleId = useId();
+  return (
+    <section className="mb-6 sm:mb-7" aria-labelledby={titleId}>
+      <p id={titleId} className="text-[11px] uppercase tracking-[0.22em] text-espresso-light/70 mb-2">
+        אפליקציות
+      </p>
+      <ul className="border-t border-sand-light/70 divide-y divide-sand-light/70">
+        <CardRow
+          glyph={<PlugGlyph />}
+          name="חיבורים לאפליקציות"
+          status={{ tone: "info", label: "Gmail, יומן, Notion ועוד" }}
+          detail={null}
+          primary={{ kind: "link", label: "ניהול חיבורים", href: "/app/bot/connections", emphasis: "secondary" }}
+          menu={[]}
+          menuLabel="פעולות נוספות לחיבורים"
+        />
+      </ul>
+    </section>
+  );
+}
+
+function PlugGlyph() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M9 3v5M15 3v5M7 8h10v3a5 5 0 0 1-10 0V8zM12 16v5" />
+    </svg>
+  );
 }
 
 function telegramRow(bot: BotSnapshot, health: RowStatus | null): RowModel {

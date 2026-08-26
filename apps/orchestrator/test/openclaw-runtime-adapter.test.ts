@@ -198,7 +198,7 @@ test("no secret from the config reaches the error message", async () => {
       stage: "write",
       transport: false,
       code: "INVALID_REQUEST",
-      message: "invalid near new-token and telegram-secret and openai-key",
+      message: "invalid near new-token and telegram-secret and openai-key and relay-secret",
     }),
   });
   const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
@@ -206,6 +206,7 @@ test("no secret from the config reaches the error message", async () => {
     ...instance,
     config: {
       ...instanceConfig,
+      integrations: { relayToken: "relay-secret", relayUrl: "http://orchestrator:3000/api/v1/mcp/x" },
       provider: { ...instanceConfig.provider, apiKey: "openai-key" },
       channels: [
         { type: "whatsapp" },
@@ -219,7 +220,7 @@ test("no secret from the config reaches the error message", async () => {
     (err: unknown) => err,
   );
   assert.ok(error instanceof Error);
-  for (const secret of ["new-token", "telegram-secret", "openai-key"]) {
+  for (const secret of ["new-token", "telegram-secret", "openai-key", "relay-secret"]) {
     assert.doesNotMatch(error.message, new RegExp(secret));
   }
 });

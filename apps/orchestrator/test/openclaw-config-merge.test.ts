@@ -262,3 +262,44 @@ function agentModel(pristine: Record<string, unknown>): unknown {
   const agents = pristine.agents as { defaults: { model: unknown } };
   return agents.defaults.model;
 }
+
+const RELAY = { relayToken: "relay-secret", relayUrl: "http://orchestrator:3000/api/v1/mcp/abc" };
+
+function patchWithIntegrations(existing: unknown, integrations: typeof RELAY | undefined): Patched {
+  const config = { ...configWith([{ type: "whatsapp" }]), ...(integrations ? { integrations } : {}) };
+  const files = generateRuntimePatchedOpenclawFiles(JSON.stringify(existing), config, "token");
+  return JSON.parse(files.configJson) as Patched;
+}
+
+test("binding the relay delivers our MCP entry beside the tenant's own servers", () => {
+  const patched = patchWithIntegrations({ mcp: { servers: { local: { command: "x" } } } }, RELAY);
+
+  assert.deepEqual(patched.mcp, {
+    servers: {
+      local: { command: "x" },
+      agentforall: {
+        transport: "streamable-http",
+        url: RELAY.relayUrl,
+        headers: { Authorization: "Bearer relay-secret" },
+        requestTimeoutMs: 120_000,
+        connectionTimeoutMs: 15_000,
+      },
+    },
+  });
+});
+
+test("clearing the relay removes only our MCP entry", () => {
+  const existing = {
+    mcp: { servers: { local: { command: "x" }, agentforall: { transport: "streamable-http", url: "old" } } },
+  };
+  const patched = patchWithIntegrations(existing, undefined);
+
+  assert.deepEqual(patched.mcp, { servers: { local: { command: "x" } } });
+});
+
+test("a config that never bound the relay renders no mcp block", () => {
+  const pristine = JSON.parse(
+    generateOpenclawFiles(configWith([{ type: "whatsapp" }]), "token").configJson,
+  ) as Patched;
+  assert.equal("mcp" in pristine, false);
+});

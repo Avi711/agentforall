@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { FastifyBaseLogger } from "fastify";
-import { InstanceManager } from "../src/services/instance-manager.js";
+import { InstanceManager, type IntegrationCleanup } from "../src/services/instance-manager.js";
 import { Reconciler } from "../src/services/reconciler.js";
 import type { ContainerRuntime } from "../src/services/container-runtime.js";
 import type { AppConfig } from "../src/config.js";
@@ -33,6 +33,29 @@ test("destroy completes cleanup when the row is already destroying", async () =>
   assert.deepEqual(runtime.removedContainers, ["container-1"]);
   assert.deepEqual(runtime.removedVolumes, ["oc-4b86fc8b-ef1-state"]);
   assert.equal(repo.instance.status, "destroyed");
+});
+
+test("destroy revokes integrations and still finishes when that revoke fails", async () => {
+  const revoked: string[] = [];
+  const okRepo = new FakeRepo({ ...baseInstance });
+  const okRuntime = new FakeRuntime();
+  await createManager(okRepo, okRuntime, openclawAdapter, {
+    revokeAll: async (inst) => {
+      revoked.push(inst.id);
+    },
+  }).destroy(baseInstance.id, baseInstance.userId);
+  assert.deepEqual(revoked, [baseInstance.id]);
+  assert.equal(okRepo.instance.status, "destroyed");
+
+  const failingRepo = new FakeRepo({ ...baseInstance });
+  const failingRuntime = new FakeRuntime();
+  await createManager(failingRepo, failingRuntime, openclawAdapter, {
+    revokeAll: async () => {
+      throw new Error("provider down");
+    },
+  }).destroy(baseInstance.id, baseInstance.userId);
+  assert.deepEqual(failingRuntime.removedContainers, ["container-1"]);
+  assert.equal(failingRepo.instance.status, "destroyed");
 });
 
 test("failed provisioning removes the runtime state volume after creating it", async () => {
@@ -186,6 +209,7 @@ function createManager(
   repo: FakeRepo,
   runtime: FakeRuntime,
   adapter: AgentRuntimeAdapter,
+  integrationCleanup: IntegrationCleanup | null = null,
 ): InstanceManager {
   const registry = {
     get: () => adapter,
@@ -206,6 +230,10 @@ function createManager(
       revokeKey: async () => {},
     } as never,
     fakeLogger,
+    null,
+    undefined,
+    null,
+    integrationCleanup,
   );
 }
 
