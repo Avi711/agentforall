@@ -248,11 +248,12 @@ VM startup script reads these on every boot via `gcloud secrets versions access 
 
 ---
 
-## Billing (2026-08-26, not yet deployed)
+## Billing (2026-08-26, deployed to Vercel in `0d2a8ab`; billing disabled until `PAYMENT_PROVIDER` is set)
 
 Provider-agnostic subscription billing landed in `apps/web/src/lib/billing/` with a **mock gateway only** — the Israeli provider (PayPlus / HYP / Grow) is still to be chosen. Design, data model, event semantics, and the adapter checklist are in `docs/billing.md`.
 
 - Migration `0010_billing` (7 new tables) is generated and verified on a disposable Postgres 16 (migrations 0000–0010 apply clean; 12 repository integration tests pass) and **applied to prod on 2026-08-26** (`drizzle-kit migrate`, all 7 tables created, nothing existing touched). Regenerating it re-emits stale `ALTER TABLE "instances"` lines because 0007–0009 have no snapshots — strip them.
+- Vercel prod has `CRON_SECRET` set (2026-08-26); `PAYMENT_PROVIDER` and `BILLING_REQUIRED` are intentionally unset until the Israeli adapter lands. Smoke after deploy: `/api/billing/status` → 401, `/api/billing/cron/sync` → 401, `/api/billing/webhooks/mock` → 404.
 - New Vercel env: `PAYMENT_PROVIDER` (unset = billing disabled, status reads still work), `BILLING_REQUIRED` (default false = never blocks bot creation). `MOCK_PAYMENT_WEBHOOK_SECRET` is dev-only; the mock adapter refuses `NODE_ENV=production`.
 - Webhook endpoint: `POST /api/billing/webhooks/<provider>`. Bot creation routes return `402 payment_required` only when `BILLING_REQUIRED=true`.
 - Account deletion now cancels the subscription at the provider before the orchestrator cleanup; a provider failure aborts the deletion.
