@@ -11,7 +11,8 @@ const links = [
 ];
 
 // Signed out → login, signed in → dashboard; the route decides, so the landing stays static.
-const ACCOUNT = { label: "האזור האישי", href: "/app" };
+const ACCOUNT = { label: "כניסה", href: "/app" };
+const CTA = { label: "רוצה סוכן", href: "/app" };
 
 export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -52,12 +53,12 @@ export function Navbar() {
           >
             {ACCOUNT.label}
           </Link>
-          <a
-            href="#signup"
+          <Link
+            href={CTA.href}
             className="rounded-full bg-espresso px-6 py-2.5 text-sm font-bold text-cream transition-all hover:bg-terra hover:shadow-lg hover:shadow-terra/20"
           >
-            הצטרפו לרשימה
-          </a>
+            {CTA.label}
+          </Link>
         </div>
 
         <button
@@ -94,13 +95,13 @@ export function Navbar() {
           >
             {ACCOUNT.label}
           </Link>
-          <a
-            href="#signup"
+          <Link
+            href={CTA.href}
             onClick={() => setMenuOpen(false)}
             className="mt-4 block rounded-full bg-terra px-6 py-3 text-center text-base font-bold text-white"
           >
-            הצטרפו לרשימה
-          </a>
+            {CTA.label}
+          </Link>
         </div>
       )}
     </nav>

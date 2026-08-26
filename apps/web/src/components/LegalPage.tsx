@@ -1,3 +1,4 @@
+import { SITE_WHATSAPP_URL } from "@/lib/site";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { Footer } from "./Footer";
@@ -39,7 +40,7 @@ export function LegalPage({
 export function WhatsAppLink({ text = "055-250-6938" }: { text?: string }) {
   return (
     <a
-      href="https://wa.me/972552506938"
+      href={SITE_WHATSAPP_URL}
       target="_blank"
       rel="noopener noreferrer"
       className="font-semibold text-terra hover:underline"

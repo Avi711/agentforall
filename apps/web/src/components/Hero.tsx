@@ -25,7 +25,7 @@ export function Hero() {
 
             <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row lg:justify-start">
               <a
-                href="#signup"
+                href="/app"
                 className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-terra px-8 py-4 text-lg font-bold text-white shadow-lg shadow-terra/25 transition-all hover:bg-espresso hover:shadow-xl hover:shadow-espresso/20 sm:w-auto"
               >
                 <WhatsAppIcon className="h-5 w-5" />

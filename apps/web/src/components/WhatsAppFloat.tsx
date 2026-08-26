@@ -1,9 +1,10 @@
+import { SITE_WHATSAPP_URL } from "@/lib/site";
 import { WhatsAppIcon } from "./WhatsAppIcon";
 
 export function WhatsAppFloat() {
   return (
     <a
-      href="https://wa.me/972552506938"
+      href={SITE_WHATSAPP_URL}
       target="_blank"
       rel="noopener noreferrer"
       aria-label="צור קשר בוואטסאפ (נפתח בחלון חדש)"

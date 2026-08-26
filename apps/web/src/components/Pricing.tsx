@@ -58,7 +58,7 @@ export function Pricing({ ctaHref = "/app" }: { ctaHref?: string }) {
                     featured ? "bg-terra text-white hover:bg-terra-dark" : "border border-sand text-espresso hover:bg-cream-dark"
                   }`}
                 >
-                  להתחיל בחינם
+                  רוצה סוכן
                 </Link>
               </article>
             );
