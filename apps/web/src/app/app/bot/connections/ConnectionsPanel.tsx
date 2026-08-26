@@ -231,7 +231,10 @@ function AppTile({
   onDisconnect: (connection: IntegrationConnection) => void;
 }) {
   const label = appLabel(app.slug, app);
-  const blurb = featuredApp(app.slug)?.blurbHe ?? app.description ?? "";
+  const featured = featuredApp(app.slug);
+  const blurb = featured?.blurbHe ?? app.description ?? "";
+  // Provider descriptions are English; truncating LTR text inside an RTL box eats its start.
+  const blurbDir = featured ? undefined : "ltr";
   const status = connectionStatus(connection);
 
   return (
@@ -251,7 +254,11 @@ function AppTile({
             <span className={`text-xs px-2 py-0.5 rounded-full ${status.className}`}>{status.label}</span>
           ) : null}
         </div>
-        {blurb ? <p className="text-xs text-espresso-light truncate">{blurb}</p> : null}
+        {blurb ? (
+          <p dir={blurbDir} className="text-xs text-espresso-light truncate text-end">
+            {blurb}
+          </p>
+        ) : null}
       </div>
       {connection?.status === "active" ? (
         <button
