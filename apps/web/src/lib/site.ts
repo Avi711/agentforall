@@ -1,7 +1,9 @@
+import { PLANS } from "./billing/pricing";
+
 export const SITE_URL = "https://agentforall.co.il";
 export const SITE_NAME = "Agent For All";
 export const SITE_PHONE = "+972-55-250-6938";
-export const PRICE_ILS_MONTHLY = "199";
+export const PRICE_ILS_MONTHLY = String(PLANS.basic.priceIls);
 
 // Search/answer-engine terms. Hebrew spells WhatsApp several ways; all are real queries.
 export const SITE_KEYWORDS = [

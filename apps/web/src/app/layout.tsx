@@ -38,12 +38,12 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: "Agent For All — העוזר האישי החכם שלך בוואטסאפ וטלגרם",
   description:
-    "עוזר אישי מבוסס בינה מלאכותית שחי בוואטסאפ או בטלגרם שלך. מנהל יומן, תקציב, תזכורות, מילואים וקופת חולים. זמין 24/7. מ-199 ש״ח לחודש, כולל מע״מ.",
+    `עוזר אישי מבוסס בינה מלאכותית שחי בוואטסאפ או בטלגרם שלך. מנהל יומן, תקציב, תזכורות, מילואים וקופת חולים. זמין 24/7. מ-${PRICE_ILS_MONTHLY} ש״ח לחודש, כולל מע״מ.`,
   keywords: SITE_KEYWORDS,
   openGraph: {
     title: "Agent For All — העוזר האישי החכם שלך",
     description:
-      "סוכן AI אישי בוואטסאפ או טלגרם. זמין 24/7. מ-199 ש״ח/חודש, כולל מע״מ.",
+      `סוכן AI אישי בוואטסאפ או טלגרם. זמין 24/7. מ-${PRICE_ILS_MONTHLY} ש״ח/חודש, כולל מע״מ.`,
     type: "website",
     locale: "he_IL",
     url: siteUrl,
@@ -53,7 +53,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Agent For All — העוזר האישי החכם שלך",
-    description: "סוכן AI אישי בוואטסאפ. זמין 24/7. מ-199 ש״ח/חודש.",
+    description: `סוכן AI אישי בוואטסאפ. זמין 24/7. מ-${PRICE_ILS_MONTHLY} ש״ח/חודש.`,
     images: [ogImage.url],
   },
   alternates: {

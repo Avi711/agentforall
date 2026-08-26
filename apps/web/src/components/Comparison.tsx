@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { PLANS } from "@/lib/billing/pricing";
 
 const rows = [
   {
     label: "מחיר לחודש",
     chatgpt: "~80 ש״ח",
-    agent: "מ-199 ש״ח",
+    agent: `מ-${PLANS.basic.priceIls} ש״ח`,
     highlight: false,
     agentNote: true,
   },

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { LegalPage, WhatsAppLink } from "@/components/LegalPage";
+import { PLANS } from "@/lib/billing/pricing";
 
 export const metadata: Metadata = {
   title: "תנאי שימוש — Agent For All",
@@ -46,7 +47,7 @@ export default function TermsPage() {
       <section>
         <h2 className="mb-3 text-xl font-bold text-espresso">5. תשלום וביטול</h2>
         <p>
-          המנוי החודשי מתחיל מ-199 ש״ח לחודש (כולל מע״מ). המחיר הסופי תלוי בהיקף השימוש ובמשאבים הנצרכים. ניתן לבטל את המנוי בכל עת דרך האזור האישי; הביטול ייכנס לתוקף בסוף החודש הנוכחי, ללא החזר על חלק החודש שחלף.
+          המנוי החודשי מתחיל מ-{PLANS.basic.priceIls} ש״ח לחודש (כולל מע״מ) וכולל חבילת קרדיטים חודשית בהתאם לתוכנית שנבחרה. קרדיטים שלא נוצלו פגים בתום תקופת החיוב; קרדיטים שנרכשו בנפרד (טעינה) אינם פגים. ניתן לבטל את המנוי בכל עת דרך האזור האישי; הביטול ייכנס לתוקף בסוף תקופת החיוב הנוכחית, ללא החזר על חלק התקופה שחלף.
         </p>
         <p className="mt-3">
           בהתאם לחוק הגנת הצרכן, תשנ״א-1981, ניתן לבטל את העסקה תוך 14 יום מיום הרישום.

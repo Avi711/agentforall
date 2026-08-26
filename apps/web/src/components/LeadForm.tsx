@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { trackLead } from "./MetaPixel";
 import { PLATFORM_OPTIONS_HE } from "@/lib/platforms";
+import { PLANS, TRIAL_DAYS } from "@/lib/billing/pricing";
 
 type FormState = "idle" | "submitting" | "success" | "error";
 
@@ -116,7 +117,7 @@ export function LeadForm() {
               {[
                 "הקמה תוך דקות — בלי להתקין כלום",
                 "סוכן פרטי על שרת מאובטח, נתונים בישראל/אירופה",
-                "החל מ-199 ש״ח/חודש (כולל מע״מ) — לפי שימוש",
+                `החל מ-${PLANS.basic.priceIls} ש״ח/חודש (כולל מע״מ), ${TRIAL_DAYS} ימי ניסיון בחינם`,
                 "תעריף מייסדים מיוחד למצטרפים מרשימת ההמתנה",
               ].map((item) => (
                 <div key={item} className="flex items-start gap-3">

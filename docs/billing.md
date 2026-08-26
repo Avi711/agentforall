@@ -68,7 +68,7 @@ Users never see dollars. Every commercial number is in `pricing.ts` — nothing 
 
 **Changing tier** (`POST /api/billing/change-plan`): Israeli standing orders cannot be re-priced, so the current subscription is cancelled at its period end and a new checkout opens for the new tier. The new tier's first payment becomes the current subscription; remaining credits from the old tier stay usable until they expire.
 
-**Landing page:** `components/Pricing.tsx` renders the tiers from `pricing.ts`; it is not mounted anywhere yet — placement on the landing page is a design decision. The public copy (layout metadata, terms, Comparison, Footer, LeadForm, FAQ) and `site.ts` `PRICE_ILS_MONTHLY` all still say ₪199; change them together when the tiers go public.
+**Landing page:** `components/Pricing.tsx` is mounted on the landing page (`#pricing`, between Comparison and the lead form) with a "מחירים" nav link. Every public price mention — layout metadata, terms, Comparison, Footer, LeadForm, FAQ, `site.ts` `PRICE_ILS_MONTHLY` — derives from `pricing.ts`, so a tier change never leaves stale copy. Pricing CTAs and the navbar's "האזור האישי" link go to `/app`, which sends a signed-out visitor to login and a signed-in one to the dashboard, keeping the landing static.
 
 ## Flow
 

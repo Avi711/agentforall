@@ -10,7 +10,8 @@ import {
   estimatedMessages,
 } from "@/lib/billing/pricing";
 
-export function Pricing({ ctaHref = "/login" }: { ctaHref?: string }) {
+// `/app` redirects a signed-out visitor to login and lands a signed-in one on the dashboard.
+export function Pricing({ ctaHref = "/app" }: { ctaHref?: string }) {
   return (
     <section id="pricing" aria-labelledby="pricing-title" className="py-16 sm:py-24">
       <div className="max-w-5xl mx-auto px-4 sm:px-6">

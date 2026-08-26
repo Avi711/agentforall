@@ -1,3 +1,5 @@
+import { CREDITS_PER_MESSAGE_ESTIMATE, PLANS, TOPUP_MIN_ILS, TRIAL_CREDITS, TRIAL_DAYS } from "@/lib/billing/pricing";
+
 export interface FaqItem {
   q: string;
   a: string;
@@ -35,7 +37,7 @@ export const faqs: FaqItem[] = [
   },
   {
     q: "כמה זה יעלה?",
-    a: "המנוי מתחיל מ-199 ש״ח לחודש, כולל שרת פרטי מאובטח והקמה מלאה. העלות משתנה לפי כמות השימוש — צ׳אט יומיומי רגיל? מינימלי. רוצים שהסוכן יבנה לכם את גוגל הבאה? כנראה שהחשבון יהיה בהתאם. נרשמים מוקדם מקבלים תעריף מייסדים מיוחד.",
+    a: `שלוש תוכניות: ${PLANS.basic.priceIls}, ${PLANS.standard.priceIls} או ${PLANS.pro.priceIls} ש״ח לחודש (כולל מע״מ), עם ${PLANS.basic.includedCredits.toLocaleString("he-IL")}, ${PLANS.standard.includedCredits.toLocaleString("he-IL")} או ${PLANS.pro.includedCredits.toLocaleString("he-IL")} קרדיטים בחודש בהתאמה — הודעה רגילה עולה בערך ${CREDITS_PER_MESSAGE_ESTIMATE} קרדיטים. השרת הפרטי וההקמה כלולים. נגמרו הקרדיטים באמצע החודש? טוענים עוד מ-${TOPUP_MIN_ILS} ש״ח, והטעינות לא פגות. מתחילים ב-${TRIAL_DAYS} ימי ניסיון עם ${TRIAL_CREDITS} קרדיטים, בלי כרטיס אשראי.`,
   },
   {
     q: "איזה מודל AI מפעיל את הסוכן?",
