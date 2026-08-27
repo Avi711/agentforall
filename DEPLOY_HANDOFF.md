@@ -249,7 +249,7 @@ VM startup script reads these on every boot via `gcloud secrets versions access 
 
 ---
 
-## Integrations (2026-08-27, DEPLOYED — commit `2e148d5`, orchestrator `cb685b59…`)
+## Integrations (2026-08-27, DEPLOYED — commit `2e148d5`, orchestrator `54604c7d…` incl. restart-on-first-bind fix)
 
 Deployed 2026-08-27 01:30 IL: migration 0011 applied to Supabase; GSM `composio-api-key` created + IAM binding applied (targeted `terraform apply`); VM `.env.runtime` got `INTEGRATIONS_PROVIDER=composio`, `COMPOSIO_API_KEY`, `DASHBOARD_ORIGIN` by hand; Caddyfile got the `/api/v1/mcp/*` → 404 block by hand. Orchestrator `orchestrator@sha256:cb685b59b8f5f57e19d9c9b5bbe318ed6b7c3012cf89b650dd09a6e2245e9370` (Cloud Build from `2e148d5`) force-recreated: healthy in 4s, both networks, log `integrations provider: composio`, `GET /api/v1/integrations/catalog` returns the live catalog, public relay path → 404 from Caddy. Web deployed to Vercel `agentforall` (`https://agentforall-nwpkfhjdm-avi711s-projects.vercel.app`, aliased to `https://agentforall.co.il`).
 
