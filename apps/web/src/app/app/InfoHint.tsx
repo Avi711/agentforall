@@ -33,6 +33,7 @@ export function InfoHint({ label, text }: { label: string; text: string }) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
+      {/* The 28px disc stays small on purpose; the ::after pad grows the hit area to 44px. */}
       <button
         type="button"
         aria-label={label}
@@ -41,7 +42,7 @@ export function InfoHint({ label, text }: { label: string; text: string }) {
         onClick={() => setPinned((v) => !v)}
         onFocus={() => setHovered(true)}
         onBlur={() => setHovered(false)}
-        className="w-7 h-7 -my-1.5 inline-flex items-center justify-center rounded-full text-espresso-light/60 hover:text-espresso hover:bg-cream-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-terra transition"
+        className="relative w-7 h-7 -my-1.5 inline-flex items-center justify-center rounded-full text-espresso-light hover:text-espresso hover:bg-cream-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-terra transition after:absolute after:-inset-2 after:content-['']"
       >
         <InfoIcon />
       </button>

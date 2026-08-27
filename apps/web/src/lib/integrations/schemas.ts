@@ -14,3 +14,13 @@ export const ConnectParamsSchema = z.object({
 });
 
 export const ConnectedQuerySchema = IntegrationAppSlugSchema.optional();
+
+export const CATALOG_SEARCH_LIMIT = 24;
+
+export const CATALOG_QUERY_MAX_LENGTH = 64;
+
+export const CatalogSearchSchema = z.object({
+  q: z.string().trim().max(CATALOG_QUERY_MAX_LENGTH).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(CATALOG_SEARCH_LIMIT),
+});
+export type CatalogSearch = z.infer<typeof CatalogSearchSchema>;

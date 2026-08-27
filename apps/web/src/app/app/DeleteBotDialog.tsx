@@ -64,7 +64,7 @@ export function DeleteBotDialog({ open, botName, onClose, onConfirm }: Props) {
             id="delete-bot-title"
             className="font-display text-xl text-espresso mb-2"
           >
-            מחיקת הבוט
+            מחיקת הסוכן
           </h2>
           <p
             id="delete-bot-description"
@@ -72,12 +72,12 @@ export function DeleteBotDialog({ open, botName, onClose, onConfirm }: Props) {
           >
             פעולה זו תמחק סופית את הסוכן{" "}
             <span className="font-medium text-espresso break-words">{botName}</span>, את
-            החיבור ל-WhatsApp, ואת כל ההגדרות. לא ניתן לשחזר.
+            החיבור ל־<span dir="ltr">WhatsApp</span>, ואת כל ההגדרות. לא ניתן לשחזר.
           </p>
 
           <label className="block">
             <span className="block text-sm text-espresso-light mb-1.5">
-              להאשרה, הקלידו את שם הבוט:
+              לאישור, הקלידו את שם הסוכן:
             </span>
             <input
               ref={inputRef}
@@ -87,7 +87,7 @@ export function DeleteBotDialog({ open, botName, onClose, onConfirm }: Props) {
               disabled={busy}
               placeholder={botName}
               autoComplete="off"
-              className="w-full px-3 py-2.5 rounded-lg border border-sand bg-white text-espresso placeholder:text-sand focus:outline-none focus:border-terra focus:ring-2 focus:ring-terra-pale disabled:opacity-50"
+              className="w-full min-h-11 px-3 py-2.5 rounded-lg border border-sand bg-white text-espresso placeholder:text-espresso-light/70 focus:outline-none focus:border-terra focus:ring-2 focus:ring-terra-pale disabled:opacity-50"
             />
           </label>
 
@@ -105,7 +105,7 @@ export function DeleteBotDialog({ open, botName, onClose, onConfirm }: Props) {
               if (!busy) dialogRef.current?.close();
             }}
             disabled={busy}
-            className="px-4 py-3 rounded-lg text-sm text-espresso-light hover:text-espresso hover:bg-cream-dark transition disabled:opacity-50"
+            className="min-h-11 px-4 py-3 rounded-lg text-sm text-espresso-light hover:text-espresso hover:bg-cream-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-terra transition disabled:opacity-50"
           >
             ביטול
           </button>
@@ -113,7 +113,7 @@ export function DeleteBotDialog({ open, botName, onClose, onConfirm }: Props) {
             type="button"
             onClick={handleConfirm}
             disabled={!matches || busy}
-            className="px-4 py-3 rounded-lg text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+            className="min-h-11 px-4 py-3 rounded-lg text-sm font-medium bg-red-600 text-white hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-700 focus-visible:ring-offset-2 transition disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
           >
             {busy ? (
               <>
@@ -121,7 +121,7 @@ export function DeleteBotDialog({ open, botName, onClose, onConfirm }: Props) {
                 <span>מוחק…</span>
               </>
             ) : (
-              "מחק לצמיתות"
+              "מחיקה לצמיתות"
             )}
           </button>
         </div>

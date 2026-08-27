@@ -6,7 +6,7 @@ import { CreateBotForm } from "./CreateBotForm";
 import { BotCard } from "./BotCard";
 import { toBotSnapshot } from "@/lib/bots/snapshot";
 import { PairedToast } from "./PairedToast";
-import { OrnamentDivider } from "./Marks";
+import { OrnamentDivider, SECTION_LABEL } from "./Marks";
 import { SubscribeCard } from "./SubscribeCard";
 import { getBillingService } from "@/lib/billing";
 import { formatCredits } from "@/lib/billing/format";
@@ -35,7 +35,7 @@ export default async function AppHome() {
         </Suspense>
 
         <header className="mb-10">
-          <p className="text-xs uppercase tracking-[0.22em] text-espresso-light/80 mb-3">הבית שלי</p>
+          <p className={`${SECTION_LABEL} mb-3`}>הבית שלי</p>
           <h1 className="font-display text-4xl sm:text-5xl text-espresso leading-tight">
             {firstName ? `שלום ${firstName}` : "ברוכים הבאים"}
           </h1>

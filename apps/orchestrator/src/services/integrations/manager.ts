@@ -10,18 +10,21 @@ import {
   UpstreamUnavailableError,
   ValidationError,
 } from "../../domain/errors.js";
-import type { CatalogApp, IntegrationConnection } from "../../domain/integrations.js";
+import type { CatalogApp, CatalogQuery, IntegrationConnection } from "../../domain/integrations.js";
 import type { Instance } from "../../domain/types.js";
 import type { EventRepository } from "../../storage/event-repository.js";
 import type { InstanceRepository } from "../../storage/instance-repository.js";
 import type { InstanceManager } from "../instance-manager.js";
 import { InstanceOperationLock } from "../instance-operation-lock.js";
+import { searchCatalog } from "./catalog-search.js";
 import type { ConnectLink, IntegrationProvider } from "./provider.js";
 import { SessionGoneError } from "./provider.js";
 import type { IntegrationSessions } from "./sessions.js";
 
 const CATALOG_TTL_MS = 60 * 60 * 1000;
 const DASHBOARD_CONNECTIONS_PATH = "/app/bot/connections";
+// Abandoned or dead attempts for the same app; pending ones may still be mid-consent.
+const STALE_STATUSES = new Set<IntegrationConnection["status"]>(["expired", "failed"]);
 
 type Manager = Pick<InstanceManager, "get" | "updateConfig" | "restart">;
 type Instances = Pick<InstanceRepository, "findById">;
@@ -54,8 +57,12 @@ export class IntegrationsManager {
     private readonly now: () => number = Date.now,
   ) {}
 
+  async catalog(query: CatalogQuery): Promise<CatalogApp[]> {
+    return searchCatalog(await this.fullCatalog(), query);
+  }
+
   // Serves stale on provider errors: a catalog hiccup should not blank the dashboard.
-  async catalog(): Promise<CatalogApp[]> {
+  private async fullCatalog(): Promise<CatalogApp[]> {
     const cached = this.catalogCache;
     if (cached && this.now() - cached.fetchedAt < CATALOG_TTL_MS) return cached.apps;
     if (this.catalogInFlight) return this.catalogInFlight;
@@ -82,7 +89,8 @@ export class IntegrationsManager {
     await this.manager.get(instanceId, userId);
     const session = await this.sessions.find(instanceId);
     if (!session) return [];
-    return this.upstream(() => this.provider.listConnections(instanceId));
+    const connections = await this.upstream(() => this.provider.listConnections(instanceId));
+    return newestFirst(connections);
   }
 
   async connect(
@@ -115,6 +123,8 @@ export class IntegrationsManager {
           this.log.warn({ instanceId, err }, "restart after relay binding failed");
         });
       }
+
+      await this.pruneStale(instanceId, app);
 
       const createLink = () =>
         this.upstream(() =>
@@ -158,6 +168,21 @@ export class IntegrationsManager {
     return { upstreamUrl, headers: this.provider.upstreamHeaders() };
   }
 
+  // Best effort: a reconnect must not fail because yesterday's abandoned attempt could not be removed.
+  private async pruneStale(instanceId: string, app: string): Promise<void> {
+    try {
+      const stale = (await this.provider.listConnections(instanceId)).filter(
+        (c) => c.app === app && STALE_STATUSES.has(c.status),
+      );
+      const results = await Promise.allSettled(stale.map((c) => this.provider.revokeConnection(c.ref)));
+      for (const result of results) {
+        if (result.status === "rejected") this.log.warn({ instanceId, app, err: result.reason }, "stale connection prune failed");
+      }
+    } catch (err) {
+      this.log.warn({ instanceId, app, err }, "stale connection lookup failed");
+    }
+  }
+
   private relayUrl(instanceId: string): string {
     return new URL(`/api/v1/mcp/${instanceId}`, this.config.orchestratorInternalUrl).toString();
   }
@@ -188,6 +213,11 @@ export class IntegrationsManager {
 
 function isLive(inst: Instance): boolean {
   return inst.status !== "destroying" && inst.status !== "destroyed";
+}
+
+function newestFirst(connections: IntegrationConnection[]): IntegrationConnection[] {
+  const key = (c: IntegrationConnection) => c.createdAt ?? "";
+  return [...connections].sort((a, b) => (key(a) === key(b) ? 0 : key(a) > key(b) ? -1 : 1));
 }
 
 function tokensMatch(presented: string, expected: string): boolean {

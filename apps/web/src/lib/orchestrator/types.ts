@@ -218,5 +218,11 @@ export type IntegrationConnection = z.infer<typeof IntegrationConnectionSchema>;
 export const ConnectLinkSchema = z.object({ url: z.string().url(), ref: z.string().min(1) });
 export type ConnectLink = z.infer<typeof ConnectLinkSchema>;
 
+export interface CatalogQuery {
+  q?: string;
+  slugs?: string[];
+  limit: number;
+}
+
 export const CatalogResponseSchema = z.object({ data: z.array(CatalogAppSchema) });
 export const IntegrationsResponseSchema = z.object({ data: z.array(IntegrationConnectionSchema) });

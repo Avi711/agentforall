@@ -1,13 +1,29 @@
 import { z } from "zod";
 import type { FastifyPluginAsync } from "fastify";
 import { FeatureUnavailableError } from "../domain/errors.js";
-import { INTEGRATION_APP_SLUG_PATTERN, INTEGRATION_REF_PATTERN } from "../domain/integrations.js";
+import {
+  CATALOG_MAX_LIMIT,
+  CATALOG_MAX_SLUGS,
+  INTEGRATION_APP_SLUG_PATTERN,
+  INTEGRATION_REF_PATTERN,
+} from "../domain/integrations.js";
 import type { IntegrationsManager } from "../services/integrations/manager.js";
 
 const InstanceParam = z.object({ id: z.string().uuid() });
 const ConnectParams = InstanceParam.extend({ app: z.string().regex(INTEGRATION_APP_SLUG_PATTERN) });
 const ConnectionParams = InstanceParam.extend({ ref: z.string().regex(INTEGRATION_REF_PATTERN) });
 const ConnectBody = z.object({ returnUrl: z.string().url() }).strict();
+const CatalogQuery = z
+  .object({
+    q: z.string().max(64).optional(),
+    slugs: z
+      .string()
+      .transform((value) => value.split(",").filter((slug) => slug !== ""))
+      .pipe(z.array(z.string().regex(INTEGRATION_APP_SLUG_PATTERN)).max(CATALOG_MAX_SLUGS))
+      .optional(),
+    limit: z.coerce.number().int().min(1).max(CATALOG_MAX_LIMIT).default(24),
+  })
+  .strict();
 
 export interface IntegrationsRouteDeps {
   integrations: IntegrationsManager | null;
@@ -19,8 +35,9 @@ export const integrationsRoutes: FastifyPluginAsync<IntegrationsRouteDeps> = asy
     return deps.integrations;
   };
 
-  app.get("/integrations/catalog", async (_request, reply) => {
-    const data = await requireIntegrations().catalog();
+  app.get("/integrations/catalog", async (request, reply) => {
+    const query = CatalogQuery.parse(request.query);
+    const data = await requireIntegrations().catalog(query);
     return reply.send({ data });
   });
 

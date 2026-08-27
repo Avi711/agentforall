@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth/session";
 import { botService } from "@/lib/bots/service";
@@ -27,22 +28,32 @@ export default async function ConnectionsPage({
   const connectedParam = ConnectedQuerySchema.safeParse(params.connected);
   const connectedApp = connectedParam.success ? (connectedParam.data ?? null) : null;
 
-  const service = getIntegrationsService();
   let initial: PanelData;
   try {
-    const [catalog, connections] = await Promise.all([
-      service.catalog(session.user.id),
-      service.list(session.user.id, bot.id),
-    ]);
-    initial = { available: true, catalog, connections };
+    initial = { available: true, ...(await getIntegrationsService().overview(session.user.id, bot.id, connectedApp)) };
   } catch (err) {
     if (!isIntegrationsUnavailable(err)) throw err;
     initial = { available: false };
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-8 sm:pt-12 pb-28">
-      <ConnectionsPanel botId={bot.id} initial={initial} connectedApp={connectedApp} />
+    <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-4 sm:pt-8 pb-28">
+      <Link
+        href="/app"
+        className="inline-flex min-h-11 items-center gap-1.5 -ms-2 px-2 mb-3 rounded-lg text-sm text-espresso-light hover:text-terra focus:outline-none focus-visible:ring-2 focus-visible:ring-terra transition"
+      >
+        <BackChevron />
+        <span>הבית שלי</span>
+      </Link>
+      <ConnectionsPanel botId={bot.id} botName={bot.displayName} initial={initial} connectedApp={connectedApp} />
     </div>
+  );
+}
+
+function BackChevron() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" className="w-4 h-4 rtl:rotate-180" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M12 5l-5 5 5 5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }

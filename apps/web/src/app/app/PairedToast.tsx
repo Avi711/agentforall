@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Toast } from "./Toast";
 
 export function PairedToast() {
   const router = useRouter();
@@ -10,20 +11,22 @@ export function PairedToast() {
   const [visible, setVisible] = useState(Boolean(paired));
 
   useEffect(() => {
-    if (!paired) return;
+    if (!paired || !visible) return;
     const t = setTimeout(() => {
       setVisible(false);
       router.replace("/app");
-    }, 5_000);
+    }, 8_000);
     return () => clearTimeout(t);
-  }, [paired, router]);
+  }, [paired, visible, router]);
 
-  if (!visible) return null;
   return (
-    <div className="fixed top-20 inset-x-0 flex justify-center px-4 z-50 pointer-events-none">
-      <div className="max-w-full bg-sage text-white text-sm sm:text-base px-5 py-3 rounded-xl shadow-lg font-medium text-center pointer-events-auto">
-        ✓ WhatsApp חובר בהצלחה — הבוט שלכם פעיל
-      </div>
-    </div>
+    <Toast
+      tone="ok"
+      text={visible ? "וואטסאפ חובר בהצלחה — הסוכן שלכם פעיל" : null}
+      onDismiss={() => {
+        setVisible(false);
+        router.replace("/app");
+      }}
+    />
   );
 }

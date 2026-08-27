@@ -7,9 +7,11 @@
   --color-espresso-light: #5C4033;
   --color-terra: #C7522A;
   --color-terra-light: #E8875F;
+  --color-terra-dark: #A63F1D;
   --color-terra-pale: #FFF0E9;
   --color-sage: #6B8F71;
   --color-sage-light: #A3C4A8;
+  --color-sage-dark: #4A6B50;
   --color-sage-pale: #EDF5EE;
   --color-sand: #D4C5A9;
   --color-sand-light: #E8DCC8;
@@ -261,7 +263,9 @@ html[data-high-contrast] {
   --color-espresso-light: #1A1A1A;
   --color-terra: #9A3C1E;
   --color-terra-light: #C4502A;
+  --color-terra-dark: #7A2E14;
   --color-terra-pale: #FFE4D6;
+  --color-sage-dark: #2F4A34;
   --color-sand: #666666;
   --color-sand-light: #BBBBBB;
 }

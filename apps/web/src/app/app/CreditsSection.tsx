@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { CreditSummary } from "@/lib/billing/credits/service";
 import { formatCredits, formatDay } from "@/lib/billing/format";
 import { estimatedMessages } from "@/lib/billing/pricing";
+import { SECTION_LABEL } from "./Marks";
 
 export function CreditsSection({ credits }: { credits: CreditSummary }) {
   // No ledger yet (bot from before billing, or access without credits): nothing meaningful to meter.
@@ -13,13 +14,13 @@ export function CreditsSection({ credits }: { credits: CreditSummary }) {
     <section className="mb-6 sm:mb-7 border-t border-sand-light/70 pt-6 sm:pt-7">
       <div className="flex items-end justify-between gap-4 mb-3">
         <div>
-          <p className="text-[11px] tracking-[0.16em] text-espresso-light/70 mb-1">קרדיטים זמינים</p>
+          <p className={`${SECTION_LABEL} mb-1`}>קרדיטים זמינים</p>
           <p className="text-2xl font-medium text-espresso tabular-nums" dir="ltr">
             {formatCredits(credits.available)}
             <span className="text-sm text-espresso-light font-normal"> מתוך {formatCredits(credits.allowance)}</span>
           </p>
         </div>
-        <p className="text-xs text-espresso-light text-end">≈ {formatCredits(messages)} הודעות בערך</p>
+        <p className="text-xs text-espresso-light text-end">≈ {formatCredits(messages)} הודעות</p>
       </div>
       <div
         className="h-2 rounded-full bg-cream-dark overflow-hidden"

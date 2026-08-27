@@ -1,5 +1,8 @@
 import type { ReactNode } from "react";
 
+// Hebrew has no letter case and wide tracking breaks word cohesion, so no `uppercase` and minimal tracking.
+export const SECTION_LABEL = "text-[11px] font-semibold tracking-[0.06em] text-espresso-light";
+
 export function BrandMark({ className = "" }: { className?: string }) {
   return (
     <svg

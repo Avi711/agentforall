@@ -86,7 +86,7 @@ export function ConfirmDialog({
               if (!busy) dialogRef.current?.close();
             }}
             disabled={busy}
-            className="px-4 py-3 rounded-lg text-sm text-espresso-light hover:text-espresso hover:bg-cream-dark transition disabled:opacity-50"
+            className="min-h-11 px-4 py-3 rounded-lg text-sm text-espresso-light hover:text-espresso hover:bg-cream-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-terra transition disabled:opacity-50"
           >
             ביטול
           </button>
@@ -94,7 +94,7 @@ export function ConfirmDialog({
             type="button"
             onClick={handleConfirm}
             disabled={busy}
-            className="px-4 py-3 rounded-lg text-sm font-medium bg-espresso text-cream hover:bg-espresso-light transition disabled:opacity-60 disabled:cursor-wait inline-flex items-center justify-center gap-2"
+            className="min-h-11 px-4 py-3 rounded-lg text-sm font-medium bg-espresso text-cream hover:bg-espresso-light focus:outline-none focus-visible:ring-2 focus-visible:ring-espresso focus-visible:ring-offset-2 transition disabled:opacity-60 disabled:cursor-wait inline-flex items-center justify-center gap-2"
           >
             {busy ? (
               <>

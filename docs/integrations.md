@@ -22,11 +22,12 @@ container ──Bearer relayToken──▶ routes/mcp-relay.ts ──x-api-key�
 | Mock adapter | `services/integrations/mock/adapter.ts` | Dev/test; OAuth is a redirect straight back to the callback |
 | Registry | `services/integrations/registry.ts` | `INTEGRATIONS_PROVIDER` → adapter, or `null` (feature off) |
 | Sessions | `services/integrations/sessions.ts` | One provider session per bot; `revokeAll` on destroy |
-| Manager | `services/integrations/manager.ts` | Ownership, catalog cache, connect/disconnect, relay auth |
+| Manager | `services/integrations/manager.ts` | Ownership, catalog cache, stale-attempt prune, connect/disconnect, relay auth |
+| Catalog search | `services/integrations/catalog-search.ts` | Pure slug lookup / name search over the cached catalog |
 | Relay | `routes/mcp-relay.ts` | `ALL /api/v1/mcp/:instanceId`, bearer-gated, streams MCP to the provider |
 | Routes | `routes/integrations.ts` | Catalog, list, connect link, disconnect |
 | Config rendering | `agent-runtime/openclaw/config.ts` `buildMcp` | `mcp.servers.agentforall` from `InstanceConfig.integrations` |
-| Web | `lib/integrations/*`, `app/bot/connections/*` | Connectors page, return-URL construction, polling after OAuth |
+| Web | `lib/integrations/*`, `app/bot/connections/*` | Connectors page, return-URL construction, live refresh, tile state (`connections.ts`) |
 
 ## Security model
 
@@ -49,13 +50,25 @@ container ──Bearer relayToken──▶ routes/mcp-relay.ts ──x-api-key�
 
 ## Flow
 
-1. Dashboard `/app/bot/connections` renders the catalog (`GET /api/integrations/catalog`, cached 1h in the
-   orchestrator, served stale on provider errors) and the bot's connections.
+1. Dashboard `/app/bot/connections` renders the featured apps, the first search page and the bot's
+   connections (`IntegrationsService.overview`). The full catalog (~1,400 apps, ~440 KB) never leaves the
+   orchestrator: it is cached there for 1h (served stale on provider errors) and searched server-side via
+   `GET /integrations/catalog?q=&slugs=&limit=` (`catalog-search.ts`); the search box calls it debounced.
+   The page header names the bot: connections belong to one bot, and a user with several accounts can
+   otherwise mistake one bot's list for another's.
 2. **התחבר** → `POST /api/bot/:id/integrations/:app/connect` → orchestrator `connect`: ensure session
    (lazy — first connect creates it), bind the relay (`updateConfig` hot-applies `mcp.servers.agentforall`),
    create the hosted connect link. Browser navigates to it.
-3. Provider redirects back to `/app/bot/connections?connected=<app>`; the page polls the list until that app
-   is `active` (≤90s), shows a toast, and drops the query from history.
+3. Provider redirects back to `/app/bot/connections?connected=<app>`; `useLiveConnections` polls the list
+   until that app is `active` (≤90s), shows a toast, and drops the query from history. Links handed out by the
+   bot in chat land on the bare page instead, so the hook also refreshes on `visibilitychange` (which
+   browsers fire on bfcache restores too) and polls (5s, ≤90s) while any connection is `pending`. The watched
+   app is latched in state and cleared once an outcome is reported, so a later disconnect cannot re-arm it. The list is newest-first; a tile reflects the best
+   account for its app (active → pending → newest).
+   Before a new link is created for an app, that app's `expired`/`failed` accounts are revoked (best-effort):
+   Composio expires abandoned consent flows after 10 minutes, and they would otherwise accumulate forever.
+   Because an abandoned flow and a dead token both surface as `expired`, the tile shows it as neutral
+   ("פג תוקף"); only `failed`/`inactive` are flagged red.
 4. **ניתוק** → `DELETE /api/bot/:id/integrations/:ref` (ref must appear in the bot's own list).
 5. Bot delete → `IntegrationSessions.revokeAll` (best-effort per step) before the container is removed.
 
@@ -89,7 +102,7 @@ Nothing in the manager, relay, routes, UI, or tests changes.
 
 ## Tests
 
-`apps/orchestrator/test/{composio-client,composio-adapter,integrations-manager,mcp-relay,crypto-config,instance-sanitize}.test.ts`
+`apps/orchestrator/test/{composio-client,composio-adapter,integrations-manager,catalog-search,mcp-relay,crypto-config,instance-sanitize}.test.ts`
 plus additions to the config-merge, adapter-redaction, channel-patch and destroy suites; `packages/db/test/migrations.test.ts`;
 `apps/web/test/integrations/*`. The relay test runs real sockets (upstream `http.Server`, SSE streaming, client abort).
 

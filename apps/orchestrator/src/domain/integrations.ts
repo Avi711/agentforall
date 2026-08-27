@@ -20,6 +20,15 @@ export interface CatalogApp {
   noAuth: boolean;
 }
 
+export const CATALOG_MAX_LIMIT = 100;
+export const CATALOG_MAX_SLUGS = 50;
+
+export interface CatalogQuery {
+  q?: string;
+  slugs?: string[];
+  limit: number;
+}
+
 export interface IntegrationConnection {
   ref: string;
   app: string;

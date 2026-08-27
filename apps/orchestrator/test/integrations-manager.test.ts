@@ -39,6 +39,7 @@ function harness(overrides: Overrides = {}) {
   let connections: IntegrationConnection[] = [];
   let linkFailures = overrides.linkFailures ?? 0;
   let listError: Error | null = null;
+  let revokeError: Error | null = null;
 
   const provider: IntegrationProvider = {
     name: "mock",
@@ -64,6 +65,7 @@ function harness(overrides: Overrides = {}) {
       return connections;
     },
     revokeConnection: async (ref) => {
+      if (revokeError) throw revokeError;
       calls.revoked.push(ref);
       connections = connections.filter((c) => c.ref !== ref);
     },
@@ -131,6 +133,12 @@ function harness(overrides: Overrides = {}) {
     },
     failListWith: (err: Error) => {
       listError = err;
+    },
+    failRevokeWith: (err: Error) => {
+      revokeError = err;
+    },
+    seed: (items: IntegrationConnection[]) => {
+      connections = items;
     },
   };
 }
@@ -222,6 +230,55 @@ test("list is empty without a session and never calls the provider", async () =>
   assert.equal(listed, 1);
 });
 
+test("reconnecting prunes that app's expired and failed attempts, never a pending one", async () => {
+  const h = harness();
+  const inst = h.instance();
+  h.seed([
+    { ref: "old-expired", app: "gmail", status: "expired", createdAt: "2026-08-01T00:00:00.000Z" },
+    { ref: "old-failed", app: "gmail", status: "failed", createdAt: "2026-08-02T00:00:00.000Z" },
+    { ref: "mid-consent", app: "gmail", status: "pending", createdAt: "2026-08-03T00:00:00.000Z" },
+    { ref: "other-app", app: "notion", status: "expired", createdAt: "2026-08-04T00:00:00.000Z" },
+  ]);
+
+  await h.integrations.connect(inst.id, inst.userId, "gmail", RETURN_URL);
+
+  assert.deepEqual(h.calls.revoked.sort(), ["old-expired", "old-failed"]);
+});
+
+test("a failing prune does not block the connect", async () => {
+  const h = harness();
+  const inst = h.instance();
+  h.seed([{ ref: "old-expired", app: "gmail", status: "expired", createdAt: null }]);
+  h.failRevokeWith(new Error("composio 500"));
+
+  const link = await h.integrations.connect(inst.id, inst.userId, "gmail", RETURN_URL);
+  assert.equal(link.url, "https://connect/gmail");
+});
+
+test("a failing stale lookup does not block the connect either", async () => {
+  const h = harness();
+  const inst = h.instance();
+  h.failListWith(new Error("composio 502"));
+
+  const link = await h.integrations.connect(inst.id, inst.userId, "gmail", RETURN_URL);
+  assert.equal(link.url, "https://connect/gmail");
+  assert.deepEqual(h.calls.revoked, []);
+});
+
+test("list returns newest connections first so a retry outranks the attempt it replaces", async () => {
+  const h = harness();
+  const inst = h.instance();
+  await h.integrations.connect(inst.id, inst.userId, "gmail", RETURN_URL);
+  h.seed([
+    { ref: "older", app: "gmail", status: "expired", createdAt: "2026-08-01T00:00:00.000Z" },
+    { ref: "undated", app: "gmail", status: "expired", createdAt: null },
+    { ref: "newer", app: "gmail", status: "active", createdAt: "2026-08-02T00:00:00.000Z" },
+  ]);
+
+  const refs = (await h.integrations.list(inst.id, inst.userId)).map((c) => c.ref);
+  assert.deepEqual(refs, ["newer", "older", "undated"]);
+});
+
 test("disconnect only revokes refs that belong to the bot", async () => {
   const h = harness();
   const inst = h.instance();
@@ -284,16 +341,16 @@ test("catalog is cached for an hour and served stale when the provider fails", a
     },
   });
 
-  await h.integrations.catalog();
-  await h.integrations.catalog();
+  await h.integrations.catalog({ limit: 100 });
+  await h.integrations.catalog({ limit: 100 });
   assert.equal(fetches, 1);
 
   h.advance(61 * 60 * 1000);
   fail = true;
-  const stale = await h.integrations.catalog();
+  const stale = await h.integrations.catalog({ limit: 100 });
   assert.equal(stale[0]?.slug, "gmail");
   assert.equal(fetches, 2);
 
   const cold = harness({ catalog: async () => { throw new Error("down"); } });
-  await assert.rejects(cold.integrations.catalog(), UpstreamUnavailableError);
+  await assert.rejects(cold.integrations.catalog({ limit: 100 }), UpstreamUnavailableError);
 });

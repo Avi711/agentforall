@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   BotIntegrationParamsSchema,
+  CatalogSearchSchema,
   ConnectParamsSchema,
   ConnectedQuerySchema,
 } from "../../src/lib/integrations/schemas";
@@ -34,4 +35,12 @@ test("featured apps are unique, slug-shaped, and looked up by slug", () => {
   for (const slug of slugs) assert.match(slug, /^[a-z0-9_-]+$/);
   assert.equal(featuredApp("gmail")?.nameHe, "Gmail");
   assert.equal(featuredApp("nothing"), undefined);
+});
+
+test("catalog search trims, coerces the limit, and rejects oversized input", () => {
+  assert.deepEqual(CatalogSearchSchema.parse({ q: "  mail ", limit: "5" }), { q: "mail", limit: 5 });
+  assert.deepEqual(CatalogSearchSchema.parse({}), { limit: 24 });
+  assert.equal(CatalogSearchSchema.safeParse({ limit: "0" }).success, false);
+  assert.equal(CatalogSearchSchema.safeParse({ limit: "101" }).success, false);
+  assert.equal(CatalogSearchSchema.safeParse({ q: "x".repeat(65) }).success, false);
 });

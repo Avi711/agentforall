@@ -27,6 +27,7 @@ import {
   type TelegramLink,
   type TelegramLinkStatus,
   CatalogResponseSchema,
+  type CatalogQuery,
   IntegrationsResponseSchema,
   ConnectLinkSchema,
   type CatalogApp,
@@ -291,10 +292,13 @@ export class OrchestratorClient {
     });
   }
 
-  async listIntegrationCatalog(userId: string): Promise<CatalogApp[]> {
+  async listIntegrationCatalog(userId: string, query: CatalogQuery): Promise<CatalogApp[]> {
+    const params = new URLSearchParams({ limit: String(query.limit) });
+    if (query.q) params.set("q", query.q);
+    if (query.slugs) params.set("slugs", query.slugs.join(","));
     const result = await this.call({
       method: "GET",
-      path: "/api/v1/integrations/catalog",
+      path: `/api/v1/integrations/catalog?${params}`,
       userId,
       schema: CatalogResponseSchema,
       timeoutMs: 30_000,

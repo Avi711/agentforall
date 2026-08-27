@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { DeleteBotDialog } from "./DeleteBotDialog";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { useBotStatus, type BotSnapshot } from "./useBotStatus";
-import { BotAvatar, SurfaceCard, type AvatarTone } from "./Marks";
+import { BotAvatar, SECTION_LABEL, SurfaceCard, type AvatarTone } from "./Marks";
 import { CreatingPanel } from "./CreatingPanel";
 import { buildTimeline } from "@/lib/bots/creation-progress";
 import { WhatsAppAccessDialog, accessLabel } from "./WhatsAppAccessSection";
@@ -76,7 +76,7 @@ export function BotCard({
     if (!res.ok && res.status !== 204) {
       throw new Error(
         res.status === 409
-          ? "הבוט עסוק כרגע — נסו שוב בעוד רגע."
+          ? "הסוכן עסוק כרגע — נסו שוב בעוד רגע."
           : channel === "whatsapp"
             ? "ניתוק WhatsApp נכשל"
             : "ניתוק טלגרם נכשל",
@@ -145,12 +145,12 @@ export function BotCard({
         cache: "no-store",
       });
       if (!res.ok && res.status !== 204) {
-        throw new Error("הפעלת הבוט מחדש נכשלה");
+        throw new Error("הפעלת הסוכן מחדש נכשלה");
       }
       router.refresh();
     } catch (err) {
       setRestartError(
-        err instanceof Error ? err.message : "הפעלת הבוט מחדש נכשלה",
+        err instanceof Error ? err.message : "הפעלת הסוכן מחדש נכשלה",
       );
     } finally {
       setRestartPending(false);
@@ -197,7 +197,7 @@ export function BotCard({
             />
 
             <div className="order-3 w-full min-w-0 sm:order-2 sm:w-auto sm:flex-1 sm:pt-1">
-              <p className="text-xs uppercase tracking-[0.22em] text-espresso-light/70 mb-1.5">
+              <p className={`${SECTION_LABEL} mb-1.5`}>
                 הסוכן שלי
               </p>
               <h2 className="font-display text-2xl sm:text-3xl text-espresso leading-tight text-balance break-words">
@@ -211,8 +211,7 @@ export function BotCard({
             <div className="relative order-2 ms-auto shrink-0 -me-1.5 -mt-1.5 sm:order-3 sm:ms-0" ref={menuRef}>
               <button
                 type="button"
-                aria-label="פעולות נוספות"
-                aria-haspopup="menu"
+                aria-label="פעולות נוספות על הסוכן"
                 aria-expanded={menuOpen}
                 onClick={() => setMenuOpen((v) => !v)}
                 className="w-11 h-11 rounded-full flex items-center justify-center text-espresso-light hover:bg-cream-dark hover:text-espresso focus:outline-none focus-visible:ring-2 focus-visible:ring-terra transition"
@@ -220,40 +219,41 @@ export function BotCard({
                 <MoreIcon />
               </button>
               {menuOpen ? (
-                <div
-                  role="menu"
-                  className="absolute top-full mt-2 end-0 w-48 rounded-xl border border-sand-light bg-white shadow-[0_8px_24px_rgba(44,24,16,0.08)] overflow-hidden z-10"
-                >
-                  <button
-                    type="button"
-                    role="menuitem"
-                    aria-busy={downloadPending}
-                    disabled={downloadPending}
-                    onClick={() => {
-                      setMenuOpen(false);
-                      handleExport();
-                    }}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-espresso hover:bg-cream-dark transition disabled:cursor-wait disabled:bg-terra-pale disabled:text-terra"
-                  >
-                    {downloadPending ? <DownloadSpinner /> : <DownloadIcon />}
-                    <span>הורדת גיבוי</span>
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      setDialogOpen(true);
-                    }}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-700 hover:bg-red-50 transition"
-                  >
-                    <TrashIcon />
-                    <span>מחיקת הבוט</span>
-                  </button>
-                </div>
+                <ul className="absolute top-full mt-2 end-0 w-48 rounded-xl border border-sand-light bg-white shadow-[0_8px_24px_rgba(44,24,16,0.08)] overflow-hidden z-10">
+                  <li>
+                    <button
+                      type="button"
+                      aria-busy={downloadPending}
+                      disabled={downloadPending}
+                      onClick={() => {
+                        setMenuOpen(false);
+                        handleExport();
+                      }}
+                      className="w-full min-h-11 flex items-center gap-3 px-4 py-3 text-sm text-espresso hover:bg-cream-dark focus:outline-none focus-visible:bg-cream-dark focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-terra transition disabled:cursor-wait disabled:bg-terra-pale disabled:text-terra"
+                    >
+                      {downloadPending ? <DownloadSpinner /> : <DownloadIcon />}
+                      <span>הורדת גיבוי</span>
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setDialogOpen(true);
+                      }}
+                      className="w-full min-h-11 flex items-center gap-3 px-4 py-3 text-sm text-red-700 hover:bg-red-50 focus:outline-none focus-visible:bg-red-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-700 transition"
+                    >
+                      <TrashIcon />
+                      <span>מחיקת הסוכן</span>
+                    </button>
+                  </li>
+                </ul>
               ) : null}
             </div>
           </div>
+
+          <NextStep bot={bot} state={state} />
 
           {downloadPending ? (
             <div
@@ -264,7 +264,7 @@ export function BotCard({
               <DownloadSpinner />
               <div className="min-w-0">
                 <p className="font-medium leading-tight">
-                  {"אנחנו מכינים את קבצי הגיבוי של הבוט."}
+                  {"אנחנו מכינים את קבצי הגיבוי של הסוכן."}
                 </p>
                 <p className="mt-1 text-xs text-espresso-light/75">
                   {"זה לוקח בדרך כלל עד דקה."}
@@ -309,10 +309,10 @@ export function BotCard({
               type="button"
               onClick={handleRestart}
               disabled={restartPending}
-              className="inline-flex w-full sm:w-auto items-center justify-center gap-2 px-5 py-3 rounded-xl bg-terra text-white font-medium hover:bg-terra-light transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-60 disabled:cursor-wait"
+              className="inline-flex min-h-11 w-full sm:w-auto items-center justify-center gap-2 px-5 py-3 rounded-xl bg-terra text-white font-medium hover:bg-terra-dark transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-60 disabled:cursor-wait"
             >
               {restartPending ? <DownloadSpinner /> : null}
-              <span>{restartPending ? "מפעיל מחדש…" : "הפעלת הבוט מחדש"}</span>
+              <span>{restartPending ? "מפעיל מחדש…" : "הפעלת הסוכן מחדש"}</span>
             </button>
           ) : null}
         </div>
@@ -331,7 +331,7 @@ export function BotCard({
         description={
           disconnecting === "telegram" ? (
             <p>
-              הבוט{" "}
+              הסוכן{" "}
               {bot.telegram?.botUsername ? (
                 <span dir="ltr" className="font-mono text-espresso">@{bot.telegram.botUsername}</span>
               ) : (
@@ -342,7 +342,7 @@ export function BotCard({
             </p>
           ) : (
             <p>
-              הבוט יפסיק לענות בוואטסאפ והמכשיר המקושר יוסר מהטלפון. הזיכרון, ההיסטוריה
+              הסוכן יפסיק לענות בוואטסאפ והמכשיר המקושר יוסר מהטלפון. הזיכרון, ההיסטוריה
               וההגדרות נשמרים — אפשר לחבר מחדש בכל רגע.
             </p>
           )
@@ -376,6 +376,37 @@ export function BotCard({
       />
     </>
   );
+}
+
+// The card is otherwise a status ledger; this answers "what do I do now?" in one line.
+function NextStep({ bot, state }: { bot: BotSnapshot; state: BotState }) {
+  const text = nextStep(bot, state);
+  if (!text) return null;
+  return (
+    <div className="mb-6 sm:mb-7 rounded-2xl border border-sand-light bg-cream/70 px-4 py-4 sm:px-5">
+      <p className={`${SECTION_LABEL} mb-1`}>הצעד הבא</p>
+      <p className="text-sm text-espresso leading-relaxed">{text}</p>
+    </div>
+  );
+}
+
+// Text only: the matching button already sits in the channel row right below, so it is never duplicated.
+function nextStep(bot: BotSnapshot, state: BotState): string | null {
+  if (state.kind === "err" || bot.status === "degraded") return null;
+
+  const name = bot.displayName;
+  const telegram = telegramRow(bot, null);
+  const whatsapp = whatsappRow(bot, null);
+
+  if (telegram.pending) return `נשאר רק לסיים את החיבור לטלגרם — ואז ${name} יתחיל לענות.`;
+  if (whatsapp.pending) return `נשאר רק לסיים את ההתאמה לוואטסאפ — ואז ${name} יתחיל לענות.`;
+  if (!telegram.connected && !whatsapp.connected) {
+    return `כדי להתחיל, חברו את ${name} לטלגרם או לוואטסאפ. זה לוקח פחות מדקה.`;
+  }
+  if (bot.lastSeenAt === null) {
+    return `${name} מוכן ומחכה. שלחו הודעה ראשונה — למשל "מה יש לי היום ביומן?".`;
+  }
+  return null;
 }
 
 function ChannelsSection({
@@ -425,8 +456,8 @@ function ChannelsSection({
 
   return (
     <section className="mb-6 sm:mb-7" aria-labelledby={titleId}>
-      <p id={titleId} className="text-[11px] uppercase tracking-[0.22em] text-espresso-light/70 mb-2">
-        ערוצים
+      <p id={titleId} className={`${SECTION_LABEL} mb-2`}>
+        איפה מדברים עם הסוכן
       </p>
       <ul className="border-t border-sand-light/70 divide-y divide-sand-light/70">
         <CardRow
@@ -470,9 +501,9 @@ function ChannelsSection({
       </ul>
 
       {(whatsapp.connected || telegram.connected) && bot.lastSeenAt === null ? (
-        <p className="mt-3 text-xs text-espresso-light leading-relaxed max-w-md italic">
-          ההודעה הראשונה עשויה להגיע אחרי כ-30–40 שניות — הסוכן עולה ברגעים אלו. ההודעות
-          הבאות יענו מיידית.
+        <p className="mt-3 text-xs text-espresso-light leading-relaxed max-w-md">
+          התשובה להודעה הראשונה עשויה לקחת כ-40 שניות — הסוכן עולה ברגעים אלו. אחר כך הוא
+          עונה מיד.
         </p>
       ) : null}
     </section>
@@ -499,7 +530,13 @@ function OwnerSection({ bot, onEdit }: { bot: BotSnapshot; onEdit: () => void })
     hasWhatsapp && whatsappNumber !== null ? [{ label: "עריכה…", onClick: onEdit }] : [];
 
   const parts: ReactNode[] = [];
-  if (telegramLinked) parts.push(<span key="tg">Telegram ✓</span>);
+  if (telegramLinked) {
+    parts.push(
+      <span key="tg">
+        מזוהה ב־<span dir="ltr">Telegram</span>
+      </span>,
+    );
+  }
   if (hasWhatsapp) {
     parts.push(
       whatsappNumber !== null ? (
@@ -507,7 +544,9 @@ function OwnerSection({ bot, onEdit }: { bot: BotSnapshot; onEdit: () => void })
           {whatsappNumber}
         </span>
       ) : (
-        <span key="wa">WhatsApp: לא הוגדר</span>
+        <span key="wa">
+          <span dir="ltr">WhatsApp</span> — לא הוגדר
+        </span>
       ),
     );
   }
@@ -515,10 +554,10 @@ function OwnerSection({ bot, onEdit }: { bot: BotSnapshot; onEdit: () => void })
   return (
     <section className="mb-6 sm:mb-7" aria-labelledby={titleId}>
       <div className="flex items-center gap-1 mb-2">
-        <p id={titleId} className="text-[11px] uppercase tracking-[0.22em] text-espresso-light/70">
-          הזהות שלי
+        <p id={titleId} className={SECTION_LABEL}>
+          מי אני בשביל הסוכן
         </p>
-        <InfoHint label="מה זה הזהות שלי" text={IDENTITY_HINT} />
+        <InfoHint label="הסבר: מי אני בשביל הסוכן" text={IDENTITY_HINT} />
       </div>
       <ul className="border-t border-sand-light/70 divide-y divide-sand-light/70">
         <CardRow
@@ -585,7 +624,7 @@ function whatsappRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
     const status: RowStatus =
       health ??
       (bot.lastSeenAt === null
-        ? { tone: "info", label: "מתחבר… (עד 2 דקות)", pulse: true }
+        ? { tone: "info", label: "מתחבר…", pulse: true }
         : { tone: "ok", label: "מחובר" });
     return {
       status,
@@ -635,15 +674,20 @@ function IntegrationsSection() {
   const titleId = useId();
   return (
     <section className="mb-6 sm:mb-7" aria-labelledby={titleId}>
-      <p id={titleId} className="text-[11px] uppercase tracking-[0.22em] text-espresso-light/70 mb-2">
-        אפליקציות
+      <p id={titleId} className={`${SECTION_LABEL} mb-2`}>
+        אפליקציות מחוברות
       </p>
       <ul className="border-t border-sand-light/70 divide-y divide-sand-light/70">
         <CardRow
           glyph={<PlugGlyph />}
           name="חיבורים לאפליקציות"
-          status={{ tone: "info", label: "Gmail, יומן, Notion ועוד" }}
-          detail={null}
+          status={null}
+          detail={
+            <p className="text-sm text-espresso-light leading-relaxed">
+              חברו את <span dir="ltr">Gmail</span>, יומן Google, <span dir="ltr">Notion</span> ועוד, כדי
+              שהסוכן יוכל לקרוא ולפעול בשמכם.
+            </p>
+          }
           primary={{ kind: "link", label: "ניהול חיבורים", href: "/app/bot/connections", emphasis: "secondary" }}
           menu={[]}
           menuLabel="פעולות נוספות לחיבורים"
@@ -706,7 +750,7 @@ function CardRow({
 }: {
   glyph: ReactNode;
   name: string;
-  status: RowStatus;
+  status: RowStatus | null;
   detail: ReactNode;
   primary: RowAction | null;
   menu: MenuItem[];
@@ -715,7 +759,7 @@ function CardRow({
   return (
     <li className="py-4 sm:py-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
+        <div className="flex min-w-0 flex-1 items-start gap-3">
           <span
             aria-hidden
             className="shrink-0 w-9 h-9 rounded-full bg-cream-dark text-espresso flex items-center justify-center"
@@ -725,7 +769,7 @@ function CardRow({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <span className="text-[15px] font-medium text-espresso">{name}</span>
-              <StatusDot {...status} />
+              {status ? <StatusDot {...status} /> : null}
             </div>
             {detail ? <div className="mt-0.5">{detail}</div> : null}
           </div>
@@ -764,38 +808,34 @@ function RowMenu({ label, items }: { label: string; items: MenuItem[] }) {
       <button
         type="button"
         aria-label={label}
-        aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="w-10 h-10 rounded-full border border-sand-light flex items-center justify-center text-espresso-light hover:bg-cream-dark hover:text-espresso focus:outline-none focus-visible:ring-2 focus-visible:ring-terra transition"
+        className="w-11 h-11 rounded-full border border-sand-light flex items-center justify-center text-espresso-light hover:bg-cream-dark hover:text-espresso focus:outline-none focus-visible:ring-2 focus-visible:ring-terra transition"
       >
         <MoreIcon />
       </button>
       {open ? (
-        <div
-          role="menu"
-          className="absolute top-full mt-2 end-0 w-52 rounded-xl border border-sand-light bg-white shadow-[0_8px_24px_rgba(44,24,16,0.08)] overflow-hidden z-20"
-        >
+        <ul className="absolute top-full mt-2 end-0 w-52 rounded-xl border border-sand-light bg-white shadow-[0_8px_24px_rgba(44,24,16,0.08)] overflow-hidden z-20">
           {items.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              role="menuitem"
-              disabled={item.disabled}
-              onClick={() => {
-                setOpen(false);
-                item.onClick();
-              }}
-              className={`w-full text-start px-4 py-3 text-sm transition disabled:opacity-60 disabled:cursor-wait ${
-                item.danger
-                  ? "text-red-700 hover:bg-red-50"
-                  : "text-espresso hover:bg-cream-dark"
-              }`}
-            >
-              {item.label}
-            </button>
+            <li key={item.label}>
+              <button
+                type="button"
+                disabled={item.disabled}
+                onClick={() => {
+                  setOpen(false);
+                  item.onClick();
+                }}
+                className={`w-full min-h-11 text-start px-4 py-3 text-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset disabled:opacity-60 disabled:cursor-wait ${
+                  item.danger
+                    ? "text-red-700 hover:bg-red-50 focus-visible:bg-red-50 focus-visible:ring-red-700"
+                    : "text-espresso hover:bg-cream-dark focus-visible:bg-cream-dark focus-visible:ring-terra"
+                }`}
+              >
+                {item.label}
+              </button>
+            </li>
           ))}
-        </div>
+        </ul>
       ) : null}
     </div>
   );
@@ -804,8 +844,8 @@ function RowMenu({ label, items }: { label: string; items: MenuItem[] }) {
 function RowActionControl({ action }: { action: RowAction }) {
   const className =
     action.emphasis === "primary"
-      ? "inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-full bg-terra text-white text-sm font-medium hover:bg-terra-light transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-      : "inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-full border border-sand text-espresso text-sm font-medium hover:bg-cream-dark transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra";
+      ? "inline-flex min-h-11 items-center justify-center gap-1.5 px-5 py-2.5 rounded-full bg-terra text-white text-sm font-medium hover:bg-terra-dark transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+      : "inline-flex min-h-11 items-center justify-center gap-1.5 px-5 py-2.5 rounded-full border border-sand text-espresso text-sm font-medium hover:bg-cream-dark transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white";
   if (action.kind === "button") {
     return (
       <button type="button" onClick={action.onClick} className={className}>
@@ -847,12 +887,12 @@ function StatusDot({ tone, label, pulse }: RowStatus) {
           ? "text-red-700"
           : "text-espresso-light";
   return (
-    <span className={`inline-flex items-center gap-1.5 text-xs ${color}`}>
-      <span aria-hidden className="relative flex w-1.5 h-1.5">
+    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${color}`}>
+      <span aria-hidden className="relative flex w-2 h-2">
         {pulse ? (
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-60" />
         ) : null}
-        <span className="relative inline-flex w-1.5 h-1.5 rounded-full bg-current" />
+        <span className="relative inline-flex w-2 h-2 rounded-full bg-current" />
       </span>
       {label}
     </span>
@@ -878,7 +918,7 @@ function PhoneDetail({ accountId, meta }: { accountId: string; meta: string | nu
         type="button"
         onClick={onCopy}
         aria-label={copied ? "המספר הועתק" : "העתקת המספר"}
-        className="shrink-0 w-10 h-10 -my-2.5 inline-flex items-center justify-center rounded-full text-espresso-light/80 hover:text-espresso hover:bg-cream-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-terra transition"
+        className="shrink-0 w-11 h-11 -my-3 inline-flex items-center justify-center rounded-full text-espresso-light hover:text-espresso hover:bg-cream-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-terra transition"
       >
         {copied ? <CheckIcon /> : <CopyIcon />}
       </button>
@@ -1080,11 +1120,14 @@ function resolveState(bot: BotSnapshot): BotState {
   const whatsappConnected = bot.pairingStatus === "paired" && bot.hasWhatsappCreds;
   const telegramConnected = Boolean(bot.telegram?.linked);
   if (whatsappConnected && bot.lastSeenAt === null) {
-    return { kind: "info", label: "מתחבר ל-WhatsApp… (עד 2 דקות)", pulse: true };
+    return { kind: "info", label: "מתחבר לוואטסאפ…", pulse: true };
   }
-  if (whatsappConnected || telegramConnected) {
-    return { kind: "ok", label: "מחובר ופעיל" };
+  // Naming the live channel avoids contradicting a "לא מחובר" row right below.
+  if (whatsappConnected && telegramConnected) {
+    return { kind: "ok", label: "פעיל בוואטסאפ ובטלגרם" };
   }
+  if (telegramConnected) return { kind: "ok", label: "פעיל בטלגרם" };
+  if (whatsappConnected) return { kind: "ok", label: "פעיל בוואטסאפ" };
   if (bot.pairingStatus === "awaiting_qr" || bot.pairingStatus === "awaiting_code") {
     return { kind: "warn", label: "ממתין להתאמה" };
   }
