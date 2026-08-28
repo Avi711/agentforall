@@ -467,7 +467,8 @@ function ChannelsSection({
   const telegram = telegramRow(bot, health);
   // Emphasis is earned: one filled button, and only while no channel can answer yet.
   const needsChannel = !whatsapp.connected && !telegram.connected;
-  const whatsappPrimary = ownerNumberMissing(bot)
+  // Owner-number prompt only once WhatsApp actually works: before pairing, the ask is חיבור.
+  const whatsappPrimary = whatsapp.connected && ownerNumberMissing(bot)
     ? ({ kind: "button", label: "הגדרת המספר שלי", emphasis: "quiet", onClick: onEditOwner } as RowAction)
     : lead(whatsapp.primary, needsChannel);
   const telegramPrimary = lead(telegram.primary, needsChannel && whatsappPrimary?.emphasis !== "primary");
@@ -874,7 +875,7 @@ const ROW_ACTION_CLASS: Record<RowAction["emphasis"], string> = {
   primary:
     "inline-flex min-h-11 items-center justify-center gap-1.5 px-5 py-2.5 rounded-full bg-terra text-white text-sm font-medium hover:bg-terra-dark transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white",
   quiet:
-    "inline-flex min-h-11 items-center justify-center gap-1 -me-2 px-2 rounded-lg text-espresso-light text-sm font-medium hover:text-terra transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra",
+    "inline-flex min-h-11 items-center justify-center gap-1.5 px-5 py-2.5 rounded-full border border-sand bg-white text-espresso text-sm font-medium hover:bg-cream-dark hover:border-espresso-light/40 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white",
 };
 
 function RowActionControl({ action }: { action: RowAction }) {

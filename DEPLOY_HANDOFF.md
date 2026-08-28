@@ -249,6 +249,12 @@ VM startup script reads these on every boot via `gcloud secrets versions access 
 
 ---
 
+## Catalog paging + dashboard redesign (2026-08-28, DEPLOYED — commit `1194119`+follow-up, orchestrator `bf4777ab…`)
+
+- Orchestrator `orchestrator@sha256:bf4777ab90929b66e593440ac839091985ce0f715ee7a030641d258b65cdf95c` (Cloud Build `2eb5b811`, 2026-08-28 ~05:00 IL) force-recreated on the VM. Catalog route now takes `offset` (≤10,000) and answers `{ data, total }`; verified live: `limit=1` → `total=1380`, `offset=5` → slack, `offset=99999` → 400. Rollback: `566ea877…` (the web falls back to page-length totals against it — no paging button, nothing breaks).
+- Web (same commit, Vercel auto-deploy from push): connections page is ONE list (connected → curated Hebrew shortlist (20 apps incl. monday/Wix/LinkedIn/Zoom/Canva/DocuSign) → whole catalog behind "עוד אפליקציות" paging); search==browse (same paged query), Hebrew queries hoist curated matches; provider English descriptions no longer rendered. Dashboard card: single-line header, icon-circle open buttons, quiet actions are outlined pills, logo showcase (server-fetched, text fallback), loading.tsx on every dynamic route incl. /admin.
+- Owner-number prompt ("הגדרת המספר שלי") gated on a connected WhatsApp row (was showing before pairing).
+
 ## Integrations (2026-08-27, DEPLOYED — commit `3c27e5e`, orchestrator `566ea877…` incl. catalog search + stale-attempt prune; web UX pass on Vercel)
 
 Deployed 2026-08-27 01:30 IL: migration 0011 applied to Supabase; GSM `composio-api-key` created + IAM binding applied (targeted `terraform apply`); VM `.env.runtime` got `INTEGRATIONS_PROVIDER=composio`, `COMPOSIO_API_KEY`, `DASHBOARD_ORIGIN` by hand; Caddyfile got the `/api/v1/mcp/*` → 404 block by hand. Orchestrator `orchestrator@sha256:cb685b59b8f5f57e19d9c9b5bbe318ed6b7c3012cf89b650dd09a6e2245e9370` (Cloud Build from `2e148d5`) force-recreated: healthy in 4s, both networks, log `integrations provider: composio`, `GET /api/v1/integrations/catalog` returns the live catalog, public relay path → 404 from Caddy. Web deployed to Vercel `agentforall` (`https://agentforall-nwpkfhjdm-avi711s-projects.vercel.app`, aliased to `https://agentforall.co.il`).

@@ -54,7 +54,7 @@ variable "github_repo" {
 variable "orchestrator_image" {
   description = "Immutable orchestrator image ref. Production must use a GAR digest or git-SHA tag, never :latest."
   type        = string
-  default     = "europe-west4-docker.pkg.dev/agent-for-all/agent-forall/orchestrator@sha256:566ea877b4d099df4b534f3919e4fab48a45171e90a0910b7f41f8e18d1093a6"
+  default     = "europe-west4-docker.pkg.dev/agent-for-all/agent-forall/orchestrator@sha256:bf4777ab90929b66e593440ac839091985ce0f715ee7a030641d258b65cdf95c"
 }
 
 variable "pairing_image" {
