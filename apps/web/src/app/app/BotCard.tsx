@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { PendingLink, useRefresh } from "./Pending";
+import { PendingLink, useNavigate, useRefresh } from "./Pending";
 import { DeleteBotDialog } from "./DeleteBotDialog";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { useBotStatus, type BotSnapshot } from "./useBotStatus";
@@ -12,6 +12,7 @@ import { WhatsAppAccessDialog, accessLabel } from "./WhatsAppAccessSection";
 import { OwnerIdentityDialog, IDENTITY_HINT } from "./OwnerIdentityDialog";
 import { InfoHint } from "./InfoHint";
 import { CreditsSection } from "./CreditsSection";
+import { WhatsappNumberConfirmDialog } from "./WhatsappNumberDialog";
 import type { CreditSummary } from "@/lib/billing/credits/service";
 
 type Channel = "whatsapp" | "telegram";
@@ -38,6 +39,9 @@ export function BotCard({
   const [accessOpen, setAccessOpen] = useState(false);
   const [identityOpen, setIdentityOpen] = useState(false);
   const [disconnecting, setDisconnecting] = useState<Channel | null>(null);
+  const [whatsappConfirm, setWhatsappConfirm] = useState(false);
+  const [confirmTarget, setConfirmTarget] = useState<"pair" | "telegram" | null>(null);
+  const { navigating, navigate } = useNavigate();
   const [cancelPending, setCancelPending] = useState<Channel | null>(null);
   const [channelError, setChannelError] = useState<string | null>(null);
   const [downloadPending, setDownloadPending] = useState(false);
@@ -309,6 +313,7 @@ export function BotCard({
             onCancelPending={handleCancelPending}
             onOpenAccess={() => setAccessOpen(true)}
             onEditOwner={() => setIdentityOpen(true)}
+            onConnectWhatsapp={() => setWhatsappConfirm(true)}
           />
 
           <IntegrationsSection apps={apps} />
@@ -329,6 +334,24 @@ export function BotCard({
           ) : null}
         </div>
       </article>
+
+      <WhatsappNumberConfirmDialog
+        open={whatsappConfirm}
+        pending={navigating ? confirmTarget : null}
+        onClose={() => setWhatsappConfirm(false)}
+        onConfirm={() => {
+          setConfirmTarget("pair");
+          navigate("/app/bot/pair");
+        }}
+        onTelegram={
+          bot.telegram?.linked
+            ? undefined
+            : () => {
+                setConfirmTarget("telegram");
+                navigate("/app/bot/telegram");
+              }
+        }
+      />
 
       <DeleteBotDialog
         open={dialogOpen}
@@ -433,9 +456,9 @@ function nextStep(bot: BotSnapshot, state: BotState): string | null {
   const telegram = telegramRow(bot, null);
   const whatsapp = whatsappRow(bot, null);
 
-  if (telegram.pending) return `נשאר רק לסיים את החיבור לטלגרם — ואז ${name} יתחיל לענות.`;
-  if (whatsapp.pending) return `נשאר רק לסיים את ההתאמה לוואטסאפ — ואז ${name} יתחיל לענות.`;
+  // Pending channels are not repeated here: their row already shows the state and the resume button.
   if (!telegram.connected && !whatsapp.connected) {
+    if (telegram.pending || whatsapp.pending) return null;
     return `כדי להתחיל, חברו את ${name} לטלגרם או לוואטסאפ. זה לוקח פחות מדקה.`;
   }
   if (bot.lastSeenAt === null) {
@@ -452,6 +475,7 @@ function ChannelsSection({
   onCancelPending,
   onOpenAccess,
   onEditOwner,
+  onConnectWhatsapp,
 }: {
   bot: BotSnapshot;
   cancelPending: Channel | null;
@@ -460,6 +484,7 @@ function ChannelsSection({
   onCancelPending: (channel: Channel) => void;
   onOpenAccess: () => void;
   onEditOwner: () => void;
+  onConnectWhatsapp: () => void;
 }) {
   const titleId = useId();
   const health = channelHealth(bot);
@@ -467,10 +492,13 @@ function ChannelsSection({
   const telegram = telegramRow(bot, health);
   // Emphasis is earned: one filled button, and only while no channel can answer yet.
   const needsChannel = !whatsapp.connected && !telegram.connected;
-  // Owner-number prompt only once WhatsApp actually works: before pairing, the ask is חיבור.
+  const fresh = !whatsapp.connected && !whatsapp.pending && !whatsapp.stale;
+  // Owner-number prompt only once WhatsApp actually works; a fresh connect passes the number warning first.
   const whatsappPrimary = whatsapp.connected && ownerNumberMissing(bot)
     ? ({ kind: "button", label: "הגדרת המספר שלי", emphasis: "quiet", onClick: onEditOwner } as RowAction)
-    : lead(whatsapp.primary, needsChannel);
+    : fresh && whatsapp.primary
+      ? lead({ kind: "button", label: whatsapp.primary.label, emphasis: "quiet", onClick: onConnectWhatsapp }, needsChannel)
+      : lead(whatsapp.primary, needsChannel);
   const telegramPrimary = lead(telegram.primary, needsChannel && whatsappPrimary?.emphasis !== "primary");
   const access = bot.whatsappAccess;
 

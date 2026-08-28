@@ -29,6 +29,7 @@ export interface Post {
 
 // Newest first. Adding a post = one MDX file in src/content/blog plus its slug here.
 export const POST_SLUGS = [
+  "dedicated-whatsapp-number",
   "what-is-a-personal-ai-agent",
   "how-much-does-a-personal-ai-agent-cost",
   "whatsapp-ai-agent-what-it-can-do",

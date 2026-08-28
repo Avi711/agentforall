@@ -239,8 +239,16 @@ export function PairingFlow({ botId }: Props) {
         <p className="mb-6 text-xs leading-relaxed">
           <strong className="font-bold text-espresso">
             חשוב: אל תחברו את המספר האישי שלכם. וואטסאפ עלולה לחסום מספרים שמריצים בוטים,
-            לכן צריך מספר נפרד (SIM נוסף או מספר וירטואלי).
-          </strong>
+            לכן צריך מספר נפרד (eSIM או SIM נוסף).
+          </strong>{" "}
+          <a
+            href="/blog/dedicated-whatsapp-number"
+            target="_blank"
+            rel="noopener"
+            className="font-medium text-terra underline underline-offset-2 hover:text-terra-dark"
+          >
+            איך משיגים ומגדירים מספר כזה — המדריך המלא
+          </a>
         </p>
 
         <TabBar value={tab} onChange={setTab} />
