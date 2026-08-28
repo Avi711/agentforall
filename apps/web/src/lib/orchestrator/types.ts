@@ -222,7 +222,18 @@ export interface CatalogQuery {
   q?: string;
   slugs?: string[];
   limit: number;
+  offset?: number;
 }
 
-export const CatalogResponseSchema = z.object({ data: z.array(CatalogAppSchema) });
+// `total` is every app the query matched; `apps` is the requested page of them.
+export interface CatalogPage {
+  apps: CatalogApp[];
+  total: number;
+}
+
+export const CatalogResponseSchema = z.object({
+  data: z.array(CatalogAppSchema),
+  // Optional so the web may roll out before the orchestrator that started sending it.
+  total: z.number().int().min(0).optional(),
+});
 export const IntegrationsResponseSchema = z.object({ data: z.array(IntegrationConnectionSchema) });

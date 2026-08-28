@@ -42,15 +42,16 @@ export function BillingCard({
   const verification = useCheckoutVerification(checkoutResult === "success" ? checkoutSessionId : null, setStatus);
   useForgetCheckoutReturn(checkoutResult !== null);
 
-  async function run(action: PendingAction, work: () => Promise<void>) {
+  // `leaves` actions hand the tab to the payment provider: clearing pending would un-busy the button mid-unload.
+  async function run(action: PendingAction, work: () => Promise<void>, leaves = false) {
     if (pending) return;
     setPending(action);
     setError(null);
     try {
       await work();
+      if (!leaves) setPending(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : UNEXPECTED_ERROR_HE);
-    } finally {
       setPending(null);
     }
   }
@@ -103,7 +104,7 @@ export function BillingCard({
             <PrimaryButton
               pending={pending === "checkout"}
               disabled={busy || verification.verifying}
-              onClick={() => run("checkout", async () => window.location.assign(await startCheckout(plan)))}
+              onClick={() => run("checkout", async () => window.location.assign(await startCheckout(plan)), true)}
             >
               {pending === "checkout" ? "מעבירים לתשלום…" : "הצטרפות למנוי"}
             </PrimaryButton>
@@ -131,7 +132,10 @@ export function BillingCard({
         {status.paid && status.capabilities.updatePaymentMethod ? (
           <SecondaryButton
             disabled={busy}
-            onClick={() => run("paymentMethod", async () => window.location.assign(await fetchUpdatePaymentMethodUrl()))}
+            pending={pending === "paymentMethod"}
+            onClick={() =>
+              run("paymentMethod", async () => window.location.assign(await fetchUpdatePaymentMethodUrl()), true)
+            }
           >
             {pending === "paymentMethod" ? "פותחים…" : "עדכון אמצעי תשלום"}
           </SecondaryButton>
@@ -140,6 +144,7 @@ export function BillingCard({
         {status.paid && status.capabilities.customerPortal ? (
           <SecondaryButton
             disabled={busy}
+            pending={pending === "portal"}
             onClick={() => run("portal", async () => void window.open(await fetchPortalUrl(), "_blank", "noopener"))}
           >
             {pending === "portal" ? "פותחים…" : "ניהול חשבוניות ותשלומים"}
@@ -166,7 +171,7 @@ export function BillingCard({
           busy={busy}
           pending={pending === "changePlan"}
           onSelect={setPlan}
-          onConfirm={() => run("changePlan", async () => window.location.assign(await changePlan(plan)))}
+          onConfirm={() => run("changePlan", async () => window.location.assign(await changePlan(plan)), true)}
           onClose={() => {
             setPanel("none");
             setPlan(status.plan.code);
@@ -312,8 +317,9 @@ function CancelConfirm({
         <button
           type="button"
           disabled={busy}
+          aria-busy={pending}
           onClick={onConfirm}
-          className="px-5 py-2.5 rounded-lg bg-red-700 text-white text-sm font-medium hover:bg-red-800 transition disabled:opacity-40"
+          className="px-5 py-2.5 rounded-lg bg-red-700 text-white text-sm font-medium hover:bg-red-800 transition disabled:opacity-40 aria-busy:cursor-wait"
         >
           {pending ? "מבטלים…" : "כן, לבטל את המנוי"}
         </button>
@@ -410,13 +416,24 @@ function PrimaryButton({
   );
 }
 
-function SecondaryButton({ disabled, onClick, children }: { disabled: boolean; onClick: () => void; children: React.ReactNode }) {
+function SecondaryButton({
+  disabled,
+  pending = false,
+  onClick,
+  children,
+}: {
+  disabled: boolean;
+  pending?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="px-5 py-3 rounded-lg border border-sand text-espresso hover:bg-cream-dark transition text-sm font-medium disabled:opacity-50"
+      aria-busy={pending}
+      className="px-5 py-3 rounded-lg border border-sand text-espresso hover:bg-cream-dark transition text-sm font-medium disabled:opacity-50 aria-busy:cursor-wait"
     >
       {children}
     </button>

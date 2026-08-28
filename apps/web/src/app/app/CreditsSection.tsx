@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PendingLink } from "./Pending";
 import type { CreditSummary } from "@/lib/billing/credits/service";
 import { formatCredits, formatDay } from "@/lib/billing/format";
 import { estimatedMessages } from "@/lib/billing/pricing";
@@ -44,9 +44,9 @@ export function CreditsSection({ credits }: { credits: CreditSummary }) {
       {credits.lowBalance ? (
         <p className="mt-3 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-3">
           הקרדיטים עומדים להיגמר.{" "}
-          <Link href="/app/settings" className="underline font-medium">
+          <PendingLink href="/app/settings" className="underline font-medium">
             טעינת קרדיטים
-          </Link>
+          </PendingLink>
         </p>
       ) : null}
     </section>

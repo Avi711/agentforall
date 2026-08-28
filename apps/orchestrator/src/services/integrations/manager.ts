@@ -10,7 +10,7 @@ import {
   UpstreamUnavailableError,
   ValidationError,
 } from "../../domain/errors.js";
-import type { CatalogApp, CatalogQuery, IntegrationConnection } from "../../domain/integrations.js";
+import type { CatalogApp, CatalogPage, CatalogQuery, IntegrationConnection } from "../../domain/integrations.js";
 import type { Instance } from "../../domain/types.js";
 import type { EventRepository } from "../../storage/event-repository.js";
 import type { InstanceRepository } from "../../storage/instance-repository.js";
@@ -57,7 +57,7 @@ export class IntegrationsManager {
     private readonly now: () => number = Date.now,
   ) {}
 
-  async catalog(query: CatalogQuery): Promise<CatalogApp[]> {
+  async catalog(query: CatalogQuery): Promise<CatalogPage> {
     return searchCatalog(await this.fullCatalog(), query);
   }
 

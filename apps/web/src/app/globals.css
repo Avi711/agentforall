@@ -125,6 +125,8 @@ body {
   inset-inline: 0;
   bottom: 0;
   height: 3px;
+  /* The card itself no longer clips, so the bar rounds its own ends. */
+  border-radius: 0 0 28px 28px;
   overflow: hidden;
   background: color-mix(in srgb, var(--color-terra-pale) 80%, white);
 }
@@ -163,6 +165,25 @@ body {
   border-radius: 999px;
   background: currentColor;
   animation: download-dot 1s ease-in-out infinite;
+}
+
+/* Link pending state (useLinkStatus). The marker has no size, so nothing reflows when it toggles. */
+.link-hint {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+@keyframes link-pending {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+a:has(> .link-hint.is-pending) {
+  cursor: progress;
+  /* 120ms delay: a prefetched route lands before the pulse is ever visible. */
+  animation: link-pending 900ms ease-in-out 120ms infinite;
 }
 
 /* Subtle reveal on scroll */
@@ -245,6 +266,7 @@ body {
     animation: none !important;
   }
   .reveal { opacity: 1 !important; }
+  a:has(> .link-hint.is-pending) { animation: none !important; opacity: 0.6; }
 }
 
 /* ── User accessibility preferences (AccessibilityWidget) ── */
@@ -290,6 +312,7 @@ html[data-reduced-motion] .typing-dot {
   animation: none !important;
 }
 html[data-reduced-motion] .reveal { opacity: 1 !important; }
+html[data-reduced-motion] a:has(> .link-hint.is-pending) { animation: none !important; opacity: 0.6; }
 
 /* Skip-to-content link — visually hidden until focused */
 .skip-link {

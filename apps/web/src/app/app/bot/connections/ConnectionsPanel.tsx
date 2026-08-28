@@ -1,20 +1,21 @@
 "use client";
 
-import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { PendingLink } from "@/app/app/Pending";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ConfirmDialog } from "@/app/app/ConfirmDialog";
 import { BotAvatar, SECTION_LABEL } from "@/app/app/Marks";
 import { Toast, type ToastTone } from "@/app/app/Toast";
-import { featuredApp } from "@/lib/integrations/catalog.he";
+import { featuredApp, searchFeatured } from "@/lib/integrations/catalog.he";
 import { connectionFor, tileStatus, type TileTone } from "@/lib/integrations/connections";
 import { CONNECTIONS_PATH } from "@/lib/integrations/paths";
-import { CATALOG_QUERY_MAX_LENGTH } from "@/lib/integrations/schemas";
+import { CATALOG_QUERY_MAX_LENGTH, CATALOG_SEARCH_LIMIT } from "@/lib/integrations/schemas";
 import type { ConnectionsOverview } from "@/lib/integrations/service";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 import {
   CatalogResponseSchema,
   ConnectLinkSchema,
   type CatalogApp,
+  type CatalogPage,
   type IntegrationConnection,
 } from "@/lib/orchestrator/types";
 import { useLiveConnections, type WatchOutcome } from "./useLiveConnections";
@@ -80,9 +81,24 @@ function Panel({
     return () => clearTimeout(t);
   }, [toast]);
 
-  const { query, setQuery, results, searching, failed } = useCatalogSearch();
-  const others = results ?? overview.popular;
-  const activeCount = connections.filter((c) => c.status === "active").length;
+  // One list, composed on the server: connected apps, then the ones we curate, then the catalog.
+  const start = useMemo<Listing>(
+    () => ({
+      apps: dedupe([...overview.mine, ...overview.featured, ...overview.browse.apps]),
+      cursor: overview.browse.apps.length,
+      total: overview.browse.total,
+    }),
+    [overview],
+  );
+  const hoist = useCallback(
+    (q: string) => {
+      const slugs = new Set(searchFeatured(q));
+      return overview.featured.filter((app) => slugs.has(app.slug));
+    },
+    [overview.featured],
+  );
+  const catalog = useCatalogListing(start, hoist);
+  const searchTerm = catalog.query.trim();
 
   async function connect(app: CatalogApp) {
     setError(null);
@@ -132,7 +148,7 @@ function Panel({
     <div className="bg-white rounded-[28px] border border-sand-light shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)] p-5 sm:p-10">
       <Toast tone={toast?.tone ?? "ok"} text={toast?.text ?? null} onDismiss={() => setToast(null)} />
 
-      <div className="flex items-start gap-3 sm:gap-5 mb-5">
+      <div className="flex items-start gap-3 sm:gap-5 mb-4">
         <BotAvatar name={botName} tone="warm" size="sm" />
         <div className="min-w-0">
           <p className={`${SECTION_LABEL} mb-1`}>חיבורים לאפליקציות</p>
@@ -142,65 +158,68 @@ function Panel({
         </div>
       </div>
 
-      <p className="text-sm text-espresso-light leading-relaxed mb-6 max-w-lg">
-        חברו אפליקציה בלחיצה אחת — נעביר אתכם למסך האישור של השירות, ואחרי האישור {botName} יוכל
-        להשתמש בה מתוך וואטסאפ או טלגרם. החיבורים כאן שייכים רק ל־{botName}, ואפשר לנתק בכל רגע.
+      <p className="text-sm text-espresso-light leading-relaxed mb-5 max-w-lg">
+        חברו אפליקציה בלחיצה אחת, ו־{botName} יוכל להשתמש בה מתוך וואטסאפ או טלגרם. אפשר לנתק בכל רגע.
       </p>
 
       {error ? (
-        <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl p-3 mb-6">
+        <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl p-3 mb-5">
           {error}
         </p>
       ) : null}
 
-      <div className="flex items-baseline justify-between gap-3 mb-3">
-        <h3 className="font-display text-lg text-espresso">הכי שימושיות</h3>
-        {activeCount > 0 ? (
-          <p className="text-xs text-sage-dark font-medium">{activeCount} מחוברות</p>
-        ) : null}
-      </div>
-      <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-10">{overview.featured.map(tile)}</ul>
+      <SearchField
+        query={catalog.query}
+        onQuery={catalog.setQuery}
+        searching={catalog.busy === "search"}
+        total={overview.browse.total}
+      />
 
-      <h3 className="font-display text-lg text-espresso mb-1">כל שאר האפליקציות</h3>
-      <p className="text-sm text-espresso-light leading-relaxed mb-4 max-w-lg">
-        אלפי שירותים נוספים. חפשו לפי שם — התיאורים מגיעים מהשירות עצמו, ולכן הם באנגלית.
-      </p>
-
-      <SearchField query={query} onQuery={setQuery} searching={searching} />
-
-      {failed ? (
+      {catalog.failed ? (
         <p role="alert" className="text-sm text-red-700 mb-3">
           {UNEXPECTED_ERROR_HE}
         </p>
       ) : null}
 
-      {others.length === 0 ? (
+      {catalog.listing.apps.length > 0 ? (
+        <ul
+          className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${catalog.busy === "search" ? "opacity-60" : ""}`}
+          aria-busy={catalog.busy === "search"}
+        >
+          {catalog.listing.apps.map(tile)}
+        </ul>
+      ) : (
         <div className="rounded-2xl border border-dashed border-sand-light bg-cream/50 px-4 py-8 text-center">
           <p className="text-sm text-espresso" aria-live="polite">
-            {searching
-              ? "מחפשים…"
-              : query.trim()
-                ? `לא מצאנו אפליקציה בשם "${query.trim()}".`
-                : "אין כרגע אפליקציות נוספות להצגה."}
+            {catalog.busy === "search" ? "מחפשים…" : `לא מצאנו אפליקציה בשם "${searchTerm}".`}
           </p>
-          {!searching && query.trim() ? (
-            <p className="mt-1.5 text-xs text-espresso-light">נסו את השם באנגלית, או חלק ממנו.</p>
-          ) : null}
+          {catalog.busy === "search" ? null : (
+            <p className="mt-1.5 text-xs text-espresso-light">נסו שם אחר, או חלק ממנו.</p>
+          )}
         </div>
-      ) : (
-        <ul className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${searching ? "opacity-60" : ""}`} aria-busy={searching}>
-          {others.map(tile)}
-        </ul>
       )}
 
+      {catalog.hasMore ? (
+        <div className="mt-4 flex justify-center">
+          <button
+            type="button"
+            onClick={catalog.loadMore}
+            disabled={catalog.busy !== null}
+            className="min-h-11 px-5 py-2.5 rounded-full border border-sand text-espresso text-sm font-medium hover:bg-cream-dark transition disabled:opacity-60 disabled:cursor-wait focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+          >
+            {catalog.busy === "more" ? "טוענים…" : "עוד אפליקציות"}
+          </button>
+        </div>
+      ) : null}
+
       <p className="mt-10 pt-6 border-t border-sand-light/70">
-        <Link
+        <PendingLink
           href="/app"
           className="inline-flex min-h-11 items-center gap-1.5 -ms-2 px-2 rounded-lg text-sm text-terra hover:text-terra-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-terra transition"
         >
           <BackChevron />
           <span>חזרה לבית שלי</span>
-        </Link>
+        </PendingLink>
       </p>
 
       <ConfirmDialog
@@ -223,70 +242,132 @@ function SearchField({
   query,
   onQuery,
   searching,
+  total,
 }: {
   query: string;
   onQuery: (value: string) => void;
   searching: boolean;
+  total: number;
 }) {
   return (
-    <div className="relative mb-4">
-      <span aria-hidden className="absolute inset-y-0 start-0 ps-3.5 flex items-center text-espresso-light">
-        <SearchIcon />
-      </span>
-      <input
-        type="search"
-        value={query}
-        onChange={(e) => onQuery(e.target.value)}
-        placeholder="חיפוש אפליקציה לפי שם…"
-        aria-label="חיפוש אפליקציה לפי שם"
-        aria-busy={searching}
-        maxLength={CATALOG_QUERY_MAX_LENGTH}
-        className="w-full min-h-11 ps-10 pe-4 py-2.5 rounded-xl border border-sand-light bg-cream text-sm text-espresso placeholder:text-espresso-light/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:border-terra transition"
-      />
+    <div className="mb-6">
+      <div className="relative">
+        <span aria-hidden className="absolute inset-y-0 start-0 ps-3.5 flex items-center text-espresso-light">
+          <SearchIcon />
+        </span>
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => onQuery(e.target.value)}
+          placeholder={total > 0 ? `חיפוש מתוך ${total.toLocaleString("he-IL")} אפליקציות…` : "חיפוש אפליקציה לפי שם…"}
+          aria-label="חיפוש אפליקציה לפי שם"
+          aria-busy={searching}
+          maxLength={CATALOG_QUERY_MAX_LENGTH}
+          className="w-full min-h-11 ps-10 pe-4 py-2.5 rounded-xl border border-sand-light bg-cream text-sm text-espresso placeholder:text-espresso-light/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:border-terra transition"
+        />
+      </div>
     </div>
   );
 }
 
-// Searches the orchestrator's cached catalog instead of shipping ~1,400 apps to the browser.
-function useCatalogSearch() {
+type ListingBusy = "search" | "more" | null;
+type PageResult = { ok: true; page: CatalogPage } | { ok: false; aborted: boolean };
+
+// `cursor` is the catalog offset already fetched; the rendered list also holds hoisted apps.
+interface Listing {
+  apps: CatalogApp[];
+  cursor: number;
+  total: number;
+}
+
+// One paged query serves both search and browse; the ~1,400-app catalog stays in the orchestrator.
+function useCatalogListing(start: Listing, hoist: (query: string) => CatalogApp[]) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<CatalogApp[] | null>(null);
-  const [searching, setSearching] = useState(false);
+  const [listing, setListing] = useState<Listing>(start);
+  const [busy, setBusy] = useState<ListingBusy>(null);
   const [failed, setFailed] = useState(false);
+  // Every response carries the request number that asked for it; only the newest may land.
+  const seq = useRef(0);
+  const inFlight = useRef<AbortController | null>(null);
+
+  const fetchPage = useCallback(async (q: string, offset: number): Promise<PageResult> => {
+    inFlight.current?.abort();
+    const controller = new AbortController();
+    inFlight.current = controller;
+    const params = new URLSearchParams({ limit: String(CATALOG_SEARCH_LIMIT), offset: String(offset) });
+    if (q) params.set("q", q);
+    try {
+      const res = await fetch(`/api/integrations/catalog?${params}`, {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      const parsed = CatalogResponseSchema.safeParse(await res.json().catch(() => null));
+      if (!res.ok || !parsed.success) return { ok: false, aborted: false };
+      return { ok: true, page: { apps: parsed.data.data, total: parsed.data.total ?? parsed.data.data.length } };
+    } catch {
+      return { ok: false, aborted: controller.signal.aborted };
+    }
+  }, []);
 
   useEffect(() => {
     const q = query.trim();
+    const mine = ++seq.current;
     if (!q) {
-      setResults(null);
-      setSearching(false);
+      inFlight.current?.abort();
+      setListing(start);
+      setBusy(null);
       setFailed(false);
       return;
     }
-    const controller = new AbortController();
+    setBusy("search");
     const timer = setTimeout(async () => {
-      setSearching(true);
-      try {
-        const res = await fetch(`/api/integrations/catalog?q=${encodeURIComponent(q)}`, {
-          cache: "no-store",
-          signal: controller.signal,
-        });
-        const parsed = CatalogResponseSchema.safeParse(await res.json().catch(() => null));
-        if (res.ok && parsed.success) setResults(parsed.data.data);
-        setFailed(!(res.ok && parsed.success));
-      } catch {
-        // Aborted by a newer keystroke, or the network failed: what is on screen stays.
-        if (!controller.signal.aborted) setFailed(true);
-      } finally {
-        if (!controller.signal.aborted) setSearching(false);
+      const result = await fetchPage(q, 0);
+      if (mine !== seq.current) return;
+      setBusy(null);
+      if (!result.ok) {
+        setFailed(!result.aborted);
+        return;
       }
+      setFailed(false);
+      setListing({
+        apps: dedupe([...hoist(q), ...result.page.apps]),
+        cursor: result.page.apps.length,
+        total: result.page.total,
+      });
     }, SEARCH_DEBOUNCE_MS);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [query]);
+    return () => clearTimeout(timer);
+  }, [query, start, hoist, fetchPage]);
 
-  return { query, setQuery, results, searching, failed };
+  const loadMore = useCallback(async () => {
+    const mine = seq.current;
+    setBusy("more");
+    const result = await fetchPage(query.trim(), listing.cursor);
+    if (mine !== seq.current) return;
+    setBusy(null);
+    if (!result.ok) {
+      setFailed(!result.aborted);
+      return;
+    }
+    setFailed(false);
+    setListing((current) => ({
+      apps: dedupe([...current.apps, ...result.page.apps]),
+      cursor: current.cursor + result.page.apps.length,
+      total: result.page.total,
+    }));
+  }, [fetchPage, query, listing.cursor]);
+
+  return { query, setQuery, listing, busy, failed, loadMore, hasMore: listing.cursor < listing.total };
+}
+
+// The list hoists curated apps above the catalog page they also appear in, and a double click on
+// "load more" can repeat a page: either way the same app must render once.
+function dedupe(apps: readonly CatalogApp[]): CatalogApp[] {
+  const seen = new Set<string>();
+  return apps.filter((app) => {
+    if (seen.has(app.slug)) return false;
+    seen.add(app.slug);
+    return true;
+  });
 }
 
 function AppTile({
@@ -303,10 +384,7 @@ function AppTile({
   onDisconnect: (connection: IntegrationConnection) => void;
 }) {
   const label = appLabel(app.slug, app);
-  const featured = featuredApp(app.slug);
-  const blurb = featured?.blurbHe ?? app.description ?? "";
-  // Provider descriptions are English; truncating LTR text inside an RTL box eats its start.
-  const english = !featured;
+  const blurb = featuredApp(app.slug)?.blurbHe ?? "";
   const status = tileStatus(connection);
   const connected = connection?.status === "active";
 
@@ -329,15 +407,7 @@ function AppTile({
             </span>
           ) : null}
         </div>
-        {blurb ? (
-          <p
-            dir={english ? "ltr" : undefined}
-            lang={english ? "en" : undefined}
-            className="text-xs text-espresso-light truncate text-end"
-          >
-            {blurb}
-          </p>
-        ) : null}
+        {blurb ? <p className="text-xs text-espresso-light truncate">{blurb}</p> : null}
       </div>
       {connected && connection ? (
         <button
@@ -378,13 +448,13 @@ function Unavailable() {
       <p className="text-sm text-espresso-light leading-relaxed mb-5">
         חיבור אפליקציות עדיין לא פעיל בחשבון הזה. נעדכן אתכם ברגע שהוא ייפתח.
       </p>
-      <Link
+      <PendingLink
         href="/app"
         className="inline-flex min-h-11 items-center gap-1.5 -ms-2 px-2 rounded-lg text-sm text-terra hover:text-terra-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-terra transition"
       >
         <BackChevron />
         <span>חזרה לבית שלי</span>
-      </Link>
+      </PendingLink>
     </div>
   );
 }

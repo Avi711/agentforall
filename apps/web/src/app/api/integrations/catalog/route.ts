@@ -10,11 +10,12 @@ export async function GET(req: Request) {
   const parsed = CatalogSearchSchema.safeParse({
     q: url.searchParams.get("q") ?? undefined,
     limit: url.searchParams.get("limit") ?? undefined,
+    offset: url.searchParams.get("offset") ?? undefined,
   });
   if (!parsed.success) return errorJson("invalid_query", 400, parsed.error.flatten());
 
   return authenticatedHandler({}, async ({ userId }) => {
-    const data = await getIntegrationsService().search(userId, parsed.data);
-    return NextResponse.json({ data });
+    const page = await getIntegrationsService().search(userId, parsed.data);
+    return NextResponse.json({ data: page.apps, total: page.total });
   })(req);
 }

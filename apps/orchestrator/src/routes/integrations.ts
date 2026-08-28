@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { FeatureUnavailableError } from "../domain/errors.js";
 import {
   CATALOG_MAX_LIMIT,
+  CATALOG_MAX_OFFSET,
   CATALOG_MAX_SLUGS,
   INTEGRATION_APP_SLUG_PATTERN,
   INTEGRATION_REF_PATTERN,
@@ -22,6 +23,7 @@ const CatalogQuery = z
       .pipe(z.array(z.string().regex(INTEGRATION_APP_SLUG_PATTERN)).max(CATALOG_MAX_SLUGS))
       .optional(),
     limit: z.coerce.number().int().min(1).max(CATALOG_MAX_LIMIT).default(24),
+    offset: z.coerce.number().int().min(0).max(CATALOG_MAX_OFFSET).default(0),
   })
   .strict();
 
@@ -37,8 +39,8 @@ export const integrationsRoutes: FastifyPluginAsync<IntegrationsRouteDeps> = asy
 
   app.get("/integrations/catalog", async (request, reply) => {
     const query = CatalogQuery.parse(request.query);
-    const data = await requireIntegrations().catalog(query);
-    return reply.send({ data });
+    const page = await requireIntegrations().catalog(query);
+    return reply.send({ data: page.apps, total: page.total });
   });
 
   app.get("/instances/:id/integrations", async (request, reply) => {

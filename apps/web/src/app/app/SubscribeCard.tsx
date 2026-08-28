@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import { PendingLink } from "./Pending";
 import type { BillingStatus } from "@/lib/billing/service";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 import { startCheckout } from "./billing/client";
@@ -69,9 +69,9 @@ export function SubscribeCard({ status }: { status: BillingStatus }) {
 
       <p className="mt-6 text-xs text-espresso-light">
         כבר שילמתם?{" "}
-        <Link href="/app/settings" className="underline hover:text-terra">
+        <PendingLink href="/app/settings" className="underline hover:text-terra">
           בדקו את מצב המנוי בהגדרות
-        </Link>
+        </PendingLink>
       </p>
     </SurfaceCard>
   );

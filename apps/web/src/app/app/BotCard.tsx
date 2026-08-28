@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { PendingLink, useRefresh } from "./Pending";
 import { DeleteBotDialog } from "./DeleteBotDialog";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { useBotStatus, type BotSnapshot } from "./useBotStatus";
@@ -17,14 +16,22 @@ import type { CreditSummary } from "@/lib/billing/credits/service";
 
 type Channel = "whatsapp" | "telegram";
 
+export interface ShowcaseApp {
+  slug: string;
+  name: string;
+  logo: string;
+}
+
 export function BotCard({
   bot: initialBot,
   credits,
+  apps,
 }: {
   bot: BotSnapshot;
   credits: CreditSummary;
+  apps: ShowcaseApp[];
 }) {
-  const router = useRouter();
+  const { refreshing, refresh } = useRefresh();
   const bot = useBotStatus(initialBot);
   const [menuOpen, setMenuOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -65,7 +72,7 @@ export function BotCard({
       throw new Error(body?.error?.message ?? "מחיקה נכשלה");
     }
     setDialogOpen(false);
-    router.refresh();
+    refresh();
   }
 
   async function disconnectChannel(channel: Channel) {
@@ -88,7 +95,7 @@ export function BotCard({
     if (!disconnecting) return;
     await disconnectChannel(disconnecting);
     setDisconnecting(null);
-    router.refresh();
+    refresh();
   }
 
   // Cancelling a pairing/link that never completed is low-stakes: no confirm dialog.
@@ -98,10 +105,10 @@ export function BotCard({
     setChannelError(null);
     try {
       await disconnectChannel(channel);
-      router.refresh();
+      // The menu item stays in "מבטל…" until the refreshed card replaces it.
+      refresh(() => setCancelPending(null));
     } catch (err) {
       setChannelError(err instanceof Error ? err.message : "הפעולה נכשלה");
-    } finally {
       setCancelPending(null);
     }
   }
@@ -147,12 +154,11 @@ export function BotCard({
       if (!res.ok && res.status !== 204) {
         throw new Error("הפעלת הסוכן מחדש נכשלה");
       }
-      router.refresh();
+      refresh(() => setRestartPending(false));
     } catch (err) {
       setRestartError(
         err instanceof Error ? err.message : "הפעלת הסוכן מחדש נכשלה",
       );
-    } finally {
       setRestartPending(false);
     }
   }
@@ -180,15 +186,18 @@ export function BotCard({
 
   return (
     <>
-      <article className="relative bg-white rounded-[28px] border border-sand-light shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)] overflow-hidden">
+      <article
+        aria-busy={refreshing || undefined}
+        className="relative bg-white rounded-[28px] border border-sand-light shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)]"
+      >
         <span aria-hidden className="absolute top-0 inset-x-12 h-px bg-gradient-to-r from-transparent via-sand-light to-transparent" />
-        {downloadPending ? (
+        {downloadPending || refreshing ? (
           <span aria-hidden className="download-card-progress" />
         ) : null}
 
         <div className="p-5 sm:p-10">
-          {/* Wraps to avatar+menu / full-width name on narrow screens; single row from sm up. */}
-          <div className="flex flex-wrap items-start gap-x-3 gap-y-4 sm:flex-nowrap sm:gap-x-5 mb-6 sm:mb-7">
+          {/* Avatar, name and menu stay on one line at every width: wrapping left a hole beside the avatar. */}
+          <div className="flex items-start gap-3 sm:gap-5 mb-6 sm:mb-7">
             <BotAvatar
               name={bot.displayName}
               tone={avatarTone(state.kind)}
@@ -196,7 +205,7 @@ export function BotCard({
               size="lg"
             />
 
-            <div className="order-3 w-full min-w-0 sm:order-2 sm:w-auto sm:flex-1 sm:pt-1">
+            <div className="min-w-0 flex-1 pt-0.5 sm:pt-1">
               <p className={`${SECTION_LABEL} mb-1.5`}>
                 הסוכן שלי
               </p>
@@ -208,7 +217,7 @@ export function BotCard({
               </div>
             </div>
 
-            <div className="relative order-2 ms-auto shrink-0 -me-1.5 -mt-1.5 sm:order-3 sm:ms-0" ref={menuRef}>
+            <div className="relative shrink-0 -me-1.5 -mt-1.5" ref={menuRef}>
               <button
                 type="button"
                 aria-label="פעולות נוספות על הסוכן"
@@ -253,6 +262,8 @@ export function BotCard({
             </div>
           </div>
 
+          <ActivityLine bot={bot} />
+
           <NextStep bot={bot} state={state} />
 
           {downloadPending ? (
@@ -293,14 +304,14 @@ export function BotCard({
           <ChannelsSection
             bot={bot}
             cancelPending={cancelPending}
+            busy={refreshing}
             onDisconnect={(channel) => setDisconnecting(channel)}
             onCancelPending={handleCancelPending}
             onOpenAccess={() => setAccessOpen(true)}
+            onEditOwner={() => setIdentityOpen(true)}
           />
 
-          <OwnerSection bot={bot} onEdit={() => setIdentityOpen(true)} />
-
-          <IntegrationsSection />
+          <IntegrationsSection apps={apps} />
 
           <CreditsSection credits={credits} />
 
@@ -308,7 +319,8 @@ export function BotCard({
             <button
               type="button"
               onClick={handleRestart}
-              disabled={restartPending}
+              disabled={restartPending || refreshing}
+              aria-busy={restartPending}
               className="inline-flex min-h-11 w-full sm:w-auto items-center justify-center gap-2 px-5 py-3 rounded-xl bg-terra text-white font-medium hover:bg-terra-dark transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-60 disabled:cursor-wait"
             >
               {restartPending ? <DownloadSpinner /> : null}
@@ -378,6 +390,29 @@ export function BotCard({
   );
 }
 
+// Fixed timezone and no relative wording: the same string renders on the server and on the client.
+const LAST_SEEN_FORMAT = new Intl.DateTimeFormat("he-IL", {
+  timeZone: "Asia/Jerusalem",
+  day: "numeric",
+  month: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+function ActivityLine({ bot }: { bot: BotSnapshot }) {
+  if (bot.lastSeenAt === null) return null;
+  const at = new Date(bot.lastSeenAt);
+  if (Number.isNaN(at.getTime())) return null;
+  return (
+    <p className="mb-5 sm:mb-6 text-xs text-espresso-light">
+      שיחה אחרונה:{" "}
+      <time dateTime={bot.lastSeenAt} dir="ltr" className="tabular-nums">
+        {LAST_SEEN_FORMAT.format(at)}
+      </time>
+    </p>
+  );
+}
+
 // The card is otherwise a status ledger; this answers "what do I do now?" in one line.
 function NextStep({ bot, state }: { bot: BotSnapshot; state: BotState }) {
   const text = nextStep(bot, state);
@@ -412,20 +447,30 @@ function nextStep(bot: BotSnapshot, state: BotState): string | null {
 function ChannelsSection({
   bot,
   cancelPending,
+  busy,
   onDisconnect,
   onCancelPending,
   onOpenAccess,
+  onEditOwner,
 }: {
   bot: BotSnapshot;
   cancelPending: Channel | null;
+  busy: boolean;
   onDisconnect: (channel: Channel) => void;
   onCancelPending: (channel: Channel) => void;
   onOpenAccess: () => void;
+  onEditOwner: () => void;
 }) {
   const titleId = useId();
   const health = channelHealth(bot);
   const whatsapp = whatsappRow(bot, health);
   const telegram = telegramRow(bot, health);
+  // Emphasis is earned: one filled button, and only while no channel can answer yet.
+  const needsChannel = !whatsapp.connected && !telegram.connected;
+  const whatsappPrimary = ownerNumberMissing(bot)
+    ? ({ kind: "button", label: "הגדרת המספר שלי", emphasis: "quiet", onClick: onEditOwner } as RowAction)
+    : lead(whatsapp.primary, needsChannel);
+  const telegramPrimary = lead(telegram.primary, needsChannel && whatsappPrimary?.emphasis !== "primary");
   const access = bot.whatsappAccess;
 
   const whatsappMenu: MenuItem[] = [];
@@ -435,18 +480,21 @@ function ChannelsSection({
   if (whatsapp.pending) {
     whatsappMenu.push({
       label: cancelPending === "whatsapp" ? "מבטל…" : "ביטול ההתאמה",
-      disabled: cancelPending !== null,
+      disabled: cancelPending !== null || busy,
       onClick: () => onCancelPending("whatsapp"),
     });
   } else if (whatsapp.connected || whatsapp.stale) {
     whatsappMenu.push({ label: "ניתוק", danger: true, onClick: () => onDisconnect("whatsapp") });
+  }
+  if (bot.hasWhatsappChannel && bot.owner.whatsappNumber !== null) {
+    whatsappMenu.unshift({ label: "המספר שלי…", onClick: onEditOwner });
   }
 
   const telegramMenu: MenuItem[] = telegram.pending
     ? [
         {
           label: cancelPending === "telegram" ? "מבטל…" : "ביטול החיבור",
-          disabled: cancelPending !== null,
+          disabled: cancelPending !== null || busy,
           onClick: () => onCancelPending("telegram"),
         },
       ]
@@ -459,7 +507,7 @@ function ChannelsSection({
       <p id={titleId} className={`${SECTION_LABEL} mb-2`}>
         איפה מדברים עם הסוכן
       </p>
-      <ul className="border-t border-sand-light/70 divide-y divide-sand-light/70">
+      <ul className="border-y border-sand-light/70 divide-y divide-sand-light/70">
         <CardRow
           glyph={<WhatsAppGlyph />}
           name="WhatsApp"
@@ -472,7 +520,7 @@ function ChannelsSection({
               />
             ) : null
           }
-          primary={whatsapp.primary}
+          primary={whatsappPrimary}
           menu={whatsappMenu}
           menuLabel="הגדרות WhatsApp"
         />
@@ -488,13 +536,14 @@ function ChannelsSection({
                 target="_blank"
                 rel="noopener noreferrer"
                 dir="ltr"
-                className="inline-block font-mono text-sm text-espresso-light hover:text-terra transition break-all"
+                title={`@${bot.telegram.botUsername}`}
+                className="inline-block max-w-full truncate align-bottom font-mono text-sm text-espresso-light hover:text-terra transition"
               >
                 @{bot.telegram.botUsername}
               </a>
             ) : null
           }
-          primary={telegram.primary}
+          primary={telegramPrimary}
           menu={telegramMenu}
           menuLabel="הגדרות Telegram"
         />
@@ -506,81 +555,6 @@ function ChannelsSection({
           עונה מיד.
         </p>
       ) : null}
-    </section>
-  );
-}
-
-// Who the bot treats as its owner — separate from who may write to it.
-function OwnerSection({ bot, onEdit }: { bot: BotSnapshot; onEdit: () => void }) {
-  const titleId = useId();
-  const { telegramLinked, whatsappNumber } = bot.owner;
-  const hasWhatsapp = bot.hasWhatsappChannel;
-  const missingNumber = hasWhatsapp && whatsappNumber === null;
-
-  const status: RowStatus = missingNumber
-    ? { tone: "info", label: "חסר מספר WhatsApp" }
-    : telegramLinked || whatsappNumber !== null
-      ? { tone: "ok", label: "מוגדר" }
-      : { tone: "info", label: "לא מוגדר" };
-
-  const primary: RowAction | null = missingNumber
-    ? { kind: "button", label: "הגדרת המספר", emphasis: "secondary", onClick: onEdit }
-    : null;
-  const menu: MenuItem[] =
-    hasWhatsapp && whatsappNumber !== null ? [{ label: "עריכה…", onClick: onEdit }] : [];
-
-  const parts: ReactNode[] = [];
-  if (telegramLinked) {
-    parts.push(
-      <span key="tg">
-        מזוהה ב־<span dir="ltr">Telegram</span>
-      </span>,
-    );
-  }
-  if (hasWhatsapp) {
-    parts.push(
-      whatsappNumber !== null ? (
-        <span key="wa" dir="ltr" className="font-mono">
-          {whatsappNumber}
-        </span>
-      ) : (
-        <span key="wa">
-          <span dir="ltr">WhatsApp</span> — לא הוגדר
-        </span>
-      ),
-    );
-  }
-
-  return (
-    <section className="mb-6 sm:mb-7" aria-labelledby={titleId}>
-      <div className="flex items-center gap-1 mb-2">
-        <p id={titleId} className={SECTION_LABEL}>
-          מי אני בשביל הסוכן
-        </p>
-        <InfoHint label="הסבר: מי אני בשביל הסוכן" text={IDENTITY_HINT} />
-      </div>
-      <ul className="border-t border-sand-light/70 divide-y divide-sand-light/70">
-        <CardRow
-          glyph={<PersonGlyph />}
-          name="אני"
-          status={status}
-          detail={
-            parts.length > 0 ? (
-              <p className="flex flex-wrap items-center gap-x-2 text-sm text-espresso-light">
-                {parts.map((part, i) => (
-                  <span key={i} className="inline-flex items-center gap-x-2">
-                    {i > 0 ? <span aria-hidden>·</span> : null}
-                    {part}
-                  </span>
-                ))}
-              </p>
-            ) : null
-          }
-          primary={primary}
-          menu={menu}
-          menuLabel="הגדרות הזהות"
-        />
-      </ul>
     </section>
   );
 }
@@ -598,7 +572,7 @@ interface RowStatus {
   pulse?: boolean;
 }
 
-type RowAction = { label: string; emphasis: "primary" | "secondary" } & (
+type RowAction = { label: string; icon?: ReactNode; emphasis: "primary" | "quiet" } & (
   | { kind: "link"; href: string; external?: boolean }
   | { kind: "button"; onClick: () => void }
 );
@@ -609,6 +583,15 @@ interface RowModel {
   pending: boolean;
   stale: boolean;
   primary: RowAction | null;
+}
+
+function lead(action: RowAction | null, allowed: boolean): RowAction | null {
+  return action && allowed ? { ...action, emphasis: "primary" } : action;
+}
+
+// The agent answers the owner's own number, so WhatsApp without it is half-configured.
+function ownerNumberMissing(bot: BotSnapshot): boolean {
+  return bot.hasWhatsappChannel && bot.owner.whatsappNumber === null;
 }
 
 // Container-level health applies to every channel at once.
@@ -635,9 +618,10 @@ function whatsappRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
         ? {
             kind: "link",
             label: "פתיחה ב-WhatsApp",
+            icon: <OpenIcon />,
             href: `https://wa.me/${bot.whatsappAccountId}?text=${encodeURIComponent("שלום!")}`,
             external: true,
-            emphasis: "primary",
+            emphasis: "quiet",
           }
         : null,
     };
@@ -648,7 +632,7 @@ function whatsappRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
       connected: false,
       pending: true,
       stale: false,
-      primary: { kind: "link", label: "המשך התאמה", href: "/app/bot/pair", emphasis: "secondary" },
+      primary: { kind: "link", label: "המשך התאמה", href: "/app/bot/pair", emphasis: "quiet" },
     };
   }
   // A dropped live session (creds still stored) is worth a reconnect; a cancelled attempt is just "not connected".
@@ -658,7 +642,7 @@ function whatsappRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
       connected: false,
       pending: false,
       stale: true,
-      primary: { kind: "link", label: "חיבור מחדש", href: "/app/bot/pair", emphasis: "secondary" },
+      primary: { kind: "link", label: "חיבור מחדש", href: "/app/bot/pair", emphasis: "quiet" },
     };
   }
   return {
@@ -666,34 +650,64 @@ function whatsappRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
     connected: false,
     pending: false,
     stale: false,
-    primary: { kind: "link", label: "חיבור WhatsApp", href: "/app/bot/pair", emphasis: "secondary" },
+    primary: { kind: "link", label: "חיבור", href: "/app/bot/pair", emphasis: "quiet" },
   };
 }
 
-function IntegrationsSection() {
+function IntegrationsSection({ apps }: { apps: ShowcaseApp[] }) {
   const titleId = useId();
   return (
     <section className="mb-6 sm:mb-7" aria-labelledby={titleId}>
       <p id={titleId} className={`${SECTION_LABEL} mb-2`}>
         אפליקציות מחוברות
       </p>
-      <ul className="border-t border-sand-light/70 divide-y divide-sand-light/70">
+      <ul className="border-y border-sand-light/70 divide-y divide-sand-light/70">
         <CardRow
           glyph={<PlugGlyph />}
           name="חיבורים לאפליקציות"
           status={null}
-          detail={
-            <p className="text-sm text-espresso-light leading-relaxed">
-              חברו את <span dir="ltr">Gmail</span>, יומן Google, <span dir="ltr">Notion</span> ועוד, כדי
-              שהסוכן יוכל לקרוא ולפעול בשמכם.
-            </p>
-          }
-          primary={{ kind: "link", label: "ניהול חיבורים", href: "/app/bot/connections", emphasis: "secondary" }}
+          detail={<IntegrationsDetail apps={apps} />}
+          primary={{ kind: "link", label: "ניהול", href: "/app/bot/connections", emphasis: "primary" }}
+          align="start"
           menu={[]}
           menuLabel="פעולות נוספות לחיבורים"
         />
       </ul>
     </section>
+  );
+}
+
+// The sentence carries the why; the logos carry the which, so neither has to list app names.
+function IntegrationsDetail({ apps }: { apps: ShowcaseApp[] }) {
+  return (
+    <div className="mt-1">
+      <p className="text-sm text-espresso-light leading-relaxed">
+        כדי שהסוכן יקרא ויפעל בשמכם.
+      </p>
+      {apps.length > 0 ? (
+        // Each mark tucks under the one before it, so the stack reads right-to-left like the text.
+        <ul className="mt-2 flex items-center">
+          {apps.map((app, index) => (
+            <li
+              key={app.slug}
+              className={`relative flex ${index === 0 ? "" : "-ms-1.5"}`}
+              style={{ zIndex: apps.length - index }}
+            >
+              <span className="flex w-7 h-7 items-center justify-center rounded-full bg-white ring-1 ring-sand-light">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={app.logo} alt={app.name} className="w-[18px] h-[18px] object-contain" />
+              </span>
+            </li>
+          ))}
+          <li className="relative flex -ms-1.5" title="ועוד אלפי אפליקציות">
+            <span className="flex w-7 h-7 items-center justify-center rounded-full bg-cream-dark ring-1 ring-sand-light text-[11px] font-medium text-espresso-light">
+              +
+            </span>
+            <span className="sr-only">ועוד אלפי אפליקציות</span>
+          </li>
+        </ul>
+      ) : null}
+    </div>
   );
 }
 
@@ -715,9 +729,10 @@ function telegramRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
       primary: {
         kind: "link",
         label: "פתיחה בטלגרם",
+        icon: <OpenIcon />,
         href: `https://t.me/${bot.telegram.botUsername}`,
         external: true,
-        emphasis: "primary",
+        emphasis: "quiet",
       },
     };
   }
@@ -727,7 +742,7 @@ function telegramRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
       connected: false,
       pending: true,
       stale: false,
-      primary: { kind: "link", label: "המשך חיבור", href: "/app/bot/telegram", emphasis: "secondary" },
+      primary: { kind: "link", label: "המשך חיבור", href: "/app/bot/telegram", emphasis: "quiet" },
     };
   }
   return {
@@ -735,7 +750,7 @@ function telegramRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
     connected: false,
     pending: false,
     stale: false,
-    primary: { kind: "link", label: "חיבור לטלגרם", href: "/app/bot/telegram", emphasis: "secondary" },
+    primary: { kind: "link", label: "חיבור", href: "/app/bot/telegram", emphasis: "quiet" },
   };
 }
 
@@ -747,6 +762,7 @@ function CardRow({
   primary,
   menu,
   menuLabel,
+  align = "center",
 }: {
   glyph: ReactNode;
   name: string;
@@ -755,26 +771,26 @@ function CardRow({
   primary: RowAction | null;
   menu: MenuItem[];
   menuLabel: string;
+  // A row whose detail runs several lines centres its action against empty space.
+  align?: "center" | "start";
 }) {
   return (
     <li className="py-4 sm:py-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
-        <div className="flex min-w-0 flex-1 items-start gap-3">
-          <span
-            aria-hidden
-            className="shrink-0 w-9 h-9 rounded-full bg-cream-dark text-espresso flex items-center justify-center"
-          >
-            {glyph}
-          </span>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="text-[15px] font-medium text-espresso">{name}</span>
-              {status ? <StatusDot {...status} /> : null}
-            </div>
-            {detail ? <div className="mt-0.5">{detail}</div> : null}
+      <div className={`flex gap-3 ${align === "start" ? "items-start" : "items-center"}`}>
+        <span
+          aria-hidden
+          className="shrink-0 w-9 h-9 rounded-full bg-cream-dark text-espresso flex items-center justify-center"
+        >
+          {glyph}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="text-[15px] font-medium text-espresso">{name}</span>
+            {status ? <StatusDot {...status} /> : null}
           </div>
+          {detail ? <div className="mt-0.5">{detail}</div> : null}
         </div>
-        <div className="flex items-center gap-2 ps-12 sm:ps-0 sm:shrink-0">
+        <div className="flex items-center gap-1 shrink-0">
           {primary ? <RowActionControl action={primary} /> : null}
           {menu.length > 0 ? <RowMenu label={menuLabel} items={menu} /> : null}
         </div>
@@ -810,9 +826,11 @@ function RowMenu({ label, items }: { label: string; items: MenuItem[] }) {
         aria-label={label}
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="w-11 h-11 rounded-full border border-sand-light flex items-center justify-center text-espresso-light hover:bg-cream-dark hover:text-espresso focus:outline-none focus-visible:ring-2 focus-visible:ring-terra transition"
+        className={ICON_ACTION_CLASS}
       >
-        <MoreIcon />
+        <IconBubble>
+          <MoreIcon />
+        </IconBubble>
       </button>
       {open ? (
         <ul className="absolute top-full mt-2 end-0 w-52 rounded-xl border border-sand-light bg-white shadow-[0_8px_24px_rgba(44,24,16,0.08)] overflow-hidden z-20">
@@ -841,31 +859,65 @@ function RowMenu({ label, items }: { label: string; items: MenuItem[] }) {
   );
 }
 
+const ICON_ACTION_CLASS =
+  "group inline-flex w-11 h-11 items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-terra";
+
+function IconBubble({ children }: { children: ReactNode }) {
+  return (
+    <span className="flex w-9 h-9 items-center justify-center rounded-full border border-sand-light bg-white text-espresso-light transition group-hover:bg-cream-dark group-hover:text-espresso">
+      {children}
+    </span>
+  );
+}
+
+const ROW_ACTION_CLASS: Record<RowAction["emphasis"], string> = {
+  primary:
+    "inline-flex min-h-11 items-center justify-center gap-1.5 px-5 py-2.5 rounded-full bg-terra text-white text-sm font-medium hover:bg-terra-dark transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white",
+  quiet:
+    "inline-flex min-h-11 items-center justify-center gap-1 -me-2 px-2 rounded-lg text-espresso-light text-sm font-medium hover:text-terra transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra",
+};
+
 function RowActionControl({ action }: { action: RowAction }) {
-  const className =
-    action.emphasis === "primary"
-      ? "inline-flex min-h-11 items-center justify-center gap-1.5 px-5 py-2.5 rounded-full bg-terra text-white text-sm font-medium hover:bg-terra-dark transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-      : "inline-flex min-h-11 items-center justify-center gap-1.5 px-5 py-2.5 rounded-full border border-sand text-espresso text-sm font-medium hover:bg-cream-dark transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white";
+  const icon = action.icon ? <IconBubble>{action.icon}</IconBubble> : null;
+  const className = icon ? ICON_ACTION_CLASS : ROW_ACTION_CLASS[action.emphasis];
+  const label = action.icon ? action.label : undefined;
+
   if (action.kind === "button") {
     return (
-      <button type="button" onClick={action.onClick} className={className}>
-        <span>{action.label}</span>
+      <button type="button" onClick={action.onClick} aria-label={label} className={className}>
+        {icon ?? <span>{action.label}</span>}
       </button>
     );
   }
   if (action.external) {
     return (
-      <a href={action.href} target="_blank" rel="noopener noreferrer" className={className}>
-        <span>{action.label}</span>
-        <ArrowOut />
+      <a href={action.href} target="_blank" rel="noopener noreferrer" aria-label={label} className={className}>
+        {icon ?? (
+          <>
+            <span>{action.label}</span>
+            <ArrowOut />
+          </>
+        )}
       </a>
     );
   }
   return (
-    <Link href={action.href} className={className}>
-      <span>{action.label}</span>
-      <ChevronEnd />
-    </Link>
+    <PendingLink href={action.href} aria-label={label} className={className}>
+      {icon ?? (
+        <>
+          <span>{action.label}</span>
+          <ChevronEnd />
+        </>
+      )}
+    </PendingLink>
+  );
+}
+
+function OpenIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" className="w-[18px] h-[18px] rtl:-scale-x-100" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path d="M7 13 13 7M8 7h5v5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 

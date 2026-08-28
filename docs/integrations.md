@@ -50,12 +50,18 @@ container ──Bearer relayToken──▶ routes/mcp-relay.ts ──x-api-key�
 
 ## Flow
 
-1. Dashboard `/app/bot/connections` renders the featured apps, the first search page and the bot's
-   connections (`IntegrationsService.overview`). The full catalog (~1,400 apps, ~440 KB) never leaves the
-   orchestrator: it is cached there for 1h (served stale on provider errors) and searched server-side via
-   `GET /integrations/catalog?q=&slugs=&limit=` (`catalog-search.ts`); the search box calls it debounced.
-   The page header names the bot: connections belong to one bot, and a user with several accounts can
-   otherwise mistake one bot's list for another's.
+1. Dashboard `/app/bot/connections` renders one list, composed by `IntegrationsService.overview`: the apps
+   this bot is connected to, then the curated ones (`catalog.he.ts` — the only Hebrew copy we own), then the
+   catalog. The full catalog (~1,400 apps, ~440 KB) never leaves the orchestrator: it is cached there for 1h
+   (served stale on provider errors) and queried server-side via
+   `GET /integrations/catalog?q=&slugs=&limit=&offset=` (`catalog-search.ts`), which answers
+   `{ data, total }`. Search and browse are the same paged query — an empty `q` is the whole catalog — so
+   "עוד אפליקציות" pages through it and the search box (debounced) narrows the same list. Provider names are
+   English, so a Hebrew query is also matched against the curated copy client-side (`searchFeatured`) and
+   those hits are hoisted; provider descriptions are never rendered. Older orchestrators omit `total`; the
+   web client falls back to the page length, so deploy the orchestrator first if you want paging on the
+   first render. The page header names the bot: connections belong to one bot, and a user with several
+   accounts can otherwise mistake one bot's list for another's.
 2. **התחבר** → `POST /api/bot/:id/integrations/:app/connect` → orchestrator `connect`: ensure session
    (lazy — first connect creates it), bind the relay (`updateConfig` hot-applies `mcp.servers.agentforall`),
    create the hosted connect link. Browser navigates to it.

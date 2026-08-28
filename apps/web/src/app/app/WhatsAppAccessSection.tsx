@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRefresh } from "./Pending";
 import type { WhatsappDmAccess } from "@/lib/orchestrator/types";
 import type { WhatsappAccessSnapshot } from "@/lib/bots/snapshot";
 import { readApiErrorMessage } from "@/lib/http/api-error";
@@ -29,13 +29,14 @@ export function WhatsAppAccessDialog({
   onClose: () => void;
   onOpenIdentity: () => void;
 }) {
-  const router = useRouter();
+  const { refreshing, refresh } = useRefresh();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
   const [access, setAccess] = useState<WhatsappDmAccess>(initial.access);
-  const [saving, setSaving] = useState(false);
+  const [posting, setPosting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const saving = posting || refreshing;
 
   useEffect(() => {
     const el = dialogRef.current;
@@ -50,7 +51,7 @@ export function WhatsAppAccessDialog({
 
   async function save() {
     if (saving) return;
-    setSaving(true);
+    setPosting(true);
     setError(null);
     try {
       const res = await fetch(`/api/bot/${botId}/whatsapp/access`, {
@@ -61,12 +62,12 @@ export function WhatsAppAccessDialog({
       });
       const body: unknown = await res.json().catch(() => null);
       if (!res.ok) throw new Error(readApiErrorMessage(body) ?? "השמירה נכשלה");
-      dialogRef.current?.close();
-      router.refresh();
+      setPosting(false);
+      // Close only once the card behind the dialog already shows the new access label.
+      refresh(() => dialogRef.current?.close());
     } catch (err) {
       setError(err instanceof Error ? err.message : "השמירה נכשלה");
-    } finally {
-      setSaving(false);
+      setPosting(false);
     }
   }
 
@@ -147,6 +148,7 @@ export function WhatsAppAccessDialog({
             type="button"
             onClick={() => void save()}
             disabled={saving || access === initial.access}
+            aria-busy={saving}
             className="px-4 py-3 rounded-lg text-sm font-medium bg-espresso text-cream hover:bg-espresso-light transition disabled:opacity-60 disabled:cursor-wait"
           >
             {saving ? "שומר…" : "שמירה"}

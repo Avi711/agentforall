@@ -10,7 +10,7 @@ async function appWith(queries: CatalogQuery[]) {
   const integrations = {
     catalog: async (query: CatalogQuery) => {
       queries.push(query);
-      return [];
+      return { apps: [], total: 0 };
     },
   } as unknown as IntegrationsManager;
   const app = Fastify();
@@ -27,19 +27,21 @@ test("catalog query: defaults, slug lists, and bounds are enforced at the route"
   assert.equal((await app.inject({ url: "/api/v1/integrations/catalog?q=mail&limit=5" })).statusCode, 200);
   assert.equal((await app.inject({ url: "/api/v1/integrations/catalog?slugs=gmail,notion," })).statusCode, 200);
   assert.equal((await app.inject({ url: "/api/v1/integrations/catalog?slugs=" })).statusCode, 200);
+  assert.equal((await app.inject({ url: "/api/v1/integrations/catalog?offset=48" })).statusCode, 200);
   assert.deepEqual(queries, [
-    { limit: 24 },
-    { q: "mail", limit: 5 },
-    { slugs: ["gmail", "notion"], limit: 24 },
-    { slugs: [], limit: 24 },
+    { limit: 24, offset: 0 },
+    { q: "mail", limit: 5, offset: 0 },
+    { slugs: ["gmail", "notion"], limit: 24, offset: 0 },
+    { slugs: [], limit: 24, offset: 0 },
+    { limit: 24, offset: 48 },
   ]);
 
-  for (const bad of ["limit=0", "limit=101", "slugs=gmail,../x", "q=" + "x".repeat(65), "nope=1"]) {
+  for (const bad of ["limit=0", "limit=101", "offset=-1", "offset=10001", "offset=1.5", "slugs=gmail,../x", "q=" + "x".repeat(65), "nope=1"]) {
     const res = await app.inject({ url: `/api/v1/integrations/catalog?${bad}` });
     assert.equal(res.statusCode, 400, bad);
     assert.equal(res.json().code, "VALIDATION_ERROR");
   }
-  assert.equal(queries.length, 4);
+  assert.equal(queries.length, 5);
   await app.close();
 });
 

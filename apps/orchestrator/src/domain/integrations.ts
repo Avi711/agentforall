@@ -22,11 +22,20 @@ export interface CatalogApp {
 
 export const CATALOG_MAX_LIMIT = 100;
 export const CATALOG_MAX_SLUGS = 50;
+// The catalog is a few thousand apps; anything past this is a client bug, not a page.
+export const CATALOG_MAX_OFFSET = 10_000;
 
 export interface CatalogQuery {
   q?: string;
   slugs?: string[];
   limit: number;
+  offset: number;
+}
+
+// `total` is what the query matched, not what this page holds: the browser paginates against it.
+export interface CatalogPage {
+  apps: CatalogApp[];
+  total: number;
 }
 
 export interface IntegrationConnection {

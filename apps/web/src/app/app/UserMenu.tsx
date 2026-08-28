@@ -1,8 +1,8 @@
 "use client";
 
-import { forwardRef, useEffect, useRef, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { forwardRef, useEffect, useRef, useState, useTransition } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { PendingLink } from "./Pending";
 import { signOut } from "@/lib/auth/client";
 
 interface MenuUser {
@@ -14,9 +14,17 @@ interface MenuUser {
 export function UserMenu({ user }: { user: MenuUser }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [leaving, startLeave] = useTransition();
+  const busy = signingOut || leaving;
+  const pathname = usePathname();
   const rootRef = useRef<HTMLDivElement>(null);
   const firstItemRef = useRef<HTMLAnchorElement>(null);
+
+  // Closing on click would unmount the link mid-navigation and hide its pending state; close on arrival instead.
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     if (!open) return;
@@ -35,15 +43,17 @@ export function UserMenu({ user }: { user: MenuUser }) {
     };
   }, [open]);
 
+  // The menu stays open and busy until /login is on screen: closing early looks like nothing happened.
   async function handleSignOut() {
-    setBusy(true);
+    setSigningOut(true);
     try {
       await signOut();
-      router.replace("/login");
-      router.refresh();
+      startLeave(() => {
+        router.replace("/login");
+        router.refresh();
+      });
     } finally {
-      setBusy(false);
-      setOpen(false);
+      setSigningOut(false);
     }
   }
 
@@ -100,14 +110,18 @@ export function UserMenu({ user }: { user: MenuUser }) {
               ref={firstItemRef}
               href="/app"
               icon={<IconHome />}
-              onClick={() => setOpen(false)}
+              onClick={() => {
+                if (pathname === "/app") setOpen(false);
+              }}
             >
               הבוטים שלי
             </MenuLink>
             <MenuLink
               href="/app/settings"
               icon={<IconSettings />}
-              onClick={() => setOpen(false)}
+              onClick={() => {
+                if (pathname === "/app/settings") setOpen(false);
+              }}
             >
               הגדרות
             </MenuLink>
@@ -118,7 +132,8 @@ export function UserMenu({ user }: { user: MenuUser }) {
               role="menuitem"
               onClick={handleSignOut}
               disabled={busy}
-              className="w-full flex items-center gap-3 px-4 py-3 text-sm text-espresso-light hover:bg-cream-dark hover:text-espresso transition disabled:opacity-50"
+              aria-busy={busy}
+              className="w-full flex items-center gap-3 px-4 py-3 text-sm text-espresso-light hover:bg-cream-dark hover:text-espresso transition disabled:opacity-50 disabled:cursor-wait"
             >
               <IconSignOut />
               <span>{busy ? "מתנתק…" : "התנתקות"}</span>
@@ -186,7 +201,7 @@ const MenuLink = forwardRef<
   }
 >(function MenuLink({ href, icon, onClick, children }, ref) {
   return (
-    <Link
+    <PendingLink
       ref={ref}
       href={href}
       role="menuitem"
@@ -195,7 +210,7 @@ const MenuLink = forwardRef<
     >
       {icon}
       <span>{children}</span>
-    </Link>
+    </PendingLink>
   );
 });
 

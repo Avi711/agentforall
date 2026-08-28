@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ESimCard } from "@/components/ESimCard";
 import { isValidIsraeliPhone, normalizeIsraeliPhone } from "@/lib/phone";
@@ -39,6 +39,8 @@ export function PairingFlow({ botId }: Props) {
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [starting, setStarting] = useState(true);
   const [codeBusy, setCodeBusy] = useState(false);
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const [leaving, startLeave] = useTransition();
   const [error, setError] = useState<string | null>(null);
   // Bump to force QR re-fetch on user-triggered refresh.
   const [refreshNonce, setRefreshNonce] = useState(0);
@@ -171,12 +173,14 @@ export function PairingFlow({ botId }: Props) {
   }
 
   async function handleCancel() {
+    if (cancelBusy) return;
+    setCancelBusy(true);
     try {
       await fetch(`/api/bot/${botId}/pair`, { method: "DELETE" });
     } catch {
       // best-effort
     }
-    router.replace("/app");
+    startLeave(() => router.replace("/app"));
   }
 
   if (starting) {
@@ -265,9 +269,11 @@ export function PairingFlow({ botId }: Props) {
           <button
             type="button"
             onClick={handleCancel}
-            className="-mx-2 px-2 py-3 text-sm text-espresso-light hover:text-espresso"
+            disabled={cancelBusy || leaving}
+            aria-busy={cancelBusy || leaving}
+            className="-mx-2 px-2 py-3 text-sm text-espresso-light hover:text-espresso disabled:opacity-50 disabled:cursor-wait"
           >
-            ביטול ההתאמה
+            {cancelBusy || leaving ? "מבטלים…" : "ביטול ההתאמה"}
           </button>
           <span className="text-xs text-espresso-light">
             {phaseLabelHe(status?.phase)}

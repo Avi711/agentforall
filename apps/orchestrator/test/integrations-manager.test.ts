@@ -341,16 +341,16 @@ test("catalog is cached for an hour and served stale when the provider fails", a
     },
   });
 
-  await h.integrations.catalog({ limit: 100 });
-  await h.integrations.catalog({ limit: 100 });
+  await h.integrations.catalog({ limit: 100, offset: 0 });
+  await h.integrations.catalog({ limit: 100, offset: 0 });
   assert.equal(fetches, 1);
 
   h.advance(61 * 60 * 1000);
   fail = true;
-  const stale = await h.integrations.catalog({ limit: 100 });
-  assert.equal(stale[0]?.slug, "gmail");
+  const stale = await h.integrations.catalog({ limit: 100, offset: 0 });
+  assert.equal(stale.apps[0]?.slug, "gmail");
   assert.equal(fetches, 2);
 
   const cold = harness({ catalog: async () => { throw new Error("down"); } });
-  await assert.rejects(cold.integrations.catalog({ limit: 100 }), UpstreamUnavailableError);
+  await assert.rejects(cold.integrations.catalog({ limit: 100, offset: 0 }), UpstreamUnavailableError);
 });

@@ -6,7 +6,7 @@ import {
   ConnectParamsSchema,
   ConnectedQuerySchema,
 } from "../../src/lib/integrations/schemas";
-import { FEATURED_APPS, featuredApp } from "../../src/lib/integrations/catalog.he";
+import { FEATURED_APPS, featuredApp, searchFeatured } from "../../src/lib/integrations/catalog.he";
 
 const id = "11111111-1111-4111-8111-111111111111";
 
@@ -37,9 +37,20 @@ test("featured apps are unique, slug-shaped, and looked up by slug", () => {
   assert.equal(featuredApp("nothing"), undefined);
 });
 
+test("hebrew queries match the curated copy, since the provider catalog is english only", () => {
+  assert.deepEqual(searchFeatured("יומן"), ["googlecalendar", "outlook"]);
+  assert.deepEqual(searchFeatured(" מיילים "), ["gmail"]);
+  assert.deepEqual(searchFeatured("notion"), ["notion"]);
+  assert.deepEqual(searchFeatured(""), []);
+  assert.deepEqual(searchFeatured("אין דבר כזה"), []);
+});
+
 test("catalog search trims, coerces the limit, and rejects oversized input", () => {
-  assert.deepEqual(CatalogSearchSchema.parse({ q: "  mail ", limit: "5" }), { q: "mail", limit: 5 });
-  assert.deepEqual(CatalogSearchSchema.parse({}), { limit: 24 });
+  assert.deepEqual(CatalogSearchSchema.parse({ q: "  mail ", limit: "5" }), { q: "mail", limit: 5, offset: 0 });
+  assert.deepEqual(CatalogSearchSchema.parse({}), { limit: 24, offset: 0 });
+  assert.deepEqual(CatalogSearchSchema.parse({ offset: "48" }), { limit: 24, offset: 48 });
+  assert.equal(CatalogSearchSchema.safeParse({ offset: "-1" }).success, false);
+  assert.equal(CatalogSearchSchema.safeParse({ offset: "10001" }).success, false);
   assert.equal(CatalogSearchSchema.safeParse({ limit: "0" }).success, false);
   assert.equal(CatalogSearchSchema.safeParse({ limit: "101" }).success, false);
   assert.equal(CatalogSearchSchema.safeParse({ q: "x".repeat(65) }).success, false);

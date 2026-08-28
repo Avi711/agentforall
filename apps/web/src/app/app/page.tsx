@@ -1,17 +1,19 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { requireSession } from "@/lib/auth/session";
+import { requireSession, type AuthenticatedUser } from "@/lib/auth/session";
 import { botService } from "@/lib/bots/service";
 import { CreateBotForm } from "./CreateBotForm";
 import { BotCard } from "./BotCard";
 import { toBotSnapshot } from "@/lib/bots/snapshot";
 import { PairedToast } from "./PairedToast";
-import { OrnamentDivider, SECTION_LABEL } from "./Marks";
 import { SubscribeCard } from "./SubscribeCard";
 import { getBillingService } from "@/lib/billing";
 import { formatCredits } from "@/lib/billing/format";
 import { TRIAL_CREDITS, TRIAL_DAYS } from "@/lib/billing/pricing";
 import { toBillingUser } from "@/lib/billing/user";
+import { BotCardSkeleton } from "./Skeleton";
+import { getIntegrationsService } from "@/lib/integrations";
+import type { ShowcaseApp } from "./BotCard";
 
 export const metadata: Metadata = {
   title: "הבית שלי — Agent For All",
@@ -23,41 +25,56 @@ export const dynamic = "force-dynamic";
 export default async function AppHome() {
   const session = await requireSession("/login");
   const firstName = session.user.name?.split(" ")[0] ?? "";
-  const bot = await botService.findActiveBot(session.user.id);
-  const billing = await getBillingService().refreshStatus(toBillingUser(session.user));
 
   return (
     <div className="relative">
       <Watermark />
-      <div className="relative max-w-3xl mx-auto px-4 sm:px-6 pt-10 sm:pt-14 pb-28">
+      <div className="relative max-w-3xl mx-auto px-4 sm:px-6 pt-6 sm:pt-10 pb-28">
         <Suspense fallback={null}>
           <PairedToast />
         </Suspense>
 
-        <header className="mb-10">
-          <p className={`${SECTION_LABEL} mb-3`}>הבית שלי</p>
-          <h1 className="font-display text-4xl sm:text-5xl text-espresso leading-tight">
-            {firstName ? `שלום ${firstName}` : "ברוכים הבאים"}
-          </h1>
-          <div className="mt-5 flex items-center gap-4">
-            <OrnamentDivider />
-            <p className="text-espresso-light text-sm leading-relaxed">הסוכן האישי שלכם, כאן בשקט.</p>
-          </div>
-        </header>
+        {/* The card is the page; the greeting gets one line so it stays above the fold on a phone. */}
+        <h1 className="font-display text-2xl sm:text-3xl text-espresso leading-tight mb-5 sm:mb-6">
+          {firstName ? `שלום ${firstName}` : "ברוכים הבאים"}
+        </h1>
 
-        {bot ? (
-          <BotCard bot={toBotSnapshot(bot)} credits={billing.credits} />
-        ) : !billing.entitled ? (
-          <SubscribeCard status={billing} />
-        ) : (
-          <>
-            {billing.reason === "trial_available" ? <TrialNotice /> : null}
-            <CreateBotForm />
-          </>
-        )}
+        <Suspense fallback={<BotCardSkeleton />}>
+          <HomeCard user={session.user} />
+        </Suspense>
       </div>
     </div>
   );
+}
+
+// Streamed so the greeting paints before the orchestrator and billing round-trips finish.
+async function HomeCard({ user }: { user: AuthenticatedUser }) {
+  const [bot, billing, apps] = await Promise.all([
+    botService.findActiveBot(user.id),
+    getBillingService().refreshStatus(toBillingUser(user)),
+    showcaseApps(user.id),
+  ]);
+
+  if (bot) return <BotCard bot={toBotSnapshot(bot)} credits={billing.credits} apps={apps} />;
+  if (!billing.entitled) return <SubscribeCard status={billing} />;
+  return (
+    <>
+      {billing.reason === "trial_available" ? <TrialNotice /> : null}
+      <CreateBotForm />
+    </>
+  );
+}
+
+// Decoration only: the card falls back to plain text when integrations are off or the call fails.
+async function showcaseApps(userId: string): Promise<ShowcaseApp[]> {
+  try {
+    const apps = await getIntegrationsService().showcase(userId);
+    return apps.flatMap((app) =>
+      app.logo === null ? [] : [{ slug: app.slug, name: app.name, logo: app.logo }],
+    );
+  } catch {
+    return [];
+  }
 }
 
 function TrialNotice() {
@@ -72,7 +89,7 @@ function Watermark() {
   return (
     <span
       aria-hidden="true"
-      className="absolute pointer-events-none select-none top-2 end-0 sm:end-12 font-display text-[9rem] sm:text-[20rem] leading-none text-espresso/[0.03]"
+      className="hidden sm:block absolute pointer-events-none select-none top-2 end-12 font-display text-[20rem] leading-none text-espresso/[0.03]"
     >
       א
     </span>

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { PendingLink } from "@/app/app/Pending";
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth/session";
 import { botService } from "@/lib/bots/service";
@@ -38,13 +38,13 @@ export default async function ConnectionsPage({
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-4 sm:pt-8 pb-28">
-      <Link
+      <PendingLink
         href="/app"
         className="inline-flex min-h-11 items-center gap-1.5 -ms-2 px-2 mb-3 rounded-lg text-sm text-espresso-light hover:text-terra focus:outline-none focus-visible:ring-2 focus-visible:ring-terra transition"
       >
         <BackChevron />
         <span>הבית שלי</span>
-      </Link>
+      </PendingLink>
       <ConnectionsPanel botId={bot.id} botName={bot.displayName} initial={initial} connectedApp={connectedApp} />
     </div>
   );

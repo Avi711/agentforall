@@ -31,6 +31,7 @@ import {
   IntegrationsResponseSchema,
   ConnectLinkSchema,
   type CatalogApp,
+  type CatalogPage,
   type IntegrationConnection,
   type ConnectLink,
 } from "./types";
@@ -292,10 +293,11 @@ export class OrchestratorClient {
     });
   }
 
-  async listIntegrationCatalog(userId: string, query: CatalogQuery): Promise<CatalogApp[]> {
+  async listIntegrationCatalog(userId: string, query: CatalogQuery): Promise<CatalogPage> {
     const params = new URLSearchParams({ limit: String(query.limit) });
     if (query.q) params.set("q", query.q);
     if (query.slugs) params.set("slugs", query.slugs.join(","));
+    if (query.offset) params.set("offset", String(query.offset));
     const result = await this.call({
       method: "GET",
       path: `/api/v1/integrations/catalog?${params}`,
@@ -303,7 +305,7 @@ export class OrchestratorClient {
       schema: CatalogResponseSchema,
       timeoutMs: 30_000,
     });
-    return result.data;
+    return { apps: result.data, total: result.total ?? result.data.length };
   }
 
   async listIntegrations(userId: string, id: string): Promise<IntegrationConnection[]> {

@@ -1,8 +1,8 @@
 import { OrchestratorError } from "@/lib/orchestrator/client";
-import type { CatalogApp, CatalogQuery, ConnectLink, IntegrationConnection } from "@/lib/orchestrator/types";
-import { FEATURED_SLUGS } from "./catalog.he";
+import type { CatalogApp, CatalogPage, CatalogQuery, ConnectLink, IntegrationConnection } from "@/lib/orchestrator/types";
+import { FEATURED_SLUGS, SHOWCASE_SLUGS } from "./catalog.he";
 import { CONNECTIONS_PATH } from "./paths";
-import { CATALOG_SEARCH_LIMIT, type CatalogSearch } from "./schemas";
+import { CATALOG_SEARCH_LIMIT, CATALOG_SLUGS_LIMIT, type CatalogSearch } from "./schemas";
 
 // The orchestrator answers 503 FEATURE_UNAVAILABLE when no provider is configured.
 export function isIntegrationsUnavailable(err: unknown): boolean {
@@ -12,15 +12,18 @@ export function isIntegrationsUnavailable(err: unknown): boolean {
 }
 
 export interface ConnectionsOverview {
+  // Every app this bot has a connection for, in any state — newest first.
+  mine: CatalogApp[];
   featured: CatalogApp[];
-  popular: CatalogApp[];
-  // The app named in `?connected=` when it is not featured; the page only needs its label.
+  // First page of the whole catalog; the browser pages through the rest.
+  browse: CatalogPage;
+  // The app named in `?connected=`; the page only needs its label.
   watched: CatalogApp | null;
   connections: IntegrationConnection[];
 }
 
 export interface IntegrationsPort {
-  listIntegrationCatalog(userId: string, query: CatalogQuery): Promise<CatalogApp[]>;
+  listIntegrationCatalog(userId: string, query: CatalogQuery): Promise<CatalogPage>;
   listIntegrations(userId: string, botId: string): Promise<IntegrationConnection[]>;
   connectIntegration(
     userId: string,
@@ -37,25 +40,42 @@ export class IntegrationsService {
     private readonly appUrl: string,
   ) {}
 
-  // Featured tiles are rendered once, at the top; searches and the popular page never repeat them.
-  async search(userId: string, input: CatalogSearch): Promise<CatalogApp[]> {
-    const apps = await this.port.listIntegrationCatalog(userId, input);
-    return apps.filter((app) => !FEATURED_SLUGS.includes(app.slug));
+  // Search and browse are the same paged query — an empty `q` is the whole catalog.
+  search(userId: string, input: CatalogSearch): Promise<CatalogPage> {
+    return this.port.listIntegrationCatalog(userId, input);
+  }
+
+  // A few real logos for the dashboard card, so "חיבורים" reads as apps rather than as settings.
+  async showcase(userId: string): Promise<CatalogApp[]> {
+    const page = await this.port.listIntegrationCatalog(userId, {
+      slugs: [...SHOWCASE_SLUGS],
+      limit: SHOWCASE_SLUGS.length,
+    });
+    return page.apps;
   }
 
   // Only what the page renders; the full catalog stays in the orchestrator and is searched there.
   async overview(userId: string, botId: string, watchApp: string | null): Promise<ConnectionsOverview> {
-    const extra = watchApp && !FEATURED_SLUGS.includes(watchApp) ? [watchApp] : [];
-    const slugs = [...FEATURED_SLUGS, ...extra];
-    const [named, popular, connections] = await Promise.all([
+    const connections = await this.list(userId, botId);
+    const mineSlugs = unique(connections.map((c) => c.app));
+    // Named apps come first: the cap may only drop featured tiles, never one the user asked about.
+    const slugs = unique([...(watchApp ? [watchApp] : []), ...mineSlugs, ...FEATURED_SLUGS]).slice(
+      0,
+      CATALOG_SLUGS_LIMIT,
+    );
+    const [named, browse] = await Promise.all([
       this.port.listIntegrationCatalog(userId, { slugs, limit: slugs.length }),
-      this.search(userId, { limit: CATALOG_SEARCH_LIMIT }),
-      this.list(userId, botId),
+      this.search(userId, { limit: CATALOG_SEARCH_LIMIT, offset: 0 }),
     ]);
+    const bySlug = new Map(named.apps.map((app) => [app.slug, app]));
+    const pick = (wanted: readonly string[]): CatalogApp[] =>
+      wanted.map((slug) => bySlug.get(slug)).filter((app): app is CatalogApp => app !== undefined);
+
     return {
-      featured: named.filter((app) => FEATURED_SLUGS.includes(app.slug)),
-      popular,
-      watched: named.find((app) => extra.includes(app.slug)) ?? null,
+      mine: pick(mineSlugs),
+      featured: pick(FEATURED_SLUGS),
+      browse,
+      watched: (watchApp && bySlug.get(watchApp)) || null,
       connections,
     };
   }
@@ -78,4 +98,8 @@ export class IntegrationsService {
     url.searchParams.set("connected", app);
     return url.toString();
   }
+}
+
+function unique(values: readonly string[]): string[] {
+  return [...new Set(values)];
 }

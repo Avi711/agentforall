@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { useRefresh } from "./Pending";
 import type { OwnerCandidate, OwnerIdentity } from "@/lib/orchestrator/types";
 import type { OwnerSnapshot } from "@/lib/bots/snapshot";
 import { readApiErrorMessage } from "@/lib/http/api-error";
@@ -27,7 +27,7 @@ export function OwnerIdentityDialog({
   whatsappAvailable: boolean;
   onClose: () => void;
 }) {
-  const router = useRouter();
+  const { refreshing, refresh } = useRefresh();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const phoneId = useId();
@@ -35,8 +35,9 @@ export function OwnerIdentityDialog({
   const [view, setView] = useState<OwnerIdentity | null>(null);
   const [editing, setEditing] = useState(false);
   const [phone, setPhone] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [posting, setPosting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const saving = posting || refreshing;
 
   const number = view ? view.whatsappNumber : initial.whatsappNumber;
   const telegramLinked = view ? view.telegram !== null : initial.telegramLinked;
@@ -75,7 +76,7 @@ export function OwnerIdentityDialog({
 
   async function save(whatsappNumber: string | null) {
     if (saving) return;
-    setSaving(true);
+    setPosting(true);
     setError(null);
     try {
       const res = await fetch(`/api/bot/${botId}/owner`, {
@@ -86,12 +87,12 @@ export function OwnerIdentityDialog({
       });
       const body: unknown = await res.json().catch(() => null);
       if (!res.ok) throw new Error(readApiErrorMessage(body) ?? "השמירה נכשלה");
-      dialogRef.current?.close();
-      router.refresh();
+      setPosting(false);
+      // Close only once the card behind the dialog already shows the new number.
+      refresh(() => dialogRef.current?.close());
     } catch (err) {
       setError(err instanceof Error ? err.message : "השמירה נכשלה");
-    } finally {
-      setSaving(false);
+      setPosting(false);
     }
   }
 
@@ -224,6 +225,11 @@ export function OwnerIdentityDialog({
         </div>
 
         <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 px-5 pb-5 sm:px-7 sm:pb-6">
+          {saving && !showInput ? (
+            <p role="status" className="sm:me-auto text-sm text-espresso-light">
+              שומר…
+            </p>
+          ) : null}
           <button
             type="button"
             onClick={cancel}
@@ -236,6 +242,7 @@ export function OwnerIdentityDialog({
             <button
               type="submit"
               disabled={saving || phone.trim() === ""}
+              aria-busy={saving}
               className="px-4 py-3 rounded-lg text-sm font-medium bg-espresso text-cream hover:bg-espresso-light transition disabled:opacity-60 disabled:cursor-wait"
             >
               {saving ? "שומר…" : "שמירה"}

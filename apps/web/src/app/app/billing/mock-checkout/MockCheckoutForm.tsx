@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatAgorot } from "@/lib/billing/format";
 import type { MockCheckoutOutcome } from "@/lib/billing/schemas";
@@ -9,6 +9,7 @@ import { completeMockCheckout } from "../client";
 
 export function MockCheckoutForm({ sessionId, title, amountAgorot }: { sessionId: string; title: string; amountAgorot: number }) {
   const router = useRouter();
+  const [, startNavigate] = useTransition();
   const [pending, setPending] = useState<MockCheckoutOutcome | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -17,7 +18,8 @@ export function MockCheckoutForm({ sessionId, title, amountAgorot }: { sessionId
     setPending(outcome);
     setError(null);
     try {
-      router.replace(await completeMockCheckout(sessionId, outcome));
+      const target = await completeMockCheckout(sessionId, outcome);
+      startNavigate(() => router.replace(target));
     } catch (err) {
       setError(err instanceof Error ? err.message : UNEXPECTED_ERROR_HE);
       setPending(null);

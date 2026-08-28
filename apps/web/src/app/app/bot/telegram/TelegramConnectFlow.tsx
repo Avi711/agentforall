@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { PendingLink } from "@/app/app/Pending";
 import { useEffect, useState } from "react";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 
@@ -110,9 +110,9 @@ export function TelegramConnectFlow({ botId }: { botId: string }) {
       {phase.kind === "unavailable" ? (
         <p className="text-sm text-espresso-light leading-relaxed">
           חיבור טלגרם אינו זמין כרגע. נסו שוב מאוחר יותר, או חזרו{" "}
-          <Link href="/app" className="text-terra underline">
+          <PendingLink href="/app" className="text-terra underline">
             לעמוד הבית
-          </Link>
+          </PendingLink>
           .
         </p>
       ) : phase.kind === "error" ? (
@@ -210,12 +210,12 @@ function ConnectedPanel({ botUsername }: { botUsername: string | null }) {
             <span>פתחו את הבוט ושלחו הודעה</span>
           </a>
         ) : null}
-        <Link
+        <PendingLink
           href="/app"
           className="px-6 py-3 rounded-xl text-center text-espresso-light hover:text-espresso hover:bg-cream-dark transition"
         >
           לעמוד הבית
-        </Link>
+        </PendingLink>
       </div>
     </div>
   );

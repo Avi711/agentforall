@@ -1,18 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useNavigate, useRefresh } from "@/app/app/Pending";
 import { WhatsappConsentBody } from "@/content/whatsapp-consent.he";
 import { CURRENT_CONSENT_VERSION } from "@/lib/consent-version";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 
 export function ConsentGate() {
-  const router = useRouter();
-  const [busy, setBusy] = useState(false);
+  const { refreshing, refresh } = useRefresh();
+  const { navigating, navigate } = useNavigate();
+  const [accepting, setAccepting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const busy = accepting || refreshing || navigating;
 
   async function handleAccept() {
-    setBusy(true);
+    setAccepting(true);
     setError(null);
     try {
       const res = await fetch("/api/bot/consent", {
@@ -24,10 +26,10 @@ export function ConsentGate() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data?.error?.code ?? UNEXPECTED_ERROR_HE);
       }
-      router.refresh();
+      refresh(() => setAccepting(false));
     } catch (err) {
       setError(err instanceof Error ? err.message : UNEXPECTED_ERROR_HE);
-      setBusy(false);
+      setAccepting(false);
     }
   }
 
@@ -43,17 +45,19 @@ export function ConsentGate() {
           type="button"
           onClick={handleAccept}
           disabled={busy}
+          aria-busy={accepting || refreshing}
           className="px-6 py-3 rounded-xl bg-terra text-white font-medium hover:bg-terra-light transition disabled:opacity-50"
         >
-          {busy ? "מאשר…" : "אני מסכים וממשיך"}
+          {accepting || refreshing ? "מאשר…" : "אני מסכים וממשיך"}
         </button>
         <button
           type="button"
-          onClick={() => router.push("/app")}
+          onClick={() => navigate("/app")}
           disabled={busy}
-          className="px-6 py-3 rounded-xl text-espresso-light hover:text-espresso hover:bg-cream-dark transition"
+          aria-busy={navigating}
+          className="px-6 py-3 rounded-xl text-espresso-light hover:text-espresso hover:bg-cream-dark transition disabled:opacity-50"
         >
-          חזרה
+          {navigating ? "חוזרים…" : "חזרה"}
         </button>
       </div>
 

@@ -1,13 +1,21 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
+import { PendingLink, useNavigate } from "./Pending";
 import { MonogramDisc } from "./Marks";
 
 export function ConnectChannelStep({ name, onLater }: { name: string; onLater: () => void }) {
-  const router = useRouter();
+  const { navigating, navigate } = useNavigate();
+  // `onLater` refreshes the dashboard; the transition keeps the button busy until the new card paints.
+  const [skipping, startSkip] = useTransition();
   const [confirmWhatsapp, setConfirmWhatsapp] = useState(false);
+  const [target, setTarget] = useState<"pair" | "telegram" | null>(null);
+  const busy = navigating || skipping;
+
+  function go(next: "pair" | "telegram") {
+    setTarget(next);
+    navigate(next === "pair" ? "/app/bot/pair" : "/app/bot/telegram");
+  }
 
   return (
     <div role="status" aria-live="polite" className="space-y-6">
@@ -37,18 +45,21 @@ export function ConnectChannelStep({ name, onLater }: { name: string; onLater: (
       <div className="flex justify-end">
         <button
           type="button"
-          onClick={onLater}
-          className="text-sm font-medium text-espresso-light hover:text-espresso transition"
+          onClick={() => startSkip(onLater)}
+          disabled={busy}
+          aria-busy={skipping}
+          className="text-sm font-medium text-espresso-light hover:text-espresso transition disabled:opacity-50"
         >
-          אחר כך
+          {skipping ? "רגע…" : "אחר כך"}
         </button>
       </div>
 
       <WhatsappNumberConfirmDialog
         open={confirmWhatsapp}
+        pending={navigating ? target : null}
         onClose={() => setConfirmWhatsapp(false)}
-        onConfirm={() => router.push("/app/bot/pair")}
-        onTelegram={() => router.push("/app/bot/telegram")}
+        onConfirm={() => go("pair")}
+        onTelegram={() => go("telegram")}
       />
     </div>
   );
@@ -56,15 +67,17 @@ export function ConnectChannelStep({ name, onLater }: { name: string; onLater: (
 
 // Equal weight on purpose: the user should weigh the choice, not follow a primary button.
 const CHOICE_BUTTON =
-  "px-4 py-3 rounded-lg border border-sand text-sm font-medium text-espresso hover:border-terra hover:bg-terra-pale/40 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra";
+  "px-4 py-3 rounded-lg border border-sand text-sm font-medium text-espresso hover:border-terra hover:bg-terra-pale/40 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra disabled:opacity-60 disabled:cursor-wait";
 
 function WhatsappNumberConfirmDialog({
   open,
+  pending,
   onClose,
   onConfirm,
   onTelegram,
 }: {
   open: boolean;
+  pending: "pair" | "telegram" | null;
   onClose: () => void;
   onConfirm: () => void;
   onTelegram: () => void;
@@ -120,11 +133,23 @@ function WhatsappNumberConfirmDialog({
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 px-5 pb-5 sm:px-7 sm:pb-6">
-          <button type="button" onClick={onConfirm} className={CHOICE_BUTTON}>
-            יש לי מספר ייעודי, נמשיך
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={pending !== null}
+            aria-busy={pending === "pair"}
+            className={CHOICE_BUTTON}
+          >
+            {pending === "pair" ? "פותחים…" : "יש לי מספר ייעודי, נמשיך"}
           </button>
-          <button type="button" onClick={onTelegram} className={CHOICE_BUTTON}>
-            אין לי — נחבר טלגרם
+          <button
+            type="button"
+            onClick={onTelegram}
+            disabled={pending !== null}
+            aria-busy={pending === "telegram"}
+            className={CHOICE_BUTTON}
+          >
+            {pending === "telegram" ? "פותחים…" : "אין לי — נחבר טלגרם"}
           </button>
         </div>
       </form>
@@ -160,9 +185,9 @@ function ChannelChoice({
   );
   if (href) {
     return (
-      <Link href={href} className={className}>
+      <PendingLink href={href} className={className}>
         {body}
-      </Link>
+      </PendingLink>
     );
   }
   return (
