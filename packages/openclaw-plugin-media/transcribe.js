@@ -101,6 +101,12 @@ export function readTranscript(payload) {
 
   const content = message && typeof message === "object" ? message.content : undefined;
   if (typeof content === "string") return content.trim();
+  // A finished answer with no content is the model saying it heard nothing to transcribe. That is
+  // an empty transcript, not a failure: failing here would leave the voice note unanswered.
+  if (content === null || content === undefined) {
+    if (message && typeof message === "object" && choice.finish_reason === "stop") return "";
+    throw new Error("response had no message content");
+  }
   if (Array.isArray(content)) {
     // Reasoning and refusal parts also carry `text`, so only the ones typed as text are transcript.
     const parts = content.filter(

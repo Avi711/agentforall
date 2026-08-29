@@ -115,6 +115,9 @@ async function runTranscription(params, logger) {
     throw new Error(`${FAILED}: ${errorText(err)}`, { cause: err });
   }
   if (isTruncated(payload)) warn(logger, "the model cut the transcript short (finish_reason=length)");
+  // Empty is a valid answer (silence, or noise the model would not transcribe), but it is also
+  // what a flaky completion looks like, so it never passes unnoticed.
+  if (!text) warn(logger, `the model returned an empty transcript for ${params.fileName ?? "the attachment"}`);
   return { text, model: readModel(payload, model) };
 }
 

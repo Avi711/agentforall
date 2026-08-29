@@ -136,11 +136,22 @@ test("readTranscript surfaces the top-level refusal field", () => {
   assert.throws(() => readTranscript(payload), /the model refused: not allowed/);
 });
 
+// The model answers with no content when it heard nothing worth transcribing; treating that as a
+// failure would leave the voice note unanswered instead of letting the agent say it heard nothing.
+test("readTranscript reads a finished answer with no content as silence", () => {
+  assert.equal(readTranscript({ choices: [{ finish_reason: "stop", message: { content: null } }] }), "");
+  assert.equal(readTranscript({ choices: [{ finish_reason: "stop", message: {} }] }), "");
+});
+
+test("readTranscript still refuses a response that never finished", () => {
+  assert.throws(() => readTranscript({ choices: [{ message: { content: null } }] }), /no message content/);
+});
+
 test("readTranscript refuses a response it cannot read", () => {
   assert.throws(() => readTranscript(null), /not an object/);
   assert.throws(() => readTranscript([]), /not an object/);
   assert.throws(() => readTranscript({}), /no message content/);
-  assert.throws(() => readTranscript({ choices: [{ message: {} }] }), /no message content/);
+  assert.throws(() => readTranscript({ choices: [{ message: {}, finish_reason: "error" }] }), /no message content/);
 });
 
 test("readModel prefers the reported model and falls back to the requested one", () => {
