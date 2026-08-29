@@ -333,3 +333,8 @@ html[data-reduced-motion] a:has(> .link-hint.is-pending) { animation: none !impo
   outline: 3px solid var(--color-terra);
   outline-offset: 2px;
 }
+
+[data-platform="ios"] [data-only="android"],
+[data-platform="android"] [data-only="ios"] {
+  display: none;
+}

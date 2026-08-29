@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Footer } from "@/components/Footer";
 import { Navbar } from "@/components/Navbar";
+import { PlatformGuide } from "@/components/blog/PlatformGuide";
 import { TalkToUs } from "@/components/TalkToUs";
 import { POST_SLUGS, isPostSlug, loadPost, type Post } from "@/lib/blog";
 import { SITE_NAME, SITE_URL } from "@/lib/site";
@@ -72,9 +73,11 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
             className="mt-8 w-full rounded-[24px] border border-sand-light"
           />
 
-          <div className="mt-4">
-            <Content />
-          </div>
+          <PlatformGuide>
+            <div className="mt-4">
+              <Content />
+            </div>
+          </PlatformGuide>
 
           {meta.faq.length > 0 ? (
             <section aria-labelledby="post-faq" className="mt-14">

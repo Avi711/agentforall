@@ -1,0 +1,161 @@
+<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><style>
+* { margin:0; padding:0; box-sizing:border-box; font-family:"Segoe UI","Heebo",system-ui,sans-serif; }
+html, body { overflow:hidden; margin:0; }
+.stage { position:relative; overflow:hidden; background:#FBF8F3; }
+.grid .strip { display:flex; flex-wrap:wrap; justify-content:center; gap:40px 60px; position:absolute; top:150px; right:0; left:0; margin:0 auto; }
+.col .strip { display:grid; grid-template-columns:270px; justify-content:center; gap:36px; position:absolute; top:190px; right:0; left:0; }
+.col .head { right:40px; left:40px; flex-wrap:wrap; gap:10px 14px; }
+.col .title { font-size:22px; }
+.col .b1, .col .b2 { width:260px; height:200px; }
+.blob { position:absolute; border-radius:55% 45% 60% 50%/50% 60% 45% 55%; opacity:.9; z-index:0; }
+.b1 { width:380px; height:300px; top:-150px; }
+.b2 { width:380px; height:300px; bottom:-150px; }
+.head { position:absolute; top:44px; right:60px; left:60px; display:flex; align-items:center; gap:18px; z-index:2; }
+.chip { display:inline-flex; align-items:center; gap:8px; padding:8px 18px; border-radius:999px; font-size:20px; font-weight:700; color:#fff; }
+.chip.ios { background:#1c1c1e; }
+.chip.and { background:#1d7f4c; }
+.chip svg { width:22px; height:22px; fill:#fff; }
+.title { font-size:26px; color:#2C1810; font-weight:600; }
+.strip { z-index:2; }
+.panel { width:270px; display:flex; flex-direction:column; align-items:center; gap:16px; }
+.ph { position:relative; width:250px; height:540px; border:8px solid #2C1810; border-radius:38px; overflow:hidden; box-shadow:0 26px 50px -28px rgba(44,24,16,.4); background:#fff; }
+.ph.ios { background:#f2f2f7; }
+.ph.oui { background:#f2f2f5; }
+.sb { display:flex; justify-content:space-between; padding:8px 18px 0; font-size:11px; font-weight:600; color:#111; direction:ltr; }
+.cap { text-align:center; font-size:16.5px; line-height:1.45; color:#3d2b22; max-width:270px; }
+.cap b { color:#2C1810; }
+.num { display:inline-flex; width:26px; height:26px; border-radius:50%; background:#C7522A; color:#fff; font-size:15px; font-weight:700; align-items:center; justify-content:center; margin-inline-end:6px; vertical-align:middle; }
+.hl { position:relative; box-shadow:0 0 0 3px #C7522A, 0 0 0 8px rgba(199,82,42,.2) !important; border-radius:12px; z-index:3; }
+.hl.round { border-radius:999px; }
+.pin { position:absolute; width:32px; height:32px; border-radius:50%; background:#C7522A; color:#fff; font-size:16px; font-weight:700; display:flex; align-items:center; justify-content:center; box-shadow:0 6px 14px -4px rgba(44,24,16,.45); z-index:6; top:-14px; inset-inline-end:-10px; }
+/* iOS */
+.ios .ltitle { font-size:24px; font-weight:700; color:#111; padding:10px 16px 6px; }
+.ios .ntitle { font-size:15px; font-weight:600; color:#111; text-align:center; padding:8px 16px 4px; position:relative; }
+.ios .ntitle .back { position:absolute; inset-inline-start:12px; top:6px; color:#0a84ff; font-size:15px; font-weight:400; }
+.ios .grp { background:#fff; border-radius:12px; margin:8px 12px; }
+.ios .row { display:flex; align-items:center; gap:10px; padding:9px 12px; font-size:13px; color:#111; border-bottom:1px solid #eeeef0; }
+.ios .grp .row:last-child { border-bottom:none; }
+.ios .ico { width:24px; height:24px; border-radius:6px; flex:none; display:flex; align-items:center; justify-content:center; font-size:12px; color:#fff; }
+.ios .chev { margin-inline-start:auto; color:#c4c4c8; font-size:14px; }
+.ios .val { margin-inline-start:auto; color:#8e8e93; font-size:12.5px; }
+.ios .tabbar { position:absolute; bottom:12px; inset-inline:12px; height:56px; border-radius:999px; background:rgba(255,255,255,.72); backdrop-filter:blur(8px); border:1px solid rgba(0,0,0,.06); box-shadow:0 8px 24px rgba(0,0,0,.12); display:flex; align-items:center; justify-content:space-around; padding:0 6px; }
+.ios .tab { display:flex; flex-direction:column; align-items:center; gap:2px; font-size:9.5px; color:#8e8e93; width:44px; }
+.ios .tab .i { width:20px; height:20px; border-radius:6px; background:#c7c7cc; }
+.ios .tab.on { color:#1d7f4c; }
+.ios .tab.on .i { background:#1d7f4c; }
+.ios .prof { display:flex; align-items:center; gap:10px; padding:12px; }
+.ios .av { width:44px; height:44px; border-radius:50%; background:#E8DCC8; color:#5C4033; display:flex; align-items:center; justify-content:center; font-size:19px; }
+.ios .prof b { font-size:15px; color:#111; display:block; }
+.ios .prof small { color:#8e8e93; font-size:11px; }
+.ios .arrow { margin-inline-start:auto; width:26px; height:26px; border-radius:50%; background:#e5e5ea; color:#3a3a3c; display:flex; align-items:center; justify-content:center; font-size:12px; }
+/* Android: WhatsApp (Material 3, 2026) */
+.and .abar { display:flex; align-items:center; gap:12px; padding:12px 14px 8px; }
+.and .abar .brand { font-size:19px; font-weight:700; color:#1d7f4c; }
+.and .abar .icons { margin-inline-start:auto; display:flex; gap:12px; align-items:center; color:#3c3c3c; font-size:16px; }
+.and .abar .ttl { font-size:18px; font-weight:600; color:#111; }
+.and .abar .back { color:#3c3c3c; font-size:18px; }
+.and .dots { width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:18px; color:#3c3c3c; }
+.and .srch { margin:4px 12px 8px; height:30px; border-radius:999px; background:#f0f0f0; display:flex; align-items:center; gap:8px; padding:0 12px; font-size:12px; color:#666; }
+.and .chips { display:flex; gap:6px; padding:0 12px 6px; }
+.and .chips span { border:1px solid #ddd; border-radius:999px; padding:3px 9px; font-size:10.5px; color:#333; }
+.and .chips span.on { background:#d9f0e0; border-color:#d9f0e0; color:#0b3d2e; }
+.and .chat { display:flex; align-items:center; gap:10px; padding:8px 14px; }
+.and .chat .av { width:38px; height:38px; border-radius:50%; background:#e6e0d4; flex:none; }
+.and .chat .l1 { width:90px; height:9px; border-radius:4px; background:#ddd7cb; margin-bottom:6px; }
+.and .chat .l2 { width:130px; height:8px; border-radius:4px; background:#ece7dd; }
+.and .nav { position:absolute; bottom:0; inset-inline:0; height:64px; background:#fff; border-top:1px solid #eee; display:flex; align-items:center; justify-content:space-around; }
+.and .nav .t { display:flex; flex-direction:column; align-items:center; gap:3px; font-size:10px; color:#444; }
+.and .nav .t .i { width:40px; height:22px; border-radius:11px; background:transparent; display:flex; align-items:center; justify-content:center; }
+.and .nav .t .i span { width:16px; height:16px; border-radius:4px; background:#8a8a8a; display:block; }
+.and .nav .t.on .i { background:#d9f0e0; }
+.and .nav .t.on .i span { background:#1d7f4c; }
+.and .nav .t.on { color:#111; font-weight:600; }
+.and .fab { position:absolute; bottom:80px; inset-inline-end:16px; width:48px; height:48px; border-radius:14px; background:#25D366; box-shadow:0 8px 16px -6px rgba(0,0,0,.35); }
+.and .menu { position:absolute; top:52px; inset-inline-end:8px; width:172px; background:#fff; border-radius:14px; box-shadow:0 10px 30px rgba(0,0,0,.2); padding:6px 0; z-index:4; }
+.and .menu .mi { padding:9px 16px; font-size:13px; color:#111; white-space:nowrap; }
+.and .row { display:flex; align-items:center; gap:12px; padding:10px 14px; font-size:13.5px; color:#111; }
+.and .row .ic { width:26px; height:26px; flex:none; display:flex; align-items:center; justify-content:center; font-size:15px; color:#555; }
+.and .row small { display:block; color:#7a7466; font-size:11px; margin-top:1px; }
+.and .sec { padding:10px 14px 2px; font-size:11px; color:#5b6b73; }
+.and .wahead { height:118px; background:#f6f1e7 radial-gradient(circle at 20% 30%, #e9e1d0 0 2px, transparent 3px) 0 0/22px 22px; position:relative; }
+.and .wahead .tools { position:absolute; top:10px; inset-inline:12px; display:flex; justify-content:space-between; font-size:15px; color:#333; }
+.and .wahead .bub { position:absolute; top:26px; inset-inline:0; text-align:center; }
+.and .wahead .bub span { background:#fff; border-radius:999px; padding:3px 12px; font-size:11px; color:#333; box-shadow:0 2px 6px rgba(0,0,0,.08); }
+.and .waav { position:absolute; bottom:-30px; inset-inline:0; display:flex; justify-content:center; }
+.and .waav span { width:74px; height:74px; border-radius:50%; background:#E8DCC8; border:3px solid #fff; display:flex; align-items:center; justify-content:center; font-size:30px; color:#5C4033; }
+.and .waname { text-align:center; margin-top:34px; font-size:16px; color:#111; display:flex; justify-content:center; align-items:center; gap:6px; }
+.and .waname .plus { color:#1d7f4c; font-size:15px; }
+.and .oneui { text-align:center; padding:26px 14px 14px; font-size:22px; font-weight:700; color:#111; }
+.and .ocard { background:#fff; border-radius:16px; margin:6px 10px; }
+.and .ocard .row { border-bottom:1px solid #f0f0f2; padding:9px 12px; font-size:13px; }
+.and .ocard .row:last-child { border-bottom:none; }
+.and .ocard .ic { width:24px; height:24px; border-radius:50%; color:#fff; font-size:12px; }
+.and .oav { width:36px; height:36px; border-radius:50%; background:#9db4ea; flex:none; }
+.and .osearch { position:absolute; bottom:12px; inset-inline:30px; height:36px; border-radius:999px; background:#fff; box-shadow:0 4px 14px rgba(0,0,0,.12); display:flex; align-items:center; justify-content:center; gap:8px; font-size:13px; color:#333; }
+.and .tg { margin-inline-start:auto; width:32px; height:18px; border-radius:9px; background:#c9c9cf; position:relative; flex:none; }
+.and .tg:after { content:""; position:absolute; top:2px; inset-inline-start:2px; width:14px; height:14px; border-radius:50%; background:#fff; }
+.and .tg.on { background:#3b7de0; }
+.and .tg.on:after { inset-inline-start:auto; inset-inline-end:2px; }
+.and .chev { margin-inline-start:auto; color:#999; font-size:13px; }
+.and .optt { text-align:center; padding:0 18px; font-size:17px; font-weight:700; color:#111; line-height:1.35; }
+.and .simic { width:36px; height:36px; margin:22px auto 12px; border:3px solid #3b7de0; border-radius:8px; position:relative; }
+.and .simic:after { content:""; position:absolute; inset:9px; border:3px solid #3b7de0; border-radius:3px; }
+.and .opt { margin:10px 16px 0; background:#f2f2f5; border-radius:999px; padding:12px 14px; font-size:12.5px; color:#111; display:flex; align-items:center; gap:10px; line-height:1.3; }
+.and .opt .oi { width:20px; flex:none; text-align:center; font-size:15px; }
+.and .bigt { padding:22px 18px 8px; font-size:19px; color:#333; text-align:center; }
+.and .desc { padding:0 22px; font-size:11.5px; color:#555; text-align:center; line-height:1.55; }
+.and .desc a { color:#1d7f4c; font-weight:700; }
+.and .ctry { margin:18px 46px 0; border-bottom:2px solid #1d7f4c; padding:6px 4px; font-size:13.5px; text-align:center; color:#111; }
+.and .next { position:absolute; bottom:16px; inset-inline:18px; height:38px; border-radius:999px; background:#e9e9e9; color:#9a9a9a; display:flex; align-items:center; justify-content:center; font-size:13px; }
+.and .acct { margin:12px 12px 0; border:1.5px solid #e2e2e2; border-radius:14px; }
+.and .acct .row { border-bottom:1px solid #eee; }
+.and .acct .row:last-child { border-bottom:none; }
+.and .chk { margin-inline-start:auto; width:22px; height:22px; border-radius:50%; background:#25D366; color:#fff; font-size:13px; display:flex; align-items:center; justify-content:center; }
+.and .logout { color:#e11d48; }
+/* shared */
+.sheet { position:absolute; inset-inline:6px; bottom:6px; background:#fff; border-radius:18px; box-shadow:0 -8px 30px rgba(0,0,0,.2); padding:8px 0 12px; z-index:4; }
+.sheet .grab { width:36px; height:4px; border-radius:2px; background:#d8d8d8; margin:0 auto 10px; }
+.sheet .txt { padding:0 14px; font-size:11.5px; color:#333; line-height:1.5; }
+.sheet .row { padding:10px 12px; font-size:13px; display:flex; align-items:center; gap:10px; color:#111; }
+.sheet .plus { width:30px; height:30px; border-radius:50%; background:#eef0f2; color:#333; display:flex; align-items:center; justify-content:center; font-size:18px; flex:none; }
+.dim { position:absolute; inset:0; background:rgba(0,0,0,.35); z-index:3; }
+.verify { padding:22px 16px; text-align:center; }
+.verify .t { font-size:14px; font-weight:600; color:#111; margin-bottom:6px; }
+.verify .d { font-size:11px; color:#7a7466; line-height:1.5; margin-bottom:18px; }
+.field { display:flex; gap:6px; direction:ltr; padding:6px 8px; }
+.field .cc { width:62px; border-bottom:2px solid #1d7f4c; padding:6px 2px; font-size:13px; text-align:center; color:#111; }
+.field .nm { flex:1; border-bottom:2px solid #1d7f4c; padding:6px 2px; font-size:13px; text-align:center; color:#111; letter-spacing:1px; }
+.field .nm.empty { color:#8a8a8a; letter-spacing:0; direction:rtl; }
+.note { margin:16px 12px 0; background:#FFF0E9; border:1.5px solid #C7522A; color:#2C1810; border-radius:12px; padding:9px 10px; font-size:11.5px; font-weight:600; text-align:center; line-height:1.45; }
+.cam { position:absolute; inset:0; background:#1b1b1b; display:flex; align-items:center; justify-content:center; }
+.cam .frame { width:150px; height:150px; position:relative; }
+.cam .frame:before, .cam .frame:after, .cam .c1, .cam .c2 { content:""; position:absolute; width:28px; height:28px; border:4px solid #fff; }
+.cam .frame:before { top:0; left:0; border-right:none; border-bottom:none; border-radius:8px 0 0 0; }
+.cam .frame:after { top:0; right:0; border-left:none; border-bottom:none; border-radius:0 8px 0 0; }
+.cam .c1 { bottom:0; left:0; border-right:none; border-top:none; border-radius:0 0 0 8px; }
+.cam .c2 { bottom:0; right:0; border-left:none; border-top:none; border-radius:0 0 8px 0; }
+.cam .qr { position:absolute; inset:30px; background:conic-gradient(#fff 0 25%, transparent 0 50%, #fff 0 75%, transparent 0) 0 0/16px 16px; opacity:.9; }
+.cam .hint { position:absolute; bottom:70px; inset-inline:0; text-align:center; color:#fff; font-size:12px; }
+.cam .top { position:absolute; top:0; inset-inline:0; padding:14px; color:#fff; font-size:13px; font-weight:600; text-align:center; }
+.cam .tag { position:absolute; bottom:110px; inset-inline:0; display:flex; justify-content:center; }
+.cam .tag span { background:#C7522A; color:#fff; font-size:11.5px; font-weight:700; padding:6px 12px; border-radius:999px; }
+.cam .src { position:absolute; top:44px; inset-inline:0; text-align:center; color:#d9d3c7; font-size:11px; }
+.ok { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; gap:12px; }
+.ok .ring { width:64px; height:64px; border-radius:50%; background:#25D366; color:#fff; font-size:34px; display:flex; align-items:center; justify-content:center; }
+.ok .t { font-size:15px; font-weight:600; color:#111; }
+.ok .d { font-size:11.5px; color:#7a7466; text-align:center; padding:0 20px; line-height:1.5; }
+.laptop { width:120px; height:78px; margin:14px auto 8px; border:3px solid #c9c2b4; border-radius:10px; position:relative; background:#faf7f1; }
+.laptop:after { content:""; position:absolute; inset-inline:-14px; bottom:-10px; height:8px; background:#c9c2b4; border-radius:0 0 8px 8px; }
+.laptop .qr { width:52px; height:52px; margin:9px auto; background:conic-gradient(#2C1810 0 25%, transparent 0 50%, #2C1810 0 75%, transparent 0) 0 0/16px 16px; opacity:.85; }
+.gbtn { display:inline-block; background:#25D366; color:#0b3d2e; font-weight:700; font-size:13px; border-radius:999px; padding:10px 22px; margin-top:10px; }
+.center { padding:20px 16px; text-align:center; }
+.center .t { font-size:14px; font-weight:600; color:#111; margin-bottom:6px; }
+.center .d { font-size:11px; color:#7a7466; line-height:1.5; }
+</style></head><body>
+<div class="stage grid" style="width:1200px; height:1480px;">
+<div class="blob b1" style="background:#8FAE94; inset-inline-end:-130px;"></div>
+<div class="blob b2" style="background:#C7522A; inset-inline-start:-130px;"></div>
+<div class="head"><span class="chip and"><svg viewBox="0 0 24 24"><path d="M17.5 8.3l1.6-2.8c.1-.2 0-.4-.1-.5-.2-.1-.4 0-.5.1l-1.6 2.9c-1.3-.6-2.7-.9-4.3-.9s-3 .3-4.3.9L6.7 5.1c-.1-.2-.3-.2-.5-.1-.2.1-.2.3-.1.5l1.6 2.8C4.9 9.8 3 12.6 3 15.8h18c0-3.2-1.9-6-4.5-7.5zM8 13.2c-.5 0-.9-.4-.9-.9s.4-.9.9-.9.9.4.9.9-.4.9-.9.9zm8 0c-.5 0-.9-.4-.9-.9s.4-.9.9-.9.9.4.9.9-.4.9-.9.9z"/></svg>Android</span><span class="title">שלב 2 · פותחים חשבון וואטסאפ שני על המספר החדש</span></div>
+<div class="strip" style="max-width:930px;"><div class="panel"><div class="ph and "><div class="sb"><span>12:30</span><span>▲ ▮</span></div><div class="abar"><span class="brand">WhatsApp</span><span class="icons">📷<span class="dots">⋮</span></span></div><div class="srch">🔍 חיפוש…</div><div class="chips"><span class="on">הכל</span><span>לא נקראו</span><span>מועדפים</span><span>קבוצות</span></div><div class="chat"><div class="av"></div><div><div class="l1"></div><div class="l2"></div></div></div><div class="chat"><div class="av"></div><div><div class="l1"></div><div class="l2"></div></div></div><div class="chat"><div class="av"></div><div><div class="l1"></div><div class="l2"></div></div></div><div class="chat"><div class="av"></div><div><div class="l1"></div><div class="l2"></div></div></div><div class="chat"><div class="av"></div><div><div class="l1"></div><div class="l2"></div></div></div><div class="chat"><div class="av"></div><div><div class="l1"></div><div class="l2"></div></div></div><div class="fab"></div><div class="nav"><div class="t on"><span class="i"><span></span></span>צ'אטים</div><div class="t"><span class="i"><span></span></span>עדכונים</div><div class="t"><span class="i"><span></span></span>קהילות</div><div class="t"><span class="i"><span></span></span>שיחות</div></div><div class="menu"><div class="mi " style="">קבוצה חדשה</div><div class="mi " style="">רשימות תפוצה</div><div class="mi " style="">מכשירים מקושרים</div><div class="mi " style="">מסומנים בכוכב</div><div class="mi " style="">סימון שכל ההודעות נקראו</div><div class="mi hl" style="margin:4px 8px;">הגדרות<span class="pin" style="">1</span></div></div></div><p class="cap"><span class="num">1</span>בוואטסאפ לוחצים על <b>⋮</b> (שלוש הנקודות למעלה) ובוחרים <b>הגדרות</b></p></div><div class="panel"><div class="ph and "><div class="sb"><span>12:30</span><span>▲ ▮</span></div><div class="wahead"><div class="tools"><span>✎ ▦ 🔍</span><span>→</span></div><div class="bub"><span>עסוק/ה</span></div><div class="waav"><span>ד</span></div></div><div class="waname"><span>דנה כהן</span><span class="plus">⊕</span></div><div style="height:8px"></div><div class="row " style=""><span class="ic">👑</span><div>מינויים<small>סקירת הטבות הפרימיום</small></div></div><div class="row " style=""><span class="ic">💻</span><div>מכשירים מקושרים<small>שימוש ב-WhatsApp במכשירים אחרים</small></div></div><div class="row hl" style="margin:3px 6px;"><span class="ic">🔑</span><div>חשבון<small>התראות אבטחה, שינוי המספר</small></div><span class="pin" style="">2</span></div><div class="row " style=""><span class="ic">🔒</span><div>פרטיות<small>חשבונות חסומים, הודעות נעלמות</small></div></div><div class="row " style=""><span class="ic">📋</span><div>רשימות<small>ניהול אנשים וקבוצות</small></div></div><div class="row " style=""><span class="ic">💬</span><div>צ'אטים<small>היסטוריית הצ'אטים, גיבוי</small></div></div></div><p class="cap"><span class="num">2</span>לוחצים על <b>חשבון</b></p></div><div class="panel"><div class="ph and "><div class="sb"><span>12:30</span><span>▲ ▮</span></div><div class="abar"><span class="back">→</span><span class="ttl">חשבון</span><span class="icons"><span class="dots">⋮</span></span></div><div class="row hl" style="margin:3px 6px;"><span class="ic">👤<sup style="font-size:9px">+</sup></span><div>הוספת חשבון</div><span class="pin" style="">3</span></div><div class="sec">התחברות ואבטחה</div><div class="row"><span class="ic">🔑</span><div>מפתחות גישה</div></div><div class="row"><span class="ic">✉</span><div>כתובת אימייל</div></div><div class="row"><span class="ic">🔒</span><div>אימות דו-שלבי</div></div><div class="row"><span class="ic">🛡</span><div>התראות אבטחה</div></div><div class="sec">החשבון שלך</div><div class="row"><span class="ic">@</span><div>שם משתמש</div></div><div class="row"><span class="ic">📞</span><div>שינוי מספר הטלפון</div></div><div class="row logout"><span class="ic logout">⇥</span><div>התנתקות</div></div></div><p class="cap"><span class="num">3</span>לוחצים על <b>הוספת חשבון</b> (השורה הראשונה)</p></div><div class="panel"><div class="ph and "><div class="sb"><span>12:30</span><span>▲ ▮</span></div><div class="abar"><span class="back">→</span><span class="ttl">חשבון</span><span class="icons"><span class="dots">⋮</span></span></div><div class="row " style=""><span class="ic">👤<sup style="font-size:9px">+</sup></span><div>הוספת חשבון</div></div><div class="sec">התחברות ואבטחה</div><div class="row"><span class="ic">🔑</span><div>מפתחות גישה</div></div><div class="row"><span class="ic">✉</span><div>כתובת אימייל</div></div><div class="row"><span class="ic">🔒</span><div>אימות דו-שלבי</div></div><div class="row"><span class="ic">🛡</span><div>התראות אבטחה</div></div><div class="sec">החשבון שלך</div><div class="row"><span class="ic">@</span><div>שם משתמש</div></div><div class="row"><span class="ic">📞</span><div>שינוי מספר הטלפון</div></div><div class="row logout"><span class="ic logout">⇥</span><div>התנתקות</div></div><div class="dim"></div><div class="sheet"><div class="grab"></div><div class="txt">כדי לעבור בקלות בין החשבונות שלך, אפשר להוסיף חשבון WhatsApp אחר.</div><div class="acct"><div class="row"><span class="oav" style="background:#E8DCC8"></span><div><b>דנה כהן</b><small style="display:block;color:#7a7466;font-size:11px" dir="ltr">+972 5X-XXX-XXXX</small></div><span class="chk">✓</span></div><div class="row hl" style="margin:4px 8px;"><span class="plus">＋</span><b>הוספת חשבון WhatsApp</b><span class="pin" style="">4</span></div></div></div></div><p class="cap"><span class="num">4</span>בחלון שנפתח לוחצים על <b>הוספת חשבון WhatsApp</b></p></div><div class="panel"><div class="ph and "><div class="sb"><span>12:30</span><span>▲ ▮</span></div><div class="abar"><span class="back">→</span><span class="icons"><span class="dots">⋮</span></span></div><div class="bigt">צריך להזין מספר טלפון</div><div class="desc">WhatsApp צריכה לאמת את מספר הטלפון שלך. <a>מה המספר שלי?</a></div><div class="ctry">ישראל ▾</div><div class="field hl" style="margin:10px 34px 0;border-radius:10px;"><div class="cc">+ 972</div><div class="nm empty">מספר טלפון</div><span class="pin" style="top:-16px; inset-inline-end:auto; inset-inline-start:-10px;">5</span></div><div class="note">כאן מזינים את המספר החדש —<br>לא את המספר האישי שלכם!</div><div class="next">הבא</div></div><p class="cap"><span class="num">5</span>מזינים את <b>המספר החדש</b> ולוחצים <b>הבא</b>; קוד האימות מגיע ב-SMS ל-eSIM החדש</p></div></div>
+</div>
+</body></html>

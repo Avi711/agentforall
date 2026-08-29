@@ -1,6 +1,7 @@
 import type { MDXComponents } from "mdx/types";
 import Link from "next/link";
 import { Figure } from "@/components/blog/Figure";
+import { Platform, PlatformPicker } from "@/components/blog/PlatformGuide";
 
 export function useMDXComponents(components: MDXComponents): MDXComponents {
   return {
@@ -22,6 +23,8 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
       ),
     hr: () => <hr className="my-10 border-sand-light" />,
     Figure,
+    Platform,
+    PlatformPicker,
     ...components,
   };
 }
