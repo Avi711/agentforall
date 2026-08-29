@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 
 const links = [
-  { label: "יכולות", href: "/#features" },
   { label: "איך זה עובד", href: "/#how-it-works" },
   { label: "מחירים", href: "/#pricing" },
   { label: "בלוג", href: "/blog" },
@@ -12,7 +11,6 @@ const links = [
 ];
 
 // Signed out → login, signed in → dashboard; the route decides, so the landing stays static.
-const ACCOUNT = { label: "כניסה", href: "/app" };
 const CTA = { label: "רוצה סוכן", href: "/app" };
 
 export function Navbar() {
@@ -49,12 +47,6 @@ export function Navbar() {
             </a>
           ))}
           <Link
-            href={ACCOUNT.href}
-            className="text-sm font-medium text-espresso-light transition-colors hover:text-terra"
-          >
-            {ACCOUNT.label}
-          </Link>
-          <Link
             href={CTA.href}
             className="rounded-full bg-espresso px-6 py-2.5 text-sm font-bold text-cream transition-all hover:bg-terra hover:shadow-lg hover:shadow-terra/20"
           >
@@ -89,13 +81,6 @@ export function Navbar() {
               {link.label}
             </a>
           ))}
-          <Link
-            href={ACCOUNT.href}
-            onClick={() => setMenuOpen(false)}
-            className="block border-b border-sand/30 py-4 text-base font-medium text-espresso-light"
-          >
-            {ACCOUNT.label}
-          </Link>
           <Link
             href={CTA.href}
             onClick={() => setMenuOpen(false)}

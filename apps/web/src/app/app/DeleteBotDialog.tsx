@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { DIALOG_ACTION } from "./action-buttons";
 
 interface Props {
   open: boolean;
@@ -105,7 +106,7 @@ export function DeleteBotDialog({ open, botName, onClose, onConfirm }: Props) {
               if (!busy) dialogRef.current?.close();
             }}
             disabled={busy}
-            className="min-h-11 px-4 py-3 rounded-lg text-sm text-espresso-light hover:text-espresso hover:bg-cream-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-terra transition disabled:opacity-50"
+            className={DIALOG_ACTION.quiet}
           >
             ביטול
           </button>
@@ -113,7 +114,7 @@ export function DeleteBotDialog({ open, botName, onClose, onConfirm }: Props) {
             type="button"
             onClick={handleConfirm}
             disabled={!matches || busy}
-            className="min-h-11 px-4 py-3 rounded-lg text-sm font-medium bg-red-600 text-white hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-700 focus-visible:ring-offset-2 transition disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+            className={DIALOG_ACTION.danger}
           >
             {busy ? (
               <>

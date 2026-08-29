@@ -135,7 +135,7 @@ export function InteractiveChat() {
 
         {/* WhatsApp header */}
         <div className="flex items-center gap-3 bg-wa-dark px-4 pb-3">
-          <svg className="h-5 w-5 text-white/70" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
+          <svg className="h-5 w-5 text-white/70 rtl:-scale-x-100" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-wa-green to-wa-dark text-sm font-bold text-white ring-2 ring-white/20">

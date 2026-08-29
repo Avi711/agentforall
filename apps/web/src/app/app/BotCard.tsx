@@ -12,6 +12,7 @@ import { WhatsAppAccessDialog, accessLabel } from "./WhatsAppAccessSection";
 import { OwnerIdentityDialog, IDENTITY_HINT } from "./OwnerIdentityDialog";
 import { InfoHint } from "./InfoHint";
 import { CreditsSection } from "./CreditsSection";
+import { ROW_ACTION_CLASS } from "./action-buttons";
 import { WhatsappNumberConfirmDialog } from "./WhatsappNumberDialog";
 import type { CreditSummary } from "@/lib/billing/credits/service";
 
@@ -899,12 +900,6 @@ function IconBubble({ children }: { children: ReactNode }) {
   );
 }
 
-const ROW_ACTION_CLASS: Record<RowAction["emphasis"], string> = {
-  primary:
-    "inline-flex min-h-11 items-center justify-center gap-1.5 px-5 py-2.5 rounded-full bg-terra text-white text-sm font-medium hover:bg-terra-dark transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white",
-  quiet:
-    "inline-flex min-h-11 items-center justify-center gap-1.5 px-5 py-2.5 rounded-full border border-sand bg-white text-espresso text-sm font-medium hover:bg-cream-dark hover:border-espresso-light/40 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white",
-};
 
 function RowActionControl({ action }: { action: RowAction }) {
   const icon = action.icon ? <IconBubble>{action.icon}</IconBubble> : null;

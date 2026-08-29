@@ -2,9 +2,9 @@
 
 import { useEffect, useId, useRef } from "react";
 
-// Equal weight on purpose: the user should weigh the choice, not follow a primary button.
-export const CHOICE_BUTTON =
-  "px-4 py-3 rounded-lg border border-sand text-sm font-medium text-espresso hover:border-terra hover:bg-terra-pale/40 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra disabled:opacity-60 disabled:cursor-wait";
+import { ROW_ACTION_CLASS } from "./action-buttons";
+
+const QUIET = `${ROW_ACTION_CLASS.quiet} disabled:opacity-60 disabled:cursor-wait`;
 
 export function WhatsappNumberConfirmDialog({
   open,
@@ -42,8 +42,18 @@ export function WhatsappNumberConfirmDialog({
       className="fixed inset-0 m-auto backdrop:bg-espresso/40 rounded-2xl p-0 w-[min(92vw,480px)] border border-sand-light shadow-[0_20px_48px_rgba(44,24,16,0.18)]"
     >
       <form method="dialog" onSubmit={(e) => e.preventDefault()} dir="rtl">
-        <div className="rounded-t-2xl border-b-2 border-terra bg-terra-pale px-5 py-5 sm:px-7">
-          <div className="flex items-start gap-3">
+        <div className="relative rounded-t-2xl border-b-2 border-terra bg-terra-pale px-5 py-5 sm:px-7">
+          <button
+            type="button"
+            onClick={() => dialogRef.current?.close()}
+            aria-label="סגירה"
+            className="absolute top-3 end-3 inline-flex h-8 w-8 items-center justify-center rounded-full text-espresso-light hover:bg-white/70 hover:text-espresso transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra"
+          >
+            <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M5 5l10 10M15 5L5 15" />
+            </svg>
+          </button>
+          <div className="flex items-start gap-3 pe-8">
             <span
               aria-hidden="true"
               className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-terra text-base font-bold text-white"
@@ -69,40 +79,32 @@ export function WhatsappNumberConfirmDialog({
             <li>לא המספר שבו אתם מדברים עם המשפחה, הלקוחות או הבנק</li>
           </ul>
           <p className="mt-3 text-sm text-espresso-light">
-            אין לכם עדיין מספר כזה?{" "}
-            <a
-              href="/blog/dedicated-whatsapp-number"
-              target="_blank"
-              rel="noopener"
-              className="font-medium text-terra underline underline-offset-2 hover:text-terra-dark"
-            >
-              המדריך המלא לאייפון ולאנדרואיד
-            </a>{" "}
-            — eSIM, חשבון וואטסאפ שני וסריקת הקוד, צעד-צעד.
+            אין לכם עדיין מספר כזה? המדריך מראה צעד-צעד, עם תמונות לאייפון ולאנדרואיד: eSIM, חשבון וואטסאפ שני וסריקת הקוד.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 px-5 pb-5 sm:px-7 sm:pb-6">
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={pending !== null}
-            aria-busy={pending === "pair"}
-            className={CHOICE_BUTTON}
-          >
-            {pending === "pair" ? "פותחים…" : "יש לי מספר ייעודי, נמשיך"}
-          </button>
+        <div className="flex flex-wrap items-center justify-end gap-2 px-5 pb-5 sm:px-7 sm:pb-6">
           {onTelegram ? (
             <button
               type="button"
               onClick={onTelegram}
               disabled={pending !== null}
               aria-busy={pending === "telegram"}
-              className={CHOICE_BUTTON}
+              className="me-auto text-sm font-medium text-espresso-light hover:text-espresso underline-offset-4 hover:underline transition disabled:opacity-60"
             >
               {pending === "telegram" ? "פותחים…" : "אין לי — נחבר טלגרם"}
             </button>
           ) : null}
+          <button type="button" onClick={onConfirm} disabled={pending !== null} aria-busy={pending === "pair"} className={QUIET}>
+            {pending === "pair" ? "פותחים…" : "יש לי מספר, נמשיך"}
+          </button>
+          {/* Arrow icons imply direction, so they mirror in RTL (Material/HIG); the X and ! badges stay as-is. */}
+          <a href="/blog/dedicated-whatsapp-number" target="_blank" rel="noopener" className={ROW_ACTION_CLASS.primary}>
+            למדריך
+            <svg aria-hidden="true" viewBox="0 0 20 20" className="h-3.5 w-3.5 rtl:-scale-x-100" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 4H4v12h12v-4M11 3h6v6M17 3l-8 8" />
+            </svg>
+          </a>
         </div>
       </form>
     </dialog>

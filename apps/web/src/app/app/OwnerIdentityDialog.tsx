@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useRefresh } from "./Pending";
+import { DIALOG_ACTION } from "./action-buttons";
 import type { OwnerCandidate, OwnerIdentity } from "@/lib/orchestrator/types";
 import type { OwnerSnapshot } from "@/lib/bots/snapshot";
 import { readApiErrorMessage } from "@/lib/http/api-error";
@@ -234,7 +235,7 @@ export function OwnerIdentityDialog({
             type="button"
             onClick={cancel}
             disabled={saving}
-            className="px-4 py-3 rounded-lg text-sm text-espresso-light hover:text-espresso hover:bg-cream-dark transition disabled:opacity-50"
+            className={DIALOG_ACTION.quiet}
           >
             {showInput ? "ביטול" : "סגירה"}
           </button>
@@ -243,7 +244,7 @@ export function OwnerIdentityDialog({
               type="submit"
               disabled={saving || phone.trim() === ""}
               aria-busy={saving}
-              className="px-4 py-3 rounded-lg text-sm font-medium bg-espresso text-cream hover:bg-espresso-light transition disabled:opacity-60 disabled:cursor-wait"
+              className={DIALOG_ACTION.primary}
             >
               {saving ? "שומר…" : "שמירה"}
             </button>

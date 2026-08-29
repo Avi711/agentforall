@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { DIALOG_ACTION } from "./action-buttons";
 
 interface Props {
   open: boolean;
@@ -86,7 +87,7 @@ export function ConfirmDialog({
               if (!busy) dialogRef.current?.close();
             }}
             disabled={busy}
-            className="min-h-11 px-4 py-3 rounded-lg text-sm text-espresso-light hover:text-espresso hover:bg-cream-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-terra transition disabled:opacity-50"
+            className={DIALOG_ACTION.quiet}
           >
             ביטול
           </button>
@@ -94,13 +95,13 @@ export function ConfirmDialog({
             type="button"
             onClick={handleConfirm}
             disabled={busy}
-            className="min-h-11 px-4 py-3 rounded-lg text-sm font-medium bg-espresso text-cream hover:bg-espresso-light focus:outline-none focus-visible:ring-2 focus-visible:ring-espresso focus-visible:ring-offset-2 transition disabled:opacity-60 disabled:cursor-wait inline-flex items-center justify-center gap-2"
+            className={DIALOG_ACTION.primary}
           >
             {busy ? (
               <>
                 <span
                   aria-hidden="true"
-                  className="inline-block w-3.5 h-3.5 rounded-full border-2 border-cream/40 border-t-cream animate-spin"
+                  className="inline-block w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin"
                 />
                 <span>{busyLabel}</span>
               </>
