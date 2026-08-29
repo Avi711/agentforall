@@ -54,7 +54,7 @@ variable "github_repo" {
 variable "orchestrator_image" {
   description = "Immutable orchestrator image ref. Production must use a GAR digest or git-SHA tag, never :latest."
   type        = string
-  default     = "europe-west4-docker.pkg.dev/agent-for-all/agent-forall/orchestrator@sha256:bf4777ab90929b66e593440ac839091985ce0f715ee7a030641d258b65cdf95c"
+  default     = "europe-west4-docker.pkg.dev/agent-for-all/agent-forall/orchestrator@sha256:8ef17dddf277a6ee6085aff78d90ee45f01c37d0bda776a36370217b954be92a"
 }
 
 variable "pairing_image" {
@@ -66,7 +66,7 @@ variable "pairing_image" {
 variable "agent_runtime_image" {
   description = "Legacy OpenClaw runtime image ref. Kept for existing OpenClaw instances only."
   type        = string
-  default     = "europe-west4-docker.pkg.dev/agent-for-all/agent-forall/openclaw-browser@sha256:d99dec8d55379dcce9cc35a8971675ce38b37d4ee8c5c876fb3bcf879359844f"
+  default     = "europe-west4-docker.pkg.dev/agent-for-all/agent-forall/openclaw-browser@sha256:a81764a47c59c7a1130d6ae40dd7eca9f3c644b1bd007eac2d3186a450e44326"
 }
 
 variable "hermes_runtime_image" {
