@@ -9,6 +9,7 @@ dist/
 .claude/
 .playwright-mcp/
 *.png
+!apps/web/public/**/*.png
 infra/.terraform/
 infra/terraform.tfstate*
 infra/terraform.tfvars
