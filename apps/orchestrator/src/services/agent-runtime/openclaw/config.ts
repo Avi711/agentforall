@@ -38,6 +38,7 @@ const CREDIT_HOOK_TIMEOUT_MS = 3000;
 // OpenClaw transcribes only with a plugin-backed provider, so a bot behind our gateway needs this
 // one; it registers under the same id and calls the model the bot already replies with.
 const MEDIA_PLUGIN_ID = "agentforall-media";
+const MEDIA_ENV_KEY = "AGENTFORALL_MEDIA_API_KEY";
 
 const OPENCLAW_PROVIDER_PREFIX: Record<LlmProvider, string> = {
   anthropic: "anthropic",
@@ -215,7 +216,7 @@ function generateOpenclawEnv(
   // The media plugin serves every gateway provider, not only LiteLLM budgets.
   if (isGatewayProvider(config.provider)) {
     addEnvLine(lines, "AGENTFORALL_MEDIA_BASE_URL", config.provider.baseUrl);
-    addEnvLine(lines, "AGENTFORALL_MEDIA_API_KEY", config.provider.apiKey);
+    addEnvLine(lines, MEDIA_ENV_KEY, config.provider.apiKey);
   }
 
   for (const ch of config.channels) {
@@ -389,6 +390,15 @@ function buildModelsConfig(provider: ProviderConfig): OpenclawConfig["models"] {
           },
         ],
         timeoutSeconds: 300,
+      },
+      // The media plugin's provider id needs an auth block of its own: OpenClaw resolves a custom
+      // provider's key from models.providers.<id>.apiKey before it dispatches, and refuses with
+      // ProviderAuthError otherwise. No models here — this entry is auth, not a model source.
+      [MEDIA_PLUGIN_ID]: {
+        api: "openai-completions",
+        baseUrl: provider.baseUrl,
+        apiKey: `\${${MEDIA_ENV_KEY}}`,
+        models: [],
       },
     },
   };

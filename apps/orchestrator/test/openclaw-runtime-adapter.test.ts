@@ -25,6 +25,7 @@ test("generated config supports LiteLLM media provider", () => {
           baseUrl: string;
           apiKey: string;
           models: { id: string; input?: string[] }[];
+          timeoutSeconds?: number;
         }
       >;
     };
@@ -76,6 +77,13 @@ test("generated config supports LiteLLM media provider", () => {
     model: "gemini-agentforall",
     capabilities: ["audio"],
     baseUrl: "https://litellm-gateway.example/v1",
+  });
+  // Without an auth block of its own, OpenClaw refuses the provider before the plugin is reached.
+  assert.deepEqual(config.models?.providers["agentforall-media"], {
+    api: "openai-completions",
+    baseUrl: "https://litellm-gateway.example/v1",
+    apiKey: "${AGENTFORALL_MEDIA_API_KEY}",
+    models: [],
   });
   // No video block on a gateway provider: OpenClaw has nothing that would answer it.
   assert.equal(config.tools?.media?.video, undefined);
