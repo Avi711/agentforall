@@ -21,7 +21,13 @@ import type { ConnectLink, IntegrationProvider } from "./provider.js";
 import { SessionGoneError } from "./provider.js";
 import type { IntegrationSessions } from "./sessions.js";
 
-const CATALOG_TTL_MS = 60 * 60 * 1000;
+// Toolkits change on Composio's release cadence, not ours, so a day-old list is fine. What must not
+// happen is a user waiting for the refill: it takes ~9s against Composio.
+const CATALOG_TTL_MS = 24 * 60 * 60 * 1000;
+// From this age on, a read is answered from the list in hand and the refill runs behind it.
+const CATALOG_REFRESH_AFTER_MS = 23 * 60 * 60 * 1000;
+// A failed refresh must not freeze the list for another day, nor hammer a provider that is down.
+const CATALOG_RETRY_AFTER_MS = 5 * 60 * 1000;
 const DASHBOARD_CONNECTIONS_PATH = "/app/bot/connections";
 // Abandoned or dead attempts for the same app; pending ones may still be mid-consent.
 const STALE_STATUSES = new Set<IntegrationConnection["status"]>(["expired", "failed"]);
@@ -42,7 +48,11 @@ interface CatalogCache {
 }
 
 export class IntegrationsManager {
+  // Only ever holds a list worth serving; a failed or empty answer never replaces it.
   private catalogCache: CatalogCache | null = null;
+  // Every settled attempt, good or not, so a provider that is down is asked once per backoff rather
+  // than once per read — including before the first list has ever landed.
+  private catalogAttemptedAt: number | null = null;
   private catalogInFlight: Promise<CatalogApp[]> | null = null;
   private readonly lock = new InstanceOperationLock();
 
@@ -61,22 +71,66 @@ export class IntegrationsManager {
     return searchCatalog(await this.fullCatalog(), query);
   }
 
-  // Serves stale on provider errors: a catalog hiccup should not blank the dashboard.
+  // Fills the catalog before anyone asks for it; a cold fill costs ~9s of someone's page load.
+  warmCatalog(): void {
+    void this.fullCatalog().catch(() => {
+      // fetchCatalog logged it. A catalog that can refill later must not stop the server booting.
+    });
+  }
+
   private async fullCatalog(): Promise<CatalogApp[]> {
     const cached = this.catalogCache;
-    if (cached && this.now() - cached.fetchedAt < CATALOG_TTL_MS) return cached.apps;
+    const now = this.now();
+    if (cached && now - cached.fetchedAt < CATALOG_REFRESH_AFTER_MS) return cached.apps;
+
+    const mayAttempt =
+      this.catalogAttemptedAt === null || now - this.catalogAttemptedAt >= CATALOG_RETRY_AFTER_MS;
+
+    // Still inside the day: answer from the list in hand and refill behind the answer.
+    if (cached && now - cached.fetchedAt < CATALOG_TTL_MS) {
+      // Unreachable rejection: with a list in hand fetchCatalog resolves to it, having logged.
+      if (mayAttempt) void this.fetchCatalog().catch(() => {});
+      return cached.apps;
+    }
+    if (!mayAttempt) {
+      // A provider that is down must not put a ~33s retry budget on every read: past the TTL the
+      // stale list is still all we have, and with nothing in hand the caller gets the failure now
+      // rather than waiting for it.
+      if (cached) return cached.apps;
+      throw new UpstreamUnavailableError("integrations");
+    }
+    return this.fetchCatalog();
+  }
+
+  // The single fetch path: one flight at a time, every settled attempt recorded, and the last good
+  // list left standing whenever an attempt brings back nothing usable.
+  private fetchCatalog(): Promise<CatalogApp[]> {
     if (this.catalogInFlight) return this.catalogInFlight;
 
     this.catalogInFlight = this.provider
       .listCatalog()
+      .then(
+        (apps) => {
+          // An empty list is a provider hiccup, not a catalog, so it never takes the day-long lease
+          // a real one gets — at boot just as much as on a refresh.
+          if (apps.length > 0) return apps;
+          this.log.warn("integration catalog came back empty; not caching it");
+          return null;
+        },
+        (err: unknown) => {
+          this.log.warn({ err }, "integration catalog fetch failed");
+          return null;
+        },
+      )
       .then((apps) => {
-        this.catalogCache = { apps, fetchedAt: this.now() };
-        return apps;
-      })
-      .catch((err: unknown) => {
-        this.log.warn({ err }, "integration catalog refresh failed");
+        const at = this.now();
+        this.catalogAttemptedAt = at;
+        if (apps) {
+          this.catalogCache = { apps, fetchedAt: at };
+          return apps;
+        }
+        const cached = this.catalogCache;
         if (!cached) throw new UpstreamUnavailableError("integrations");
-        this.catalogCache = { apps: cached.apps, fetchedAt: this.now() };
         return cached.apps;
       })
       .finally(() => {

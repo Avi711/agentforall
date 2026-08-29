@@ -330,7 +330,11 @@ test("revokeAll drops every connection, the upstream session, and our row", asyn
   assert.ok(h.calls.events.includes("integration.revoked_all"));
 });
 
-test("catalog is cached for an hour and served stale when the provider fails", async () => {
+const HOUR_MS = 60 * 60 * 1000;
+
+// Refilling the catalog takes ~9s against Composio, so it is held for a day and refreshed behind a
+// served answer. The one case that may block is a cold process with nothing to serve.
+test("catalog is cached for a day and served stale when the provider fails", async () => {
   let fetches = 0;
   let fail = false;
   const h = harness({
@@ -345,12 +349,207 @@ test("catalog is cached for an hour and served stale when the provider fails", a
   await h.integrations.catalog({ limit: 100, offset: 0 });
   assert.equal(fetches, 1);
 
-  h.advance(61 * 60 * 1000);
-  fail = true;
-  const stale = await h.integrations.catalog({ limit: 100, offset: 0 });
-  assert.equal(stale.apps[0]?.slug, "gmail");
-  assert.equal(fetches, 2);
+  // Still inside the day, before the refresh window: nothing is fetched.
+  h.advance(20 * HOUR_MS);
+  await h.integrations.catalog({ limit: 100, offset: 0 });
+  assert.equal(fetches, 1);
 
   const cold = harness({ catalog: async () => { throw new Error("down"); } });
   await assert.rejects(cold.integrations.catalog({ limit: 100, offset: 0 }), UpstreamUnavailableError);
+
+  const stale = harness({
+    catalog: async () => {
+      fetches += 1;
+      if (fail) throw new Error("composio down");
+      return [{ slug: "gmail", name: "Gmail", logo: null, description: null, categories: [], noAuth: false }];
+    },
+  });
+  await stale.integrations.catalog({ limit: 100, offset: 0 });
+  stale.advance(25 * HOUR_MS);
+  fail = true;
+  const served = await stale.integrations.catalog({ limit: 100, offset: 0 });
+  assert.equal(served.apps[0]?.slug, "gmail", "an expired catalog still answers from the last good list");
+});
+
+// The refresh window exists so the day-old list is replaced without anyone waiting for it.
+test("a catalog inside its refresh window answers immediately and refills behind the answer", async () => {
+  let fetches = 0;
+  const pending: (() => void)[] = [];
+  const h = harness({
+    catalog: async () => {
+      fetches += 1;
+      if (fetches > 1) await new Promise<void>((resolve) => pending.push(resolve));
+      return [{ slug: "gmail", name: "Gmail", logo: null, description: null, categories: [], noAuth: false }];
+    },
+  });
+
+  await h.integrations.catalog({ limit: 100, offset: 0 });
+  h.advance(23 * HOUR_MS);
+
+  const answered = await h.integrations.catalog({ limit: 100, offset: 0 });
+  assert.equal(answered.apps[0]?.slug, "gmail", "answered from the stale list, not the pending refresh");
+  assert.equal(fetches, 2, "a refresh was started behind the answer");
+  for (const resolve of pending) resolve();
+});
+
+// A failed refresh must not age the list — otherwise one blip near the TTL freezes it for a day —
+// and must not retry on every read while the provider is down.
+test("a failed background refresh keeps the list's real age and backs off", async () => {
+  let fetches = 0;
+  let fail = false;
+  const h = harness({
+    catalog: async () => {
+      fetches += 1;
+      if (fail) throw new Error("composio down");
+      return [{ slug: "gmail", name: "Gmail", logo: null, description: null, categories: [], noAuth: false }];
+    },
+  });
+
+  await h.integrations.catalog({ limit: 100, offset: 0 });
+  h.advance(23 * HOUR_MS);
+  fail = true;
+  await h.integrations.catalog({ limit: 100, offset: 0 });
+  assert.equal(fetches, 2, "the refresh was attempted");
+
+  // Straight after the failure: served from the list, no second attempt.
+  const served = await h.integrations.catalog({ limit: 100, offset: 0 });
+  assert.equal(served.apps[0]?.slug, "gmail");
+  assert.equal(fetches, 2, "a provider that is down is not hammered on every read");
+
+  // Once the backoff has passed it tries again, and succeeds.
+  h.advance(6 * 60 * 1000);
+  fail = false;
+  await h.integrations.catalog({ limit: 100, offset: 0 });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(fetches, 3, "the refresh is retried after the backoff, not a day later");
+});
+
+// Past the TTL the stale list is all there is, so re-attempting on every read only spends the
+// client's ~33s retry budget to hand back the same list.
+test("a provider that is down is not re-attempted on every read past the TTL", async () => {
+  let fetches = 0;
+  let fail = false;
+  const h = harness({
+    catalog: async () => {
+      fetches += 1;
+      if (fail) throw new Error("composio down");
+      return [{ slug: "gmail", name: "Gmail", logo: null, description: null, categories: [], noAuth: false }];
+    },
+  });
+
+  await h.integrations.catalog({ limit: 100, offset: 0 });
+  h.advance(25 * HOUR_MS);
+  fail = true;
+  const first = await h.integrations.catalog({ limit: 100, offset: 0 });
+  assert.equal(first.apps[0]?.slug, "gmail", "the last good list is still served");
+  assert.equal(fetches, 2, "one attempt past the TTL");
+
+  for (let i = 0; i < 3; i += 1) await h.integrations.catalog({ limit: 100, offset: 0 });
+  assert.equal(fetches, 2, "no further attempts inside the backoff");
+
+  h.advance(6 * 60 * 1000);
+  fail = false;
+  await h.integrations.catalog({ limit: 100, offset: 0 });
+  assert.equal(fetches, 3, "the next read past the backoff refreshes");
+});
+
+// A provider that answers with an empty list would otherwise blank every tile for a day.
+test("an empty refresh keeps the last good list", async () => {
+  let apps = [{ slug: "gmail", name: "Gmail", logo: null, description: null, categories: [], noAuth: false }];
+  const h = harness({ catalog: async () => apps });
+
+  await h.integrations.catalog({ limit: 100, offset: 0 });
+  h.advance(25 * HOUR_MS);
+  apps = [];
+  const served = await h.integrations.catalog({ limit: 100, offset: 0 });
+
+  assert.equal(served.apps[0]?.slug, "gmail", "an empty answer never replaces the catalog");
+  assert.equal(served.total, 1);
+});
+
+test("warmCatalog fills the cache before anyone asks, and survives a provider that is down", async () => {
+  let fetches = 0;
+  const h = harness({
+    catalog: async () => {
+      fetches += 1;
+      return [{ slug: "gmail", name: "Gmail", logo: null, description: null, categories: [], noAuth: false }];
+    },
+  });
+
+  h.integrations.warmCatalog();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(fetches, 1, "the warm-up fetched on its own, before any read");
+
+  await h.integrations.catalog({ limit: 100, offset: 0 });
+  assert.equal(fetches, 1, "the read was served from the warmed cache");
+
+  // A warm-up against a down provider must record its attempt like any other, or the backoff below
+  // has nothing to work from and the boot failure costs every later read a fresh ~33s wait.
+  let downFetches = 0;
+  let down = true;
+  const cold = harness({
+    catalog: async () => {
+      downFetches += 1;
+      if (down) throw new Error("composio down");
+      return [{ slug: "gmail", name: "Gmail", logo: null, description: null, categories: [], noAuth: false }];
+    },
+  });
+  cold.integrations.warmCatalog();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(downFetches, 1);
+
+  await assert.rejects(cold.integrations.catalog({ limit: 100, offset: 0 }), UpstreamUnavailableError);
+  assert.equal(downFetches, 1, "the failed warm-up backs the next read off instead of re-attempting");
+
+  cold.advance(6 * 60 * 1000);
+  down = false;
+  const recovered = await cold.integrations.catalog({ limit: 100, offset: 0 });
+  assert.equal(recovered.apps[0]?.slug, "gmail", "the catalog fills once the provider is back");
+  assert.equal(downFetches, 2);
+});
+
+// The empty-list guard has to hold at boot too: warmCatalog makes the very first fetch the one with
+// no earlier list behind it, and caching [] there would blank every tile for a day.
+test("an empty first answer is not cached as a catalog", async () => {
+  let fetches = 0;
+  let apps: { slug: string; name: string; logo: null; description: null; categories: []; noAuth: boolean }[] = [];
+  const h = harness({
+    catalog: async () => {
+      fetches += 1;
+      return apps;
+    },
+  });
+
+  h.integrations.warmCatalog();
+  await new Promise((resolve) => setImmediate(resolve));
+  await assert.rejects(h.integrations.catalog({ limit: 100, offset: 0 }), UpstreamUnavailableError);
+  assert.equal(fetches, 1, "an empty answer is a failed attempt, so the backoff governs the retry");
+
+  h.advance(6 * 60 * 1000);
+  apps = [{ slug: "gmail", name: "Gmail", logo: null, description: null, categories: [], noAuth: false }];
+  const filled = await h.integrations.catalog({ limit: 100, offset: 0 });
+  assert.equal(filled.apps[0]?.slug, "gmail", "the retry comes minutes later, not a day later");
+  assert.equal(fetches, 2);
+});
+
+// Sequential cold reads against a dead provider each pay the client's full ~33s retry budget unless
+// the attempt is remembered.
+test("a cold catalog fails fast while the provider stays down", async () => {
+  let fetches = 0;
+  const h = harness({
+    catalog: async () => {
+      fetches += 1;
+      throw new Error("composio down");
+    },
+  });
+
+  await assert.rejects(h.integrations.catalog({ limit: 100, offset: 0 }), UpstreamUnavailableError);
+  for (let i = 0; i < 3; i += 1) {
+    await assert.rejects(h.integrations.catalog({ limit: 100, offset: 0 }), UpstreamUnavailableError);
+  }
+  assert.equal(fetches, 1, "the provider is asked once per backoff, not once per read");
+
+  h.advance(6 * 60 * 1000);
+  await assert.rejects(h.integrations.catalog({ limit: 100, offset: 0 }), UpstreamUnavailableError);
+  assert.equal(fetches, 2, "and is tried again once the backoff has passed");
 });

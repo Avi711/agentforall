@@ -226,6 +226,8 @@ async function main(): Promise<void> {
       ? new IntegrationsManager(manager, repo, integrationSessions, integrationProvider, eventLog, config, log)
       : null;
   log.info({ provider: integrationProvider?.name ?? null }, "integrations provider");
+  // Filling the catalog costs ~9s against Composio; paid at boot so a page load does not.
+  integrations?.warmCatalog();
   const backupTransferTokens = new BackupTransferTokenService(
     config.serviceTokens,
   );

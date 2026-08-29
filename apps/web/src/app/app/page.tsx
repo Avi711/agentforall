@@ -12,8 +12,7 @@ import { formatCredits } from "@/lib/billing/format";
 import { TRIAL_CREDITS, TRIAL_DAYS } from "@/lib/billing/pricing";
 import { toBillingUser } from "@/lib/billing/user";
 import { BotCardSkeleton } from "./Skeleton";
-import { getIntegrationsService } from "@/lib/integrations";
-import type { ShowcaseApp } from "./BotCard";
+import { SHOWCASE_APPS } from "@/lib/integrations/catalog.he";
 
 export const metadata: Metadata = {
   title: "הבית שלי — Agent For All",
@@ -49,13 +48,12 @@ export default async function AppHome() {
 
 // Streamed so the greeting paints before the orchestrator and billing round-trips finish.
 async function HomeCard({ user }: { user: AuthenticatedUser }) {
-  const [bot, billing, apps] = await Promise.all([
+  const [bot, billing] = await Promise.all([
     botService.findActiveBot(user.id),
     getBillingService().refreshStatus(toBillingUser(user)),
-    showcaseApps(user.id),
   ]);
 
-  if (bot) return <BotCard bot={toBotSnapshot(bot)} credits={billing.credits} apps={apps} />;
+  if (bot) return <BotCard bot={toBotSnapshot(bot)} credits={billing.credits} apps={SHOWCASE_APPS} />;
   if (!billing.entitled) return <SubscribeCard status={billing} />;
   return (
     <>
@@ -63,18 +61,6 @@ async function HomeCard({ user }: { user: AuthenticatedUser }) {
       <CreateBotForm />
     </>
   );
-}
-
-// Decoration only: the card falls back to plain text when integrations are off or the call fails.
-async function showcaseApps(userId: string): Promise<ShowcaseApp[]> {
-  try {
-    const apps = await getIntegrationsService().showcase(userId);
-    return apps.flatMap((app) =>
-      app.logo === null ? [] : [{ slug: app.slug, name: app.name, logo: app.logo }],
-    );
-  } catch {
-    return [];
-  }
 }
 
 function TrialNotice() {

@@ -31,7 +31,22 @@ export const FEATURED_APPS: readonly FeaturedApp[] = [
 ];
 
 // Shown as logos on the dashboard card: visually distinct, and recognised without reading.
-export const SHOWCASE_SLUGS: readonly string[] = ["gmail", "googlecalendar", "googledrive", "notion", "monday", "wix"];
+// The dashboard's logo strip is decoration with a fixed cast, so it ships as local assets: asking
+// the orchestrator for six logos put Composio's catalog refill (~9s cold) on the dashboard's path.
+export interface ShowcaseApp {
+  slug: string;
+  name: string;
+  logo: string;
+}
+
+export const SHOWCASE_APPS: readonly ShowcaseApp[] = [
+  { slug: "gmail", name: "Gmail", logo: "/apps/gmail.webp" },
+  { slug: "googlecalendar", name: "יומן Google", logo: "/apps/googlecalendar.webp" },
+  { slug: "googledrive", name: "Google Drive", logo: "/apps/googledrive.webp" },
+  { slug: "notion", name: "Notion", logo: "/apps/notion.webp" },
+  { slug: "monday", name: "monday.com", logo: "/apps/monday.webp" },
+  { slug: "wix", name: "Wix", logo: "/apps/wix.webp" },
+];
 
 export const FEATURED_SLUGS: readonly string[] = FEATURED_APPS.map((app) => app.slug);
 

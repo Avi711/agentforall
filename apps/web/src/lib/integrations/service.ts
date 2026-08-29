@@ -1,6 +1,6 @@
 import { OrchestratorError } from "@/lib/orchestrator/client";
 import type { CatalogApp, CatalogPage, CatalogQuery, ConnectLink, IntegrationConnection } from "@/lib/orchestrator/types";
-import { FEATURED_SLUGS, SHOWCASE_SLUGS } from "./catalog.he";
+import { FEATURED_SLUGS } from "./catalog.he";
 import { CONNECTIONS_PATH } from "./paths";
 import { CATALOG_SEARCH_LIMIT, CATALOG_SLUGS_LIMIT, type CatalogSearch } from "./schemas";
 
@@ -43,15 +43,6 @@ export class IntegrationsService {
   // Search and browse are the same paged query — an empty `q` is the whole catalog.
   search(userId: string, input: CatalogSearch): Promise<CatalogPage> {
     return this.port.listIntegrationCatalog(userId, input);
-  }
-
-  // A few real logos for the dashboard card, so "חיבורים" reads as apps rather than as settings.
-  async showcase(userId: string): Promise<CatalogApp[]> {
-    const page = await this.port.listIntegrationCatalog(userId, {
-      slugs: [...SHOWCASE_SLUGS],
-      limit: SHOWCASE_SLUGS.length,
-    });
-    return page.apps;
   }
 
   // Only what the page renders; the full catalog stays in the orchestrator and is searched there.

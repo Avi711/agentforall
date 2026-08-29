@@ -177,13 +177,26 @@ test("DELETE and Last-Event-ID cross the relay; a 3xx from upstream is not passe
   assert.equal(redirected.status, 502);
 });
 
+// Fastify answers 413 and closes the connection while the client is still uploading, so undici may
+// see the reset before it reads the response. Either way the body was refused, which is the point;
+// asserting only on the status made this test flaky.
 test("bodies above the relay limit are refused", async () => {
-  const res = await fetch(`${relayBase}/${LIVE}`, {
-    method: "POST",
-    headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" },
-    body: "x".repeat(1024 * 1024 + 1),
-  });
-  assert.equal(res.status, 413);
+  const oversized = "x".repeat(1024 * 1024 + 1);
+  const seenBefore = upstreamSeen.length;
+  let status: number | null = null;
+  try {
+    const res = await fetch(`${relayBase}/${LIVE}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" },
+      body: oversized,
+    });
+    status = res.status;
+  } catch (err) {
+    assert.match(String(err), /fetch failed/, "the only tolerated failure is the connection reset");
+  }
+
+  assert.ok(status === 413 || status === null, `expected a refusal, got ${String(status)}`);
+  assert.equal(upstreamSeen.length, seenBefore, "an oversized body never reaches upstream");
 });
 
 async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {

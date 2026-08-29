@@ -13,16 +13,11 @@ import { OwnerIdentityDialog, IDENTITY_HINT } from "./OwnerIdentityDialog";
 import { InfoHint } from "./InfoHint";
 import { CreditsSection } from "./CreditsSection";
 import { ROW_ACTION_CLASS } from "./action-buttons";
+import type { ShowcaseApp } from "@/lib/integrations/catalog.he";
 import { WhatsappNumberConfirmDialog } from "./WhatsappNumberDialog";
 import type { CreditSummary } from "@/lib/billing/credits/service";
 
 type Channel = "whatsapp" | "telegram";
-
-export interface ShowcaseApp {
-  slug: string;
-  name: string;
-  logo: string;
-}
 
 export function BotCard({
   bot: initialBot,
@@ -31,7 +26,7 @@ export function BotCard({
 }: {
   bot: BotSnapshot;
   credits: CreditSummary;
-  apps: ShowcaseApp[];
+  apps: readonly ShowcaseApp[];
 }) {
   const { refreshing, refresh } = useRefresh();
   const bot = useBotStatus(initialBot);
@@ -684,7 +679,7 @@ function whatsappRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
   };
 }
 
-function IntegrationsSection({ apps }: { apps: ShowcaseApp[] }) {
+function IntegrationsSection({ apps }: { apps: readonly ShowcaseApp[] }) {
   const titleId = useId();
   return (
     <section className="mb-6 sm:mb-7" aria-labelledby={titleId}>
@@ -708,35 +703,33 @@ function IntegrationsSection({ apps }: { apps: ShowcaseApp[] }) {
 }
 
 // The sentence carries the why; the logos carry the which, so neither has to list app names.
-function IntegrationsDetail({ apps }: { apps: ShowcaseApp[] }) {
+function IntegrationsDetail({ apps }: { apps: readonly ShowcaseApp[] }) {
   return (
     <div className="mt-1">
       <p className="text-sm text-espresso-light leading-relaxed">
         כדי שהסוכן יקרא ויפעל בשמכם.
       </p>
-      {apps.length > 0 ? (
-        // Each mark tucks under the one before it, so the stack reads right-to-left like the text.
-        <ul className="mt-2 flex items-center">
-          {apps.map((app, index) => (
-            <li
-              key={app.slug}
-              className={`relative flex ${index === 0 ? "" : "-ms-1.5"}`}
-              style={{ zIndex: apps.length - index }}
-            >
-              <span className="flex w-7 h-7 items-center justify-center rounded-full bg-white ring-1 ring-sand-light">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={app.logo} alt={app.name} className="w-[18px] h-[18px] object-contain" />
-              </span>
-            </li>
-          ))}
-          <li className="relative flex -ms-1.5" title="ועוד אלפי אפליקציות">
-            <span className="flex w-7 h-7 items-center justify-center rounded-full bg-cream-dark ring-1 ring-sand-light text-[11px] font-medium text-espresso-light">
-              +
+      {/* Each mark tucks under the one before it, so the stack reads right-to-left like the text. */}
+      <ul className="mt-2 flex items-center">
+        {apps.map((app, index) => (
+          <li
+            key={app.slug}
+            className={`relative flex ${index === 0 ? "" : "-ms-1.5"}`}
+            style={{ zIndex: apps.length - index }}
+          >
+            <span className="flex w-7 h-7 items-center justify-center rounded-full bg-white ring-1 ring-sand-light">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={app.logo} alt={app.name} className="w-[18px] h-[18px] object-contain" />
             </span>
-            <span className="sr-only">ועוד אלפי אפליקציות</span>
           </li>
-        </ul>
-      ) : null}
+        ))}
+        <li className="relative flex -ms-1.5" title="ועוד אלפי אפליקציות">
+          <span className="flex w-7 h-7 items-center justify-center rounded-full bg-cream-dark ring-1 ring-sand-light text-[11px] font-medium text-espresso-light">
+            +
+          </span>
+          <span className="sr-only">ועוד אלפי אפליקציות</span>
+        </li>
+      </ul>
     </div>
   );
 }
