@@ -23,6 +23,15 @@ test("the plugin loads on startup, since a provider registered later is never co
   assert.equal(manifest.activation.onStartup, true);
 });
 
+// OpenClaw resolves provider auth before it calls transcribeAudio and answers ProviderAuthError
+// without this declaration — the plugin is then never reached at all. Built-in audio providers
+// (deepgram, elevenlabs) declare theirs the same way.
+test("the manifest declares where the provider's key comes from", () => {
+  assert.deepEqual(manifest.setup.providers, [
+    { id: PROVIDER_ID, envVars: ["AGENTFORALL_MEDIA_API_KEY"] },
+  ]);
+});
+
 // A module missing from `files` is absent only inside the container, where nothing would catch it.
 test("every module the plugin needs at runtime is published", () => {
   const shipped = readdirSync(fileURLToPath(new URL(".", import.meta.url))).filter(

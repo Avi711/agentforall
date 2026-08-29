@@ -3,6 +3,16 @@
   "activation": {
     "onStartup": true
   },
+  "setup": {
+    "providers": [
+      {
+        "id": "agentforall-media",
+        "envVars": [
+          "AGENTFORALL_MEDIA_API_KEY"
+        ]
+      }
+    ]
+  },
   "contracts": {
     "mediaUnderstandingProviders": [
       "agentforall-media"
