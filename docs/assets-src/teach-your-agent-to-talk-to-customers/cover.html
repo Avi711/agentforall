@@ -1,0 +1,48 @@
+<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><style>
+* { margin:0; padding:0; box-sizing:border-box; font-family:"Segoe UI","Heebo",system-ui,sans-serif; }
+html, body { overflow:hidden; }
+.stage { position:relative; width:1600px; height:900px; background:#FBF8F3; overflow:hidden; }
+.blob { position:absolute; border-radius:55% 45% 60% 50%/50% 60% 45% 55%; }
+.b1 { width:520px; height:420px; background:#C7522A; top:-160px; inset-inline-end:-140px; }
+.b2 { width:560px; height:440px; background:#8FAE94; bottom:-200px; inset-inline-start:-160px; }
+.b3 { width:200px; height:170px; background:#E8DCC8; bottom:60px; inset-inline-end:520px; opacity:.9; }
+.phone { position:absolute; top:70px; inset-inline-end:300px; width:380px; height:760px; background:#f6f4ef; border:12px solid #2C1810; border-radius:54px; overflow:hidden; box-shadow:0 40px 80px -40px rgba(44,24,16,.45); }
+.wa { background:#075E54; color:#fff; padding:26px 20px 14px; display:flex; align-items:center; gap:12px; }
+.wa .av { width:40px; height:40px; border-radius:50%; background:#25D366; }
+.wa b { font-size:17px; display:block; }
+.wa small { font-size:12px; opacity:.8; }
+.chat { padding:18px 14px; display:flex; flex-direction:column; gap:12px; background:#efe9dd; height:100%; }
+.m { max-width:82%; padding:10px 14px; border-radius:16px; font-size:16px; line-height:1.45; color:#222; box-shadow:0 1px 2px rgba(0,0,0,.08); }
+.in { background:#fff; align-self:flex-start; border-start-start-radius:4px; }
+.out { background:#DCF8C6; align-self:flex-end; border-start-end-radius:4px; }
+.note { position:absolute; top:150px; inset-inline-start:250px; width:520px; background:#fff; border-radius:22px; padding:34px 36px; box-shadow:0 30px 70px -40px rgba(44,24,16,.35); transform:rotate(-3deg); border:1px solid #E8DCC8; }
+.note .tag { display:inline-block; background:#FFF0E9; color:#C7522A; font-weight:700; font-size:16px; border-radius:999px; padding:6px 14px; }
+.note h1 { font-size:30px; color:#2C1810; margin-top:14px; line-height:1.25; }
+.note ul { margin-top:18px; list-style:none; display:flex; flex-direction:column; gap:10px; }
+.note li { font-size:18px; color:#5C4033; display:flex; gap:10px; align-items:flex-start; }
+.note li:before { content:""; width:10px; height:10px; border-radius:50%; background:#C7522A; margin-top:8px; flex:none; }
+.pin { position:absolute; top:-16px; inset-inline-start:50%; width:30px; height:30px; border-radius:50%; background:#8FAE94; box-shadow:0 4px 10px rgba(0,0,0,.15); }
+</style></head><body><div class="stage">
+<div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+<div class="phone">
+  <div class="wa"><span class="av"></span><div><b>סטודיו נועה</b><small>מקוון</small></div></div>
+  <div class="chat">
+    <div class="m in">היי, יש שיעור ערב ביום חמישי?</div>
+    <div class="m out">כן, ב-19:00 וב-20:15. שיעור ניסיון ראשון חינם. לשריין לך מקום?</div>
+    <div class="m in">כן ב-19:00. וכמה עולה כרטיסייה?</div>
+    <div class="m out">שריינתי לך ל-19:00. כרטיסייה של 10 שיעורים 550 ₪. נתראה בחמישי</div>
+    <div class="m in">אפשר הנחה?</div>
+    <div class="m out">על הנחות נועה מחליטה. העברתי לה, היא תחזור אליך היום.</div>
+  </div>
+</div>
+<div class="note"><span class="pin"></span>
+  <span class="tag">הוראות לסוכן</span>
+  <h1>מעכשיו אתה עונה ללקוחות של סטודיו נועה</h1>
+  <ul>
+    <li>שעות: א׳–ה׳ 7:00–21:00, ו׳ עד 13:00</li>
+    <li>שיעור 70 ₪ · כרטיסייה 550 ₪ · ניסיון חינם</li>
+    <li>קצר, חם, בלי אימוג׳י</li>
+    <li>אל תבטיח הנחות — תגיד שנועה תחזור</li>
+  </ul>
+</div>
+</div></body></html>

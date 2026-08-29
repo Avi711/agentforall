@@ -2,6 +2,7 @@ import { Navbar } from "@/components/Navbar";
 import { Hero } from "@/components/Hero";
 import { Features } from "@/components/Features";
 import { HowItWorks } from "@/components/HowItWorks";
+import { WhatsappGuide } from "@/components/WhatsappGuide";
 import { Testimonials } from "@/components/Testimonials";
 import { Comparison } from "@/components/Comparison";
 import { Pricing } from "@/components/Pricing";
@@ -35,6 +36,7 @@ export default function Home() {
         <Disclaimer />
         <Features />
         <HowItWorks />
+        <WhatsappGuide />
         <Testimonials />
         <Comparison />
         <Pricing />
