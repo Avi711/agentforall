@@ -19,6 +19,7 @@ import {
 } from "./constants.js";
 import type {
   ChannelsConfig,
+  MediaModelEntry,
   OpenclawConfig,
   SessionConfig,
   WhatsAppChannelConfig,
@@ -32,7 +33,11 @@ const PROVIDER_ENV_KEY: Record<LlmProvider, string> = {
   litellm: "LITELLM_API_KEY",
 };
 
+const CREDIT_PLUGIN_ID = "agentforall-credit";
 const CREDIT_HOOK_TIMEOUT_MS = 3000;
+// OpenClaw transcribes only with a plugin-backed provider, so a bot behind our gateway needs this
+// one; it registers under the same id and calls the model the bot already replies with.
+const MEDIA_PLUGIN_ID = "agentforall-media";
 
 const OPENCLAW_PROVIDER_PREFIX: Record<LlmProvider, string> = {
   anthropic: "anthropic",
@@ -207,6 +212,11 @@ function generateOpenclawEnv(
     addEnvLine(lines, "AGENTFORALL_CREDIT_BASE_URL", config.provider.baseUrl);
     addEnvLine(lines, "AGENTFORALL_CREDIT_API_KEY", config.provider.apiKey);
   }
+  // The media plugin serves every gateway provider, not only LiteLLM budgets.
+  if (isGatewayProvider(config.provider)) {
+    addEnvLine(lines, "AGENTFORALL_MEDIA_BASE_URL", config.provider.baseUrl);
+    addEnvLine(lines, "AGENTFORALL_MEDIA_API_KEY", config.provider.apiKey);
+  }
 
   for (const ch of config.channels) {
     switch (ch.type) {
@@ -239,10 +249,11 @@ function generateOpenclawEnv(
 function buildPlugins(channels: InstanceConfig["channels"]): OpenclawConfig["plugins"] {
   return {
     entries: {
-      "agentforall-credit": {
+      [CREDIT_PLUGIN_ID]: {
         enabled: true,
         hooks: { allowConversationAccess: true, timeoutMs: CREDIT_HOOK_TIMEOUT_MS },
       },
+      [MEDIA_PLUGIN_ID]: { enabled: true },
       ...(channels.some((ch) => ch.type === "whatsapp") ? { whatsapp: { enabled: true } } : {}),
     },
   };
@@ -421,10 +432,12 @@ function buildToolsConfig(provider: ProviderConfig): OpenclawConfig["tools"] {
       enabled: true,
       maxBytes: 20 * 1024 * 1024,
       timeoutSeconds: 90,
-      models: [mediaModel(providerId, provider.model, "audio")],
+      models: [audioMediaModel(provider, providerId)],
     };
   }
-  if (media.has("video")) {
+  // Video would need the same plugin treatment as audio; behind a gateway OpenClaw has no
+  // video-capable provider to call, so the block is left out rather than promising a capability.
+  if (media.has("video") && !isGatewayProvider(provider)) {
     mediaConfig.video = {
       enabled: true,
       maxBytes: 50 * 1024 * 1024,
@@ -436,6 +449,18 @@ function buildToolsConfig(provider: ProviderConfig): OpenclawConfig["tools"] {
   return mediaConfig.image || mediaConfig.audio || mediaConfig.video
     ? { media: mediaConfig }
     : undefined;
+}
+
+// A direct provider (anthropic, openai, google…) is one OpenClaw transcribes with itself.
+function audioMediaModel(provider: ProviderConfig, providerId: string): MediaModelEntry {
+  if (!isGatewayProvider(provider)) return mediaModel(providerId, provider.model, "audio");
+  return { ...mediaModel(MEDIA_PLUGIN_ID, provider.model, "audio"), baseUrl: provider.baseUrl };
+}
+
+// The same rule buildModelsConfig and providerEnvKey use: a baseUrl makes it a config provider,
+// and OpenClaw registers those for image understanding alone.
+function isGatewayProvider(provider: ProviderConfig): provider is ProviderConfig & { baseUrl: string } {
+  return Boolean(provider.baseUrl);
 }
 
 function mediaModel(
@@ -513,7 +538,8 @@ const OWNED_PATHS: readonly (readonly string[])[] = [
   ["session"],
   ["commands", "ownerAllowFrom"],
   ["plugins", "entries", "whatsapp"],
-  ["plugins", "entries", "agentforall-credit"],
+  ["plugins", "entries", CREDIT_PLUGIN_ID],
+  ["plugins", "entries", MEDIA_PLUGIN_ID],
   ["mcp", "servers", MCP_RELAY_SERVER_NAME],
 ];
 

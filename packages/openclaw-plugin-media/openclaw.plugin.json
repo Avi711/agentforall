@@ -1,0 +1,23 @@
+{
+  "id": "agentforall-media",
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "mediaUnderstandingProviders": [
+      "agentforall-media"
+    ]
+  },
+  "mediaUnderstandingProviderMetadata": {
+    "agentforall-media": {
+      "capabilities": [
+        "audio"
+      ]
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

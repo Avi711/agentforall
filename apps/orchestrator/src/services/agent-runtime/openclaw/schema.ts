@@ -105,6 +105,7 @@ export interface MediaToolConfig {
 export interface MediaModelEntry {
   provider: string;
   model: string;
+  baseUrl?: string;
   capabilities?: ("image" | "audio" | "video")[];
   timeoutSeconds?: number;
 }

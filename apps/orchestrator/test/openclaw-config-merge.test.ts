@@ -9,6 +9,7 @@ import type { ChannelConfig } from "../src/domain/types.js";
 
 interface Patched {
   channels: Record<string, Record<string, unknown> | undefined>;
+  tools?: { media?: Record<string, unknown> };
   plugins?: { allow?: string[]; entries?: Record<string, unknown> };
   web?: unknown;
   browser?: unknown;
@@ -192,7 +193,28 @@ test("the plugin a channel needs is enabled without dropping the runtime's other
       enabled: true,
       hooks: { allowConversationAccess: true, timeoutMs: 3000 },
     },
+    "agentforall-media": { enabled: true },
   });
+});
+
+// Voice notes reach the model only through this plugin: OpenClaw registers a config provider for
+// image alone, so without it transcription falls back to a local whisper the image does not carry.
+test("the media plugin ships on every bot", () => {
+  const patched = patch({}, [{ type: "telegram", botToken: "t" }]);
+
+  assert.deepEqual(patched.plugins?.entries?.["agentforall-media"], { enabled: true });
+});
+
+// `tools` is ours to render, so a block we stopped rendering has to disappear from a live config —
+// a stale video entry would keep promising a capability the runtime cannot serve.
+test("a media block the orchestrator no longer renders is dropped from the live config", () => {
+  const existing = {
+    tools: { media: { video: { enabled: true, models: [{ provider: "litellm", model: "old" }] } } },
+  };
+  const patched = patchGateway(existing);
+
+  assert.equal(patched.tools?.media?.video, undefined);
+  assert.ok(patched.tools?.media?.audio, "audio is still rendered");
 });
 
 // Without allowConversationAccess the plugin never receives before_agent_reply, so it would
@@ -264,6 +286,20 @@ function agentModel(pristine: Record<string, unknown>): unknown {
 }
 
 const RELAY = { relayToken: "relay-secret", relayUrl: "http://orchestrator:3000/api/v1/mcp/abc" };
+
+// The default fixture is a direct provider; the media plugin only applies behind a gateway.
+function patchGateway(existing: unknown): Patched {
+  const base = configWith([{ type: "telegram", botToken: "t" }]);
+  const files = generateRuntimePatchedOpenclawFiles(
+    JSON.stringify(existing),
+    {
+      ...base,
+      provider: { ...base.provider, baseUrl: "https://gateway.example/v1", media: ["image", "audio", "video"] },
+    },
+    "token",
+  );
+  return JSON.parse(files.configJson) as Patched;
+}
 
 function patchWithIntegrations(existing: unknown, integrations: typeof RELAY | undefined): Patched {
   const config = { ...configWith([{ type: "whatsapp" }]), ...(integrations ? { integrations } : {}) };

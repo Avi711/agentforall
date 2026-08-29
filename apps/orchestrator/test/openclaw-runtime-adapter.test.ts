@@ -31,7 +31,9 @@ test("generated config supports LiteLLM media provider", () => {
     tools?: {
       media?: {
         image?: { models: { provider: string; model: string; capabilities?: string[] }[] };
-        audio?: { models: { provider: string; model: string; capabilities?: string[] }[] };
+        audio?: {
+          models: { provider: string; model: string; baseUrl?: string; capabilities?: string[] }[];
+        };
         video?: { models: { provider: string; model: string; capabilities?: string[] }[] };
         pdf?: unknown;
       };
@@ -68,16 +70,15 @@ test("generated config supports LiteLLM media provider", () => {
     model: "gemini-agentforall",
     capabilities: ["image"],
   });
+  // Audio goes through our plugin provider: OpenClaw only lets plugin-backed providers transcribe.
   assert.deepEqual(config.tools?.media?.audio?.models[0], {
-    provider: "litellm",
+    provider: "agentforall-media",
     model: "gemini-agentforall",
     capabilities: ["audio"],
+    baseUrl: "https://litellm-gateway.example/v1",
   });
-  assert.deepEqual(config.tools?.media?.video?.models[0], {
-    provider: "litellm",
-    model: "gemini-agentforall",
-    capabilities: ["video"],
-  });
+  // No video block on a gateway provider: OpenClaw has nothing that would answer it.
+  assert.equal(config.tools?.media?.video, undefined);
   assert.equal(config.tools?.media?.pdf, undefined);
   assert.deepEqual(config.web?.whatsapp, {
     keepAliveIntervalMs: 15000,
@@ -85,6 +86,95 @@ test("generated config supports LiteLLM media provider", () => {
     defaultQueryTimeoutMs: 60000,
   });
   assert.match(files.dotEnv, /^LITELLM_API_KEY=litellm-key$/m);
+  // The plugin reads its own variables: the model client's key name follows the provider id.
+  assert.match(files.dotEnv, /^AGENTFORALL_MEDIA_BASE_URL=https:\/\/litellm-gateway\.example\/v1$/m);
+  assert.match(files.dotEnv, /^AGENTFORALL_MEDIA_API_KEY=litellm-key$/m);
+});
+
+// Any provider with a baseUrl is a config provider, which OpenClaw registers for image only —
+// LiteLLM is just the one we run. A gateway under another name must get the same treatment.
+test("a gateway provider under any name transcribes through the plugin", () => {
+  const adapter = new OpenClawRuntimeAdapter({} as ContainerRuntime, "openclaw-image");
+  const files = adapter.generateConfig(
+    {
+      ...liteLlmConfig,
+      provider: {
+        name: "openai",
+        id: "proxy",
+        apiKey: "proxy-key",
+        model: "gpt-5.5",
+        baseUrl: "https://proxy.example/v1",
+        media: ["image", "audio", "video"],
+      },
+    },
+    "gateway-token",
+  );
+  const config = JSON.parse(files.configJson) as {
+    tools?: {
+      media?: {
+        image?: { models: { provider: string }[] };
+        audio?: { models: { provider: string; model: string; baseUrl?: string }[] };
+        video?: unknown;
+      };
+    };
+  };
+
+  assert.equal(config.tools?.media?.image?.models[0]?.provider, "proxy");
+  assert.deepEqual(config.tools?.media?.audio?.models[0], {
+    provider: "agentforall-media",
+    model: "gpt-5.5",
+    capabilities: ["audio"],
+    baseUrl: "https://proxy.example/v1",
+  });
+  assert.equal(config.tools?.media?.video, undefined);
+  assert.match(files.dotEnv, /^AGENTFORALL_MEDIA_API_KEY=proxy-key$/m);
+  // The credit plugin reads LiteLLM's own /key/info, so it must not follow the gateway rule.
+  assert.equal(files.dotEnv.includes("AGENTFORALL_CREDIT_"), false);
+});
+
+// The plugin exists for gateway providers. A bot on a direct provider must keep the provider
+// OpenClaw transcribes with itself, or it would call a plugin that has no key for that vendor.
+test("a bot on a direct provider keeps OpenClaw's own audio provider", () => {
+  const adapter = new OpenClawRuntimeAdapter({} as ContainerRuntime, "openclaw-image");
+  const files = adapter.generateConfig(
+    {
+      ...liteLlmConfig,
+      provider: {
+        name: "anthropic",
+        apiKey: "anthropic-key",
+        model: "claude-sonnet-5",
+        media: ["image", "audio", "video"],
+      },
+    },
+    "gateway-token",
+  );
+  const config = JSON.parse(files.configJson) as {
+    tools?: {
+      media?: {
+        audio?: { models: { provider: string; model: string; baseUrl?: string }[] };
+        video?: { models: { provider: string }[] };
+      };
+    };
+  };
+
+  assert.deepEqual(config.tools?.media?.audio?.models[0], {
+    provider: "anthropic",
+    model: "claude-sonnet-5",
+    capabilities: ["audio"],
+  });
+  assert.equal(config.tools?.media?.video?.models[0]?.provider, "anthropic");
+  assert.equal(files.dotEnv.includes("AGENTFORALL_MEDIA_"), false);
+});
+
+test("a bot whose plan carries no audio gets no audio block", () => {
+  const adapter = new OpenClawRuntimeAdapter({} as ContainerRuntime, "openclaw-image");
+  const files = adapter.generateConfig(
+    { ...liteLlmConfig, provider: { ...liteLlmConfig.provider, media: ["image"] } },
+    "gateway-token",
+  );
+  const config = JSON.parse(files.configJson) as { tools?: { media?: { audio?: unknown } } };
+
+  assert.equal(config.tools?.media?.audio, undefined);
 });
 
 interface SentConfig {
