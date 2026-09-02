@@ -102,10 +102,12 @@ while IFS=$'\t' read -r ID USER_ID CONTAINER STATUS PROVIDER BASE_URL NAME_JSON;
   (
     set -euo pipefail
     BEFORE="$(started_at "$CONTAINER")"
-    DEST="$PACK_DIR/$PLUGIN-src-$(date +%s)"
-    sudo docker exec --user root "$CONTAINER" sh -c "mkdir -p '$PACK_DIR' && chown node:node '$PACK_DIR'"
-    sudo docker cp "$STAGE/$PLUGIN" "$CONTAINER:$DEST"
-    sudo docker exec --user root "$CONTAINER" chown -R node:node "$DEST"
+    SRC_DIR="$PLUGIN-src-$(date +%s)"
+    DEST="$PACK_DIR/$SRC_DIR"
+    # CapDrop ALL leaves even root unable to write into the node-owned volume, so the files must
+    # arrive owned by node: a tar stream carries the uid, and -a makes docker cp keep it.
+    sudo docker exec "$CONTAINER" mkdir -p "$PACK_DIR"
+    sudo tar -C "$STAGE" --owner=1000 --group=1000 --transform "s,^$PLUGIN,$SRC_DIR," -cf - "$PLUGIN"       | sudo docker cp -a - "$CONTAINER:$PACK_DIR/"
     TARBALL="$(sudo docker exec "$CONTAINER" npm pack "$DEST" --pack-destination "$PACK_DIR" --silent | tail -1)"
     # --force overwrites the existing install in place (2026.8 keeps the entry's hooks; "plugins
     # update" does not work for npm-pack sources); --accept-capabilities is the non-interactive consent.
