@@ -48,12 +48,13 @@ for row in json.load(sys.stdin)["data"]:
     i = row["instance"]
     if i.get("runtimeKind") != "openclaw" or not i.get("containerId"):
         continue
+    has_wa = any(c.get("type") == "whatsapp" for c in (i["config"].get("channels") or []))
     print("\t".join([i["id"], i["userId"], i["containerId"], i["status"],
-                     json.dumps(i["config"]["displayName"])]))
+                     json.dumps(i["config"]["displayName"]), "1" if has_wa else "0"]))
 ')"
 
 ok=(); failed=(); skipped=()
-while IFS=$'\t' read -r ID USER_ID CONTAINER STATUS NAME_JSON; do
+while IFS=$'\t' read -r ID USER_ID CONTAINER STATUS NAME_JSON HAS_WA; do
   [ -n "$ID" ] || continue
   NAME="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]))' "$NAME_JSON")"
   CNAME="$(sudo docker inspect --format '{{.Name}}' "$CONTAINER" 2>/dev/null | sed 's#^/##')"
@@ -112,8 +113,9 @@ while IFS=$'\t' read -r ID USER_ID CONTAINER STATUS NAME_JSON; do
     sudo docker exec "$NEW" grep -q '"agentforall"' /home/node/.openclaw/openclaw.json \
       || { echo "  config has no MCP relay entry" >&2; exit 1; }
     # An entry is not a loaded plugin: one installed from a path that no longer exists stays in
-    # the config and silently fails to load. The boot line names what actually loaded.
-    for p in whatsapp agentforall-credit agentforall-media; do
+    # the config and silently fails to load. The boot line names what actually loaded; a channel
+    # plugin is loaded only when its channel is configured.
+    for p in $([ "$HAS_WA" = 1 ] && echo whatsapp) agentforall-credit agentforall-media; do
       sudo docker logs "$NEW" 2>&1 | grep "http server listening" | tail -1 | grep -qF -- "$p" \
         || { echo "  plugin $p did not load; run rollout-plugin.sh" >&2; exit 1; }
     done
