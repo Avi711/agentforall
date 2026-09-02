@@ -6,9 +6,9 @@
 
 ## OpenClaw 2026.8.2 — live since 2026-09-02 (branch `feat/openclaw-2026.8.2`, not yet merged or pushed)
 
-All 12 tenants run `openclaw-browser@sha256:f0e4aec97e55e0a3afd852ef72994cfe4ed3157ff4a90554de0a66b3940c31ca`
-(tag `2026.8.2`), orchestrator `orchestrator@sha256:48d28ab90515ac90f8e90ebf93b2ceba5db09a5d6d7bc85711e5f20158b2cb4e`
-(commit `8b8605e`); both pinned in `infra/variables.tf` and set by hand in the VM's `.env` /
+All 11 tenants (12 at rollout; the קוקי5 canary was deleted from the dashboard at 20:23 IL) run `openclaw-browser@sha256:f0e4aec97e55e0a3afd852ef72994cfe4ed3157ff4a90554de0a66b3940c31ca`
+(tag `2026.8.2`), orchestrator `orchestrator@sha256:a9d0150406b91ceae6fc8eab85e0dc2eed16c9f3bc8d5891ca4edf83d26c0123`
+(commit `ec85ddf`: connect no longer binds the relay lazily; the WhatsApp unlink is reported); both pinned in `infra/variables.tf` and set by hand in the VM's `.env` /
 `.env.runtime`. Full record, deviations and follow-ups: `docs/openclaw-2026.8.2-upgrade.md` §5, §7, §8.
 What changed operationally:
 - A container off the pinned image is rebuilt on its next start/restart/recreate (doctor + pinned
