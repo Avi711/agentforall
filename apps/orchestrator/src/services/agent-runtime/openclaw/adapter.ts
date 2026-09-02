@@ -101,7 +101,6 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       image: this.image,
       volumeName: this.stateVolumeName(instance.id),
       containerName: instance.containerName,
-      withWhatsapp: instance.config.channels.some((ch) => ch.type === "whatsapp"),
     });
   }
 

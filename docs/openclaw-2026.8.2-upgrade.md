@@ -120,7 +120,8 @@ the list below, all deliberate:
   config (patch when a file exists, pristine otherwise) and the AGENTS.md block every time, found or
   created, so a crash between create and write cannot leave a container booting on the bare volume.
   A backup restore lays the archive down, runs `prepareState`, then patches and seeds again.
-- `prepareState` (doctor, then `plugins update @openclaw/whatsapp` when the bot has WhatsApp) runs in a
+- `prepareState` (doctor, then a pinned `plugins install @openclaw/whatsapp@<core version> --force` for every
+  bot: the plugin sits in every volume, channel or not, and the 8.2 gateway skips a 7.1 copy) runs in a
   throwaway container via `ContainerRuntime.runOneOff` — hardened like a tenant container, always
   removed. Used by recreate, by start-on-old-image, and after a backup restore (the archive may predate
   the image).
@@ -151,9 +152,9 @@ the list below, all deliberate:
    by the archive as regenerable — fresh volumes get the plugins from the image seed, so nothing to do.
 5. New primitive `ContainerRuntime.runOneOff({ name, image, cmd, timeoutMs, memoryBytes, volumeMounts })`
    — a short-lived container on the tenant volume with an overridden command. Callers: pre-boot doctor,
-   `plugins update @openclaw/whatsapp`, restore activation.
+   the pinned WhatsApp plugin install, restore activation.
 6. `instance-manager.ts` `recreateLocked`: stop → remove → **runOneOff doctor** → runOneOff
-   `plugins update @openclaw/whatsapp` (when the channel exists) → create (not started) → patch existing
+   `plugins install @openclaw/whatsapp@<core> --force` (every bot) → create (not started) → patch existing
    config onto the volume file (no pristine `initialArchive` when a config exists) → inject creds → start →
    `waitForHealthy`. Guard in `applyConfig`: container image ≠ adapter image → `RuntimeImageMismatchError`
    (an 8.2-shaped config is rejected by a 7.1 gateway and vice versa).

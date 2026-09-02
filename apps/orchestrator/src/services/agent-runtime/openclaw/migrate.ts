@@ -4,7 +4,7 @@ import { buildOpenclawWorkspaceFileTar } from "./config.js";
 import { OPENCLAW_STATE_PARENT, OPENCLAW_STATE_ROOT, OPENCLAW_WORKSPACE_PATH } from "./constants.js";
 
 const DOCTOR_TIMEOUT_MS = 15 * 60 * 1000;
-const PLUGIN_UPDATE_TIMEOUT_MS = 5 * 60 * 1000;
+const PLUGIN_INSTALL_TIMEOUT_MS = 5 * 60 * 1000;
 const ONE_OFF_MEMORY_BYTES = 2 * 1024 * 1024 * 1024;
 const WHATSAPP_PLUGIN = "@openclaw/whatsapp";
 const AGENTS_FILE_NAME = "AGENTS.md";
@@ -26,19 +26,23 @@ export function buildDoctorCommand(): string[] {
   return ["openclaw", "doctor", "--fix", "--non-interactive"];
 }
 
-export function buildWhatsappPluginUpdateCommand(): string[] {
-  return ["openclaw", "plugins", "update", WHATSAPP_PLUGIN];
+// The plugin must match the core in the image, which reports its own version ("OpenClaw 2026.8.2 (sha)").
+export function buildWhatsappPluginInstallCommand(): string[] {
+  const script = [
+    "v=\"$(openclaw --version | awk '{ print $2 }')\"",
+    '[ -n "$v" ]',
+    `openclaw plugins install "${WHATSAPP_PLUGIN}@$v" --pin --accept-capabilities --force`,
+  ].join(" && ");
+  return ["sh", "-c", script];
 }
 
-// Doctor migrates stores and config offline; the WhatsApp plugin lives in the volume, so it is updated explicitly.
+// Doctor migrates stores and config offline; the WhatsApp plugin lives in every volume and is converged explicitly.
 export async function prepareOpenclawState(
   runtime: ContainerRuntime,
-  opts: { image: string; volumeName: string; containerName: string; withWhatsapp: boolean },
+  opts: { image: string; volumeName: string; containerName: string },
 ): Promise<void> {
   await runOffline(runtime, opts, "doctor", buildDoctorCommand(), DOCTOR_TIMEOUT_MS);
-  if (opts.withWhatsapp) {
-    await runOffline(runtime, opts, "whatsapp-plugin", buildWhatsappPluginUpdateCommand(), PLUGIN_UPDATE_TIMEOUT_MS);
-  }
+  await runOffline(runtime, opts, "whatsapp-plugin", buildWhatsappPluginInstallCommand(), PLUGIN_INSTALL_TIMEOUT_MS);
 }
 
 async function runOffline(

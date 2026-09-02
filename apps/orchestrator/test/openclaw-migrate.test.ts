@@ -81,9 +81,9 @@ function entriesOf(archive: Buffer): Promise<{ name: string; uid?: number; mode?
   });
 }
 
-// Doctor migrates the stores and config; the WhatsApp plugin lives in the volume and is only
-// moved to the image's version explicitly. Both run offline and fail closed.
-test("state preparation runs doctor, then the WhatsApp plugin update, on the bare volume", async () => {
+// Doctor migrates the stores and config; the WhatsApp plugin lives in every volume (with or without a
+// WhatsApp channel) and only an explicit install moves it to the image's version. Both run offline and fail closed.
+test("state preparation runs doctor, then the WhatsApp plugin install, on the bare volume", async () => {
   const runs: { name: string; cmd: string[]; volumes: string[] }[] = [];
   const runtime = {
     runOneOff: async (opts: { name: string; cmd: string[]; volumeMounts: { name: string }[] }) => {
@@ -96,12 +96,20 @@ test("state preparation runs doctor, then the WhatsApp plugin update, on the bar
     image: "img",
     volumeName: "oc-1-state",
     containerName: "openclaw-1",
-    withWhatsapp: true,
   });
 
   assert.deepEqual(runs, [
     { name: "openclaw-1-doctor", cmd: ["openclaw", "doctor", "--fix", "--non-interactive"], volumes: ["oc-1-state"] },
-    { name: "openclaw-1-whatsapp-plugin", cmd: ["openclaw", "plugins", "update", "@openclaw/whatsapp"], volumes: ["oc-1-state"] },
+    {
+      name: "openclaw-1-whatsapp-plugin",
+      cmd: [
+        "sh",
+        "-c",
+        "v=\"$(openclaw --version | awk '{ print $2 }')\" && [ -n \"$v\" ] && " +
+          'openclaw plugins install "@openclaw/whatsapp@$v" --pin --accept-capabilities --force',
+      ],
+      volumes: ["oc-1-state"],
+    },
   ]);
 });
 
@@ -111,7 +119,7 @@ test("a failed doctor run stops the preparation with its output", async () => {
   } as unknown as ContainerRuntime;
 
   await assert.rejects(
-    prepareOpenclawState(runtime, { image: "img", volumeName: "v", containerName: "c", withWhatsapp: false }),
+    prepareOpenclawState(runtime, { image: "img", volumeName: "v", containerName: "c" }),
     /doctor exited 1: Legacy session store requires migration/,
   );
 });
