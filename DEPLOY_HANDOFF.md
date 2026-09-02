@@ -6,8 +6,11 @@
 
 ## Pending: OpenClaw 2026.8.2 upgrade (branch `feat/openclaw-2026.8.2`, not deployed)
 
-Implemented and rehearsed locally 2026-09-02; plan, deviations and rollout procedure in
-`docs/openclaw-2026.8.2-upgrade.md` (§5 status, §6b rehearsal, §7 window). Must land as one window
+Committed 2026-09-02 (`724773e`, `a67713f`); images pushed and pinned in `infra/variables.tf`:
+`openclaw-browser@sha256:f0e4aec97e55e0a3afd852ef72994cfe4ed3157ff4a90554de0a66b3940c31ca` (tag `2026.8.2`,
+already pulled on the VM) and `orchestrator@sha256:e72e591d36339707c0007634544bf4d1ecfde7959a45d990a6ffefbc198ce0e8`.
+VM rehearsal on a clone of the 3.2 GB tenant volume: doctor 1m37s, plugin update 24s. Plan, deviations
+and rollout procedure in `docs/openclaw-2026.8.2-upgrade.md` (§5 status, §6b rehearsal, §7 window). Must land as one window
 before 2026-09-18: orchestrator deploy + `AGENT_RUNTIME_IMAGE` flip + `recreate-tenants.sh` for every
 live tenant, because a 2026.8-shaped config is refused by a 2026.7 gateway and the orchestrator now
 refuses config changes on a running container from another image (409 `RUNTIME_IMAGE_MISMATCH`).

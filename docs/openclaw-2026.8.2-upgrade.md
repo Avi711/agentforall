@@ -231,8 +231,9 @@ fetch `LITELLM_MASTER_KEY` / `COMPOSIO_API_KEY` (DEPLOY_HANDOFF), so a reboot wo
    --target /tmp/restored` → `ok: true`, layout `<root>/manifest.json` + `payload/posix/home/node/.openclaw/**`.
 10. Image: `/home/node/.cache` root-owned (fixed by chown); no ffmpeg; Chromium present.
 
-*Open*: nothing blocks implementation. Not rehearsed locally: a real multi-GB tenant volume's doctor run
-time (do it on the VM with a stopped snapshot of שרוליק before the window).
+*Open*: nothing. VM rehearsal 2026-09-02 on a live clone of the largest volume (3.2 GB, `oc-9901b13d`):
+doctor 1m37s, WhatsApp plugin update 24s, `plugins list` shows whatsapp 2026.8.2, config valid. The
+other ten volumes are 77–102 MB. The image is already pulled on the VM.
 
 ### 6b. Rehearsal on the built image (2026-09-02, `openclaw-browser:2026.8.2-dev` from the new Dockerfile)
 
@@ -279,7 +280,7 @@ its volume; the ops doctor check ignores the exit code and reads `severity`/`lev
 that tenant fails closed (shown as expired until the recreate) and a Telegram disconnect on it
 revokes the token before the 409; retrying after the recreate works.
 
-Not rehearsed: a real multi-GB tenant volume's doctor run time (VM, stopped snapshot of שרוליק).
+VM rehearsal on the 3.2 GB volume clone: doctor 1m37s + plugin update 24s (§5 *Open*).
 
 ## 7. Production rollout — one maintenance window, before 2026-09-18
 
@@ -291,9 +292,11 @@ Not rehearsed: a real multi-GB tenant volume's doctor run time (VM, stopped snap
    closed) → one-off WhatsApp plugin update → create → patch config (relay bound if missing) → start →
    healthy → AGENTS.md seed. Then `rollout-plugin.sh` for `agentforall-media` (the `req.signal` change)
    and `agentforall-credit` (metadata only; optional).
-   Prerequisites: build + push the image, put its GAR digest in `infra/variables.tf` and the VM's
-   `.env.runtime` `AGENT_RUNTIME_IMAGE`, deploy the orchestrator from this branch, re-apply
-   `infra/startup.sh` to the VM metadata.
+   Prerequisites (done 2026-09-02): image `openclaw-browser@sha256:f0e4aec9…` (Cloud Build, also tagged
+   `2026.8.2`, pulled on the VM) and orchestrator `orchestrator@sha256:e72e591d…` (commit `724773e`) pushed
+   and pinned in `infra/variables.tf`. In the window: set both in the VM's `.env.runtime` by hand and
+   force-recreate the orchestrator. Do not `terraform apply` the VM: the startup-script drift still forces
+   a replace (DEPLOY_HANDOFF open issue 3; the resource is now destroy-guarded).
 3. Verify per tenant: healthy; `/startupz` 200; boot line lists `whatsapp`, `agentforall-credit`,
    `agentforall-media`; `plugins list --json` shows `whatsapp 2026.8.2`; `openclaw doctor --json` `ok: true`;
    `openclaw.json` keeps both plugin entries and the MCP relay (now on every bot) and the identity name;
