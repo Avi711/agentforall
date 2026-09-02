@@ -335,11 +335,11 @@ Rollback: restore the pre-migration volume tarball into a fresh volume, recreate
   `USER.md`, `BOOTSTRAP.md`): only `onboard`/`setup` seed them and both need a TTY, so a fresh bot's
   AGENTS.md is our block alone. Product decision: ship our own templates, or leave the agent to its
   memory files.
-- Remove the `connect` bind-and-restart fallback once every bot has been recreated on 2026.8.2 (done
-  2026-09-02, so the fallback can go).
-- From the post-rollout review, not regressions, worth a pass: the Telegram link leaves a freshly
-  minted managed bot alive when the config write fails after creation (same on main); the WhatsApp
-  logout discards the CLI unlink's exit code (only the auth-dir wipe decides; same on main); a doctor
-  failure after a backup restore goes through `cleanupPartial`, which removes the restored volume (the
-  GCS object survives); the config tar writes `.openclaw/` at 0755 where the image has 0700 (single-user
-  container, harmless); no rehearsal launched Chromium, only loaded the browser plugin.
+- Done 2026-09-02 evening, after every bot was recreated: the `connect` bind-and-restart fallback is
+  gone (a bot without a binding is refused with 503 `FEATURE_UNAVAILABLE`, which would be a bug); the
+  WhatsApp logout now reports the server-side unlink separately (warn log; the auth-dir wipe still
+  decides); the config tar writes `.openclaw/` at 0700 like the image; headless Chromium launches in
+  the image (151.0.7922.34). The review's Telegram concern was unfounded: a failed link already
+  disables the freshly minted bot in `handleManagedBot`.
+- Open, not a regression: a doctor failure after a backup restore goes through `cleanupPartial`, which
+  removes the restored volume (the GCS object survives and the instance is `error` either way).

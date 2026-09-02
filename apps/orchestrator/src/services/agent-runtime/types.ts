@@ -35,6 +35,11 @@ export interface WhatsappPairingRequest {
   requestedAt: string;
 }
 
+export interface WhatsappLogoutResult {
+  unlinked: boolean;
+  cleared: boolean;
+}
+
 export interface AgentRuntimeAdapter {
   kind: AgentRuntimeKind;
   image: string;
@@ -54,8 +59,9 @@ export interface AgentRuntimeAdapter {
   probeGateway(instance: Instance, timeoutMs: number, useDockerNetwork: boolean): Promise<GatewayLiveness>;
   // Runs inside the container: the gateway only grants operator scopes to loopback callers.
   probeWhatsapp(instance: Instance, timeoutMs: number, useDockerNetwork: boolean): Promise<WhatsappLinkState>;
-  // true once the stored WhatsApp session is gone from the container (it cannot resurrect on restart).
-  logoutWhatsapp(containerId: string): Promise<boolean>;
+  // cleared: the stored session is gone from the container (it cannot resurrect on restart);
+  // unlinked: the runtime also dropped the device server-side (best-effort).
+  logoutWhatsapp(containerId: string): Promise<WhatsappLogoutResult>;
   // Senders waiting for DM approval (dmPolicy "pairing"); empty when the runtime has no pairing store.
   listWhatsappPairingRequests(containerId: string): Promise<WhatsappPairingRequest[]>;
   // Owner peer ids the live runtime config currently holds; null when the runtime has no owner concept.

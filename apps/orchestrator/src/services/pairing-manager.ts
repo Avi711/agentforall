@@ -194,7 +194,8 @@ export class PairingManager {
     try {
       const inst = await this.repo.findById(instanceId);
       if (!inst) throw new NotFoundError("instance", instanceId);
-      const cleared = await this.runtimes.get(inst.runtimeKind).logoutWhatsapp(containerId);
+      const { unlinked, cleared } = await this.runtimes.get(inst.runtimeKind).logoutWhatsapp(containerId);
+      if (!unlinked) this.logger.warn({ instanceId }, "whatsapp device unlink did not complete server-side");
       if (cleared) {
         await this.eventLog.append(instanceId, "pair.logged_out");
         this.logger.info({ instanceId }, "whatsapp logout succeeded");

@@ -17,7 +17,6 @@ import type { InstanceRepository } from "../../storage/instance-repository.js";
 import type { InstanceManager } from "../instance-manager.js";
 import { InstanceOperationLock } from "../instance-operation-lock.js";
 import { searchCatalog } from "./catalog-search.js";
-import { relayBindingFor } from "./relay-binding.js";
 import type { ConnectLink, IntegrationProvider } from "./provider.js";
 import { SessionGoneError } from "./provider.js";
 import type { IntegrationSessions } from "./sessions.js";
@@ -33,7 +32,7 @@ const DASHBOARD_CONNECTIONS_PATH = "/app/bot/connections";
 // Abandoned or dead attempts for the same app; pending ones may still be mid-consent.
 const STALE_STATUSES = new Set<IntegrationConnection["status"]>(["expired", "failed"]);
 
-type Manager = Pick<InstanceManager, "get" | "updateConfig" | "restart">;
+type Manager = Pick<InstanceManager, "get">;
 type Instances = Pick<InstanceRepository, "findById">;
 type EventLog = Pick<EventRepository, "append">;
 type Config = Pick<AppConfig, "orchestratorInternalUrl" | "dashboardOrigin">;
@@ -166,17 +165,8 @@ export class IntegrationsManager {
       const sessionCallback = this.sessionCallback();
       let session = await this.upstream(() => this.sessions.ensure(instanceId, sessionCallback));
 
-      // Only a bot created before the relay was bound at creation and not yet recreated on the
-      // current image lands here; the gateway wires MCP servers at startup, so it restarts while the
-      // user is on the consent page.
-      if (!current.config.integrations) {
-        await this.manager.updateConfig(instanceId, userId, {
-          integrations: relayBindingFor(instanceId, this.config.orchestratorInternalUrl),
-        });
-        void this.manager.restart(instanceId, userId).catch((err) => {
-          this.log.warn({ instanceId, err }, "restart after relay binding failed");
-        });
-      }
+      // Bound at creation for every bot (and by recreate for older ones); a missing binding is a bug.
+      if (!current.config.integrations) throw new FeatureUnavailableError("integrations");
 
       await this.pruneStale(instanceId, app);
 

@@ -203,7 +203,7 @@ const openclawAdapter: AgentRuntimeAdapter = {
   seedWorkspace: async () => {},
   isOnCurrentImage: async () => true,
   probeWhatsapp: async () => "unknown" as const,
-  logoutWhatsapp: async () => true,
+  logoutWhatsapp: async () => ({ unlinked: true, cleared: true }),
   listWhatsappPairingRequests: async () => [],
   readOwnerIds: async () => [],
 };

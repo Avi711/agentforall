@@ -14,6 +14,7 @@ import type { ConfigPatch, Instance } from "../src/domain/types.js";
 import { IntegrationsManager } from "../src/services/integrations/manager.js";
 import { SessionGoneError, type IntegrationProvider } from "../src/services/integrations/provider.js";
 import { IntegrationSessions } from "../src/services/integrations/sessions.js";
+import { relayBindingFor } from "../src/services/integrations/relay-binding.js";
 import { makeInstance } from "./helpers/fixtures.js";
 
 const RETURN_URL = "https://agentforall.co.il/app/bot/connections?connected=gmail";
@@ -21,12 +22,19 @@ const noLog = { info() {}, warn() {}, error() {} } as unknown as FastifyBaseLogg
 
 interface Overrides {
   instance?: Partial<Instance>;
+  unbound?: boolean;
   linkFailures?: number;
   catalog?: () => Promise<CatalogApp[]>;
 }
 
 function harness(overrides: Overrides = {}) {
   let instance = makeInstance([{ type: "whatsapp" }], overrides.instance);
+  if (!overrides.unbound && !instance.config.integrations) {
+    instance = {
+      ...instance,
+      config: { ...instance.config, integrations: relayBindingFor(instance.id, "http://orchestrator:3000") },
+    };
+  }
   const calls = {
     createSession: 0,
     deleteSession: [] as string[],
@@ -143,7 +151,7 @@ function harness(overrides: Overrides = {}) {
   };
 }
 
-test("first connect creates one session, binds the relay once, and returns the hosted link", async () => {
+test("first connect creates one session and returns the hosted link", async () => {
   const h = harness();
   const inst = h.instance();
 
@@ -155,17 +163,24 @@ test("first connect creates one session, binds the relay once, and returns the h
   assert.equal(a.url, "https://connect/gmail");
   assert.equal(b.url, "https://connect/notion");
   assert.equal(h.calls.createSession, 1);
-  assert.equal(h.calls.updateConfig.length, 1);
-  const binding = h.instance().config.integrations;
-  assert.equal(binding?.relayUrl, `http://orchestrator:3000/api/v1/mcp/${inst.id}`);
-  assert.match(binding?.relayToken ?? "", /^[0-9a-f]{64}$/);
+  // The relay was bound at creation; connect never touches the config or restarts the bot.
+  assert.equal(h.calls.updateConfig.length, 0);
+  assert.equal(h.calls.restarts, 0);
   assert.deepEqual(h.calls.links.map((l) => l.callbackUrl), [RETURN_URL, RETURN_URL]);
   assert.ok(h.calls.events.includes("integration.session_created"));
   assert.ok(h.calls.events.includes("integration.connect_requested"));
+});
 
-  // The gateway loads MCP servers only at startup: exactly one restart, on the first bind.
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(h.calls.restarts, 1);
+test("connect refuses a bot without a relay binding instead of binding it", async () => {
+  const h = harness({ unbound: true });
+  const inst = h.instance();
+
+  await assert.rejects(
+    () => h.integrations.connect(inst.id, inst.userId, "gmail", RETURN_URL),
+    FeatureUnavailableError,
+  );
+  assert.equal(h.calls.updateConfig.length, 0);
+  assert.equal(h.calls.restarts, 0);
 });
 
 test("a vanished upstream session is recreated once and the link still comes back", async () => {

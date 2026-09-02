@@ -43,7 +43,7 @@ test("the workspace seed merges into the existing AGENTS.md as the runtime user"
   const entries = await entriesOf(puts[0]!.archive);
   assert.deepEqual(
     entries.map((e) => [e.name, e.uid, e.mode]),
-    [[".openclaw/", 1000, 0o755], [".openclaw/workspace/", 1000, 0o700], [".openclaw/workspace/AGENTS.md", 1000, 0o644]],
+    [[".openclaw/", 1000, 0o700], [".openclaw/workspace/", 1000, 0o700], [".openclaw/workspace/AGENTS.md", 1000, 0o644]],
   );
   assert.equal(onDisk, `# Agent\n\nBe kind.\n\n${AGENTFORALL_GUIDANCE}\n`);
 });

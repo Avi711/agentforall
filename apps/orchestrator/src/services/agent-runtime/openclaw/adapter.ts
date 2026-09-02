@@ -15,6 +15,7 @@ import type {
   RuntimeConfigFiles,
   WhatsappPairingRequest,
   WhatsappLinkState,
+  WhatsappLogoutResult,
 } from "../types.js";
 import {
   OPENCLAW_BACKUP_TIMEOUT_MS,
@@ -290,7 +291,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     return probeOpenclawWhatsapp(this.runtime, instance, timeoutMs);
   }
 
-  logoutWhatsapp(containerId: string): Promise<boolean> {
+  logoutWhatsapp(containerId: string): Promise<WhatsappLogoutResult> {
     return logoutOpenclawWhatsapp(this.runtime, containerId);
   }
 

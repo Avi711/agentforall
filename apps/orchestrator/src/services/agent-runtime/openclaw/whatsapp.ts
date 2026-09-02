@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ContainerRuntime } from "../../container-runtime.js";
 import { normalizeE164 } from "../../../domain/phone.js";
-import type { WhatsappPairingRequest } from "../types.js";
+import type { WhatsappPairingRequest, WhatsappLogoutResult } from "../types.js";
 import {
   OPENCLAW_USER,
   OPENCLAW_WHATSAPP_CHANNEL,
@@ -43,12 +43,12 @@ export function injectOpenclawWhatsappSession(
 }
 
 // CLI logout unlinks the device server-side (best-effort: it fails once the phone already removed it);
-// wiping the auth dir is what guarantees the session can't resurrect on restart, so that is the verdict.
+// wiping the auth dir is what guarantees the session can't resurrect on restart.
 export async function logoutOpenclawWhatsapp(
   runtime: ContainerRuntime,
   containerId: string,
-): Promise<boolean> {
-  await runtime.execCommand(
+): Promise<WhatsappLogoutResult> {
+  const unlinkExit = await runtime.execCommand(
     containerId,
     ["openclaw", "channels", "logout", "--channel", OPENCLAW_WHATSAPP_CHANNEL, "--account", "default"],
     LOGOUT_TIMEOUT_MS,
@@ -58,7 +58,7 @@ export async function logoutOpenclawWhatsapp(
     ["sh", "-c", `rm -rf -- "${OPENCLAW_WHATSAPP_SESSION_PATH}"/* "${OPENCLAW_WHATSAPP_SESSION_PATH}"/.[!.]*`],
     LOGOUT_TIMEOUT_MS,
   );
-  return clearExit === 0;
+  return { unlinked: unlinkExit === 0, cleared: clearExit === 0 };
 }
 
 export async function listOpenclawWhatsappPairingRequests(

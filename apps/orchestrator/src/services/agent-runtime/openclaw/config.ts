@@ -99,7 +99,7 @@ export async function buildOpenclawEnvTar(dotEnv: string): Promise<Buffer> {
     await writeEntry(pack, {
       name: ".openclaw/",
       type: "directory",
-      mode: 0o755,
+      mode: 0o700,
       ...OPENCLAW_USER,
     });
     await writeEntry(pack, { name: ".openclaw/.env", mode: 0o600, ...OPENCLAW_USER }, dotEnv);
@@ -108,7 +108,7 @@ export async function buildOpenclawEnvTar(dotEnv: string): Promise<Buffer> {
 
 export async function buildOpenclawWorkspaceFileTar(fileName: string, content: string): Promise<Buffer> {
   return packTar(async (pack) => {
-    await writeEntry(pack, { name: ".openclaw/", type: "directory", mode: 0o755, ...OPENCLAW_USER });
+    await writeEntry(pack, { name: ".openclaw/", type: "directory", mode: 0o700, ...OPENCLAW_USER });
     await writeEntry(pack, { name: ".openclaw/workspace/", type: "directory", mode: 0o700, ...OPENCLAW_USER });
     await writeEntry(pack, { name: `.openclaw/workspace/${fileName}`, mode: 0o644, ...OPENCLAW_USER }, content);
   });
@@ -122,7 +122,7 @@ export async function buildOpenclawConfigTar(
     await writeEntry(pack, {
       name: ".openclaw/",
       type: "directory",
-      mode: 0o755,
+      mode: 0o700,
       ...owner,
     });
     await writeEntry(

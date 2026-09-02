@@ -9,6 +9,7 @@ import type {
   GatewayLiveness,
   WhatsappLinkState,
   WhatsappPairingRequest,
+  WhatsappLogoutResult,
 } from "../types.js";
 import {
   HERMES_BACKUP_TIMEOUT_MS,
@@ -159,8 +160,9 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
     return probeHermesWhatsapp(instance, timeoutMs, useDockerNetwork);
   }
 
-  logoutWhatsapp(containerId: string): Promise<boolean> {
-    return logoutHermesWhatsapp(this.runtime, containerId);
+  async logoutWhatsapp(containerId: string): Promise<WhatsappLogoutResult> {
+    const cleared = await logoutHermesWhatsapp(this.runtime, containerId);
+    return { unlinked: cleared, cleared };
   }
 
   // Hermes has no DM pairing store; owner claim is manual-entry only.
