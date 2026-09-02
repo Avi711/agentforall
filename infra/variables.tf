@@ -78,7 +78,7 @@ variable "hermes_runtime_image" {
 variable "litellm_image" {
   description = "LiteLLM gateway image. Set to a GAR image digest for production deploys."
   type        = string
-  default     = "europe-west4-docker.pkg.dev/agent-for-all/agent-forall/litellm-gateway@sha256:01f96fab322b52696854d74b96891481744902fd08066e94c00d406538426d05"
+  default     = "europe-west4-docker.pkg.dev/agent-for-all/agent-forall/litellm-gateway@sha256:5bab1ca78080eb26f88a5cd89c32bffaa0fbe799a135390cae1c175b50fc10e0"
 }
 
 variable "monitoring_notification_channel_ids" {
