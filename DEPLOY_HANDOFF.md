@@ -4,22 +4,32 @@
 
 **Last updated:** 2026-09-02
 
-## Pending: OpenClaw 2026.8.2 upgrade (branch `feat/openclaw-2026.8.2`, not deployed)
+## OpenClaw 2026.8.2 — live since 2026-09-02 (branch `feat/openclaw-2026.8.2`, not yet merged or pushed)
 
-Committed 2026-09-02 (`724773e`, `a67713f`); images pushed and pinned in `infra/variables.tf`:
-`openclaw-browser@sha256:f0e4aec97e55e0a3afd852ef72994cfe4ed3157ff4a90554de0a66b3940c31ca` (tag `2026.8.2`,
-already pulled on the VM) and `orchestrator@sha256:e72e591d36339707c0007634544bf4d1ecfde7959a45d990a6ffefbc198ce0e8`.
-VM rehearsal on a clone of the 3.2 GB tenant volume: doctor 1m37s, plugin update 24s. Plan, deviations
-and rollout procedure in `docs/openclaw-2026.8.2-upgrade.md` (§5 status, §6b rehearsal, §7 window). Must land as one window
-before 2026-09-18: orchestrator deploy + `AGENT_RUNTIME_IMAGE` flip + `recreate-tenants.sh` for every
-live tenant, because a 2026.8-shaped config is refused by a 2026.7 gateway and the orchestrator now
-refuses config changes on a running container from another image (409 `RUNTIME_IMAGE_MISMATCH`).
+All 12 tenants run `openclaw-browser@sha256:f0e4aec97e55e0a3afd852ef72994cfe4ed3157ff4a90554de0a66b3940c31ca`
+(tag `2026.8.2`), orchestrator `orchestrator@sha256:48d28ab90515ac90f8e90ebf93b2ceba5db09a5d6d7bc85711e5f20158b2cb4e`
+(commit `8b8605e`); both pinned in `infra/variables.tf` and set by hand in the VM's `.env` /
+`.env.runtime`. Full record, deviations and follow-ups: `docs/openclaw-2026.8.2-upgrade.md` §5, §7, §8.
+What changed operationally:
+- A container off the pinned image is rebuilt on its next start/restart/recreate (doctor + pinned
+  WhatsApp plugin install on the volume first, fail closed); config writes to a running container on
+  another image return 409 `RUNTIME_IMAGE_MISMATCH`. So an image bump is: pin, deploy orchestrator,
+  `recreate-tenants.sh --image <digest>` (snapshots each volume to `/home/deploy/backups`, 0700).
+- Tenant backups are `openclaw backup create` archives with `.env`, `logs`, `npm`, `whatsapp-session`
+  stripped; restore accepts that layout and the legacy flat tar.
+- Every bot gets the Composio MCP relay at creation (Composio session created lazily on first relay
+  call), an `AGENTS.md` guidance block, an 8h owner heartbeat (08:00–22:00 Asia/Jerusalem), daily memory
+  dreaming, and its display name as the agent identity.
+- Rollback of last resort: pre-migration tarballs `/home/deploy/backups/oc-*-pre-20260902-*.tar.gz` and
+  disk snapshot `pre-openclaw-8-2-20260902-1741`; restore into a fresh volume and recreate on the 7.1
+  digest `a81764a4…` with an orchestrator from `main`.
+- Watch for a week: WhatsApp reconnects (the plugin owns reconnect policy now), heartbeat/dreaming spend.
 
 ## Production image policy
 
-### Tenant runtime images (2026-08-29)
+### Tenant runtime images (2026-08-29; superseded by the 2026.8.2 section above)
 
-All 11 tenants run `openclaw-browser@sha256:a81764a4…`, the pinned `AGENT_RUNTIME_IMAGE`. They had drifted across three builds (9 on a 5-week-old one) because a container keeps the image it was created with. `infra/ops/recreate-tenants.sh` rebuilds them from the pinned ref, reattaching the state volume by name.
+All 11 tenants then ran `openclaw-browser@sha256:a81764a4…`, the pinned `AGENT_RUNTIME_IMAGE`. They had drifted across three builds (9 on a 5-week-old one) because a container keeps the image it was created with. `infra/ops/recreate-tenants.sh` rebuilds them from the pinned ref, reattaching the state volume by name.
 
 **A recreate is never complete on its own.** A plugin installed by `rollout-plugin.sh` records the tarball path it came from, which lived in the old container's `/tmp`; the new container has a fresh `/tmp`, so the plugin stops loading while the container still reports **healthy**. Always follow a recreate with `rollout-plugin.sh --plugin agentforall-media …` and confirm the `http server listening` line names it. Plugins baked into the image install into `/home/node/.openclaw`, which Docker seeds only into an *empty* volume — that is why new bots need no rollout and existing ones do.
 

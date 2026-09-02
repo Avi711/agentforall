@@ -106,9 +106,9 @@ Doctor additionally writes, harmlessly: `plugins.entries.{browser,litellm,memory
 
 ## 5. Implementation list
 
-**Status 2026-09-02: implemented on branch `feat/openclaw-2026.8.2` (uncommitted), typecheck clean, 233
-orchestrator tests + 58 plugin tests green, rehearsed on the locally built image (§6b).** Deviations from
-the list below, all deliberate:
+**Status 2026-09-02 evening: DEPLOYED. Every tenant runs 2026.8.2 (§7 record). Branch
+`feat/openclaw-2026.8.2` (`724773e`..), typecheck clean, 243 orchestrator + 51 media-plugin tests green.**
+Deviations from the list below, all deliberate:
 
 - Image guard (compared by image id, so a re-tagged digest is the same image): `writeConfig` and a
   running `applyConfig` refuse a container from another image with `RuntimeImageMismatchError` (409);
@@ -285,6 +285,20 @@ VM rehearsal on the 3.2 GB volume clone: doctor 1m37s + plugin update 24s (§5 *
 
 ## 7. Production rollout — one maintenance window, before 2026-09-18
 
+**Executed 2026-09-02 14:41–16:00 UTC.** Data-disk snapshot `pre-openclaw-8-2-20260902-1741`; VM
+`.env`/`.env.runtime` flipped by hand (backups `.env*.bak-20260902-145329`); orchestrator deployed
+three times as fixes landed (final `orchestrator@sha256:48d28ab9…`, commit `8b8605e`); canary קוקי5
+(Telegram-only, created that day), then שרוליק (3.2 GB, WhatsApp; doctor ≈2 min, WhatsApp relinked
+and connected on first boot), then the other ten with `recreate-tenants.sh`: 12/12 ok, 0 failed, per-volume
+tarballs in `/home/deploy/backups/*-pre-20260902-*.tar.gz`. Media plugin rolled out with `rollout-plugin.sh` (staged into the state volume): 12/12 ok. Credit plugin not rolled
+out (metadata-only change). Found on the canary and fixed before the fleet: the migration skipped the
+WhatsApp plugin install for bots without the channel (`e0ce6eb`), the ops check demanded `whatsapp` on
+the boot line for every bot (`1376ae8`), and doctor's tenant policy audit (open DMs, the owner's own
+unreachable MCP servers) was treated as a migration error (`0aeefec`). A fresh-eyes review after the
+fleet found the recreate status write could lose a race with the reconciler (`8b8605e`; no row was
+actually affected, verified against the DB). Bot 42f3aab9's display name is stored as five U+FFFD
+characters in the DB and now shows as such in its identity; the owner should rename it.
+
 1. Deploy the new orchestrator and flip `AGENT_RUNTIME_IMAGE` together at the start of the window (the
    image-mismatch guard would otherwise fail users' config saves). Manual `agent-forall-data` snapshot first.
 2. Per tenant (canary קוקי2, then שרוליק, then the rest) with `infra/ops/recreate-tenants.sh --image <digest>
@@ -321,4 +335,11 @@ Rollback: restore the pre-migration volume tarball into a fresh volume, recreate
   `USER.md`, `BOOTSTRAP.md`): only `onboard`/`setup` seed them and both need a TTY, so a fresh bot's
   AGENTS.md is our block alone. Product decision: ship our own templates, or leave the agent to its
   memory files.
-- Remove the `connect` bind-and-restart fallback once every bot has been recreated on 2026.8.2.
+- Remove the `connect` bind-and-restart fallback once every bot has been recreated on 2026.8.2 (done
+  2026-09-02, so the fallback can go).
+- From the post-rollout review, not regressions, worth a pass: the Telegram link leaves a freshly
+  minted managed bot alive when the config write fails after creation (same on main); the WhatsApp
+  logout discards the CLI unlink's exit code (only the auth-dir wipe decides; same on main); a doctor
+  failure after a backup restore goes through `cleanupPartial`, which removes the restored volume (the
+  GCS object survives); the config tar writes `.openclaw/` at 0755 where the image has 0700 (single-user
+  container, harmless); no rehearsal launched Chromium, only loaded the browser plugin.
