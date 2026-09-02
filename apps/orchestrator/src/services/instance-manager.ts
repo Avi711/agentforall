@@ -299,9 +299,9 @@ export class InstanceManager {
         await this.injectWhatsappCreds(id, containerId);
       }
       await this.runtime.start(containerId);
-      await this.repo.updateStatus(id, "running", {
-        expectedStatus: inst.status,
-      });
+      // The migration can outlast the reconciler's patience (row marked stopped or error meanwhile);
+      // the container is running now, so the row says so regardless.
+      await this.repo.updateStatus(id, "running");
       await this.eventLog.append(id, "instance.recreated", {
         actor: userId,
         payload: { containerId },

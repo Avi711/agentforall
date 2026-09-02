@@ -34,7 +34,7 @@ done
 
 API="https://api.agentforall.co.il"
 ENV_FILE="/home/deploy/agent-forall/.env.runtime"
-TOKEN="$(sudo grep '^SERVICE_TOKENS=' "$ENV_FILE" | cut -d= -f2- | cut -d, -f1 | tr -d '"' )"
+TOKEN="$(sudo grep '^SERVICE_TOKENS=' "$ENV_FILE" | cut -d= -f2- | cut -d, -f1 | tr -d '"' || true)"
 [ -n "$TOKEN" ] || { echo "no SERVICE_TOKENS in $ENV_FILE" >&2; exit 1; }
 
 STAGE="$HOME/$PLUGIN-rollout-$(date +%s)"
@@ -64,14 +64,21 @@ for row in json.load(sys.stdin)["data"]:
 ')"
 
 started_at() { sudo docker inspect --format '{{.State.StartedAt}}' "$1"; }
+# Tarballs stay in the state volume: the install records their path as its source, and /tmp is
+# the container's writable layer, which the next rebuild discards.
+PACK_DIR="/home/node/.openclaw/npm-pack"
 
 ok=(); failed=(); skipped=()
 while IFS=$'\t' read -r ID USER_ID CONTAINER STATUS PROVIDER BASE_URL NAME_JSON; do
   [ -n "$ID" ] || continue
   NAME="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]))' "$NAME_JSON")"
-  CNAME="$(sudo docker inspect --format '{{.Name}}' "$CONTAINER" 2>/dev/null | sed 's#^/##')"
-  LABEL="${CNAME:-$CONTAINER} ($NAME)"
-  if [ -n "$ONLY" ] && [ "$ONLY" != "$CONTAINER" ] && [ "$ONLY" != "$CNAME" ]; then continue; fi
+  CNAME="$(sudo docker inspect --format '{{.Name}}' "$CONTAINER" 2>/dev/null | sed 's#^/##' || true)"
+  CNAME="${CNAME:-openclaw-${ID:0:12}}"
+  LABEL="$CNAME ($NAME)"
+  if [ -n "$ONLY" ] && [ "$ONLY" != "$CONTAINER" ] && [ "$ONLY" != "$CNAME" ] && [ "$ONLY" != "$NAME" ]; then continue; fi
+  # The row id can lag a rebuild; the name is stable.
+  CONTAINER="$(sudo docker ps -aq --filter "name=^/${CNAME}$" | head -1)"
+  [ -n "$CONTAINER" ] || { echo "=== skipped $LABEL: no container ==="; skipped+=("$CNAME"); continue; }
   # Our plugins talk to a gateway, which is exactly what the orchestrator keys on when it renders
   # them: a provider with a baseUrl. Credit needs LiteLLM itself, hence --require-provider.
   if [ "$BASE_URL" = "-" ]; then
@@ -95,12 +102,15 @@ while IFS=$'\t' read -r ID USER_ID CONTAINER STATUS PROVIDER BASE_URL NAME_JSON;
   (
     set -euo pipefail
     BEFORE="$(started_at "$CONTAINER")"
-    DEST="/tmp/$PLUGIN-$(date +%s)"
+    DEST="$PACK_DIR/$PLUGIN-src-$(date +%s)"
+    sudo docker exec --user root "$CONTAINER" sh -c "mkdir -p '$PACK_DIR' && chown node:node '$PACK_DIR'"
     sudo docker cp "$STAGE/$PLUGIN" "$CONTAINER:$DEST"
-    TARBALL="$(sudo docker exec "$CONTAINER" npm pack "$DEST" --pack-destination /tmp --silent)"
+    sudo docker exec --user root "$CONTAINER" chown -R node:node "$DEST"
+    TARBALL="$(sudo docker exec "$CONTAINER" npm pack "$DEST" --pack-destination "$PACK_DIR" --silent | tail -1)"
     # --force overwrites the existing install in place (2026.8 keeps the entry's hooks; "plugins
     # update" does not work for npm-pack sources); --accept-capabilities is the non-interactive consent.
-    sudo docker exec "$CONTAINER" openclaw plugins install "npm-pack:/tmp/$TARBALL" --force --accept-capabilities 2>&1 | grep -E "Installed plugin" >/dev/null
+    sudo docker exec "$CONTAINER" openclaw plugins install "npm-pack:$PACK_DIR/$TARBALL" --force --accept-capabilities 2>&1 | grep -E "Installed plugin" >/dev/null
+    sudo docker exec "$CONTAINER" rm -rf "$DEST"
 
     # The orchestrator's restart re-renders openclaw.json (hooks entry) and .env (credit vars) and
     # then restarts unconditionally. A config PATCH renders the same files but only restarts when
@@ -108,20 +118,25 @@ while IFS=$'\t' read -r ID USER_ID CONTAINER STATUS PROVIDER BASE_URL NAME_JSON;
     curl -sf -m 300 -X POST "$API/api/v1/instances/$ID/restart" \
       -H "Authorization: Bearer $TOKEN" -H "x-act-as-user: $USER_ID" -o /dev/null
 
-    AFTER="$BEFORE"
+    # A restart rebuilds a container that is off the current image, so resolve by name again.
+    NEW=""; AFTER="$BEFORE"
     for _ in $(seq 1 30); do
-      AFTER="$(started_at "$CONTAINER")"
-      [ "$AFTER" != "$BEFORE" ] && break
+      NEW="$(sudo docker ps -q --filter "name=^/${CNAME}$")"
+      if [ -n "$NEW" ]; then
+        AFTER="$(started_at "$NEW")"
+        if [ "$NEW" != "$CONTAINER" ] || [ "$AFTER" != "$BEFORE" ]; then break; fi
+      fi
       sleep 4
     done
-    [ "$AFTER" != "$BEFORE" ] || { echo "  container never restarted" >&2; exit 1; }
+    { [ -n "$NEW" ] && { [ "$NEW" != "$CONTAINER" ] || [ "$AFTER" != "$BEFORE" ]; }; } \
+      || { echo "  container never restarted" >&2; exit 1; }
     for _ in $(seq 1 30); do
-      if sudo docker logs --since "$AFTER" "$CONTAINER" 2>&1 | grep -q "http server listening"; then break; fi
+      if sudo docker logs --since "$AFTER" "$NEW" 2>&1 | grep -q "http server listening"; then break; fi
       sleep 4
     done
     # Only lines from this boot count, so a listening line from the previous life cannot pass.
-    sudo docker logs --since "$AFTER" "$CONTAINER" 2>&1 | grep "http server listening" | tail -1 | grep -qF -- "$PLUGIN"
-    sudo docker exec "$CONTAINER" python3 -c '
+    sudo docker logs --since "$AFTER" "$NEW" 2>&1 | grep "http server listening" | tail -1 | grep -qF -- "$PLUGIN"
+    sudo docker exec "$NEW" python3 -c '
 import json, sys
 plugin, want_hooks = sys.argv[1], sys.argv[2] == "1"
 e = json.load(open("/home/node/.openclaw/openclaw.json"))["plugins"]["entries"][plugin]
@@ -130,7 +145,7 @@ if want_hooks:
     ok = ok and bool(e.get("hooks", {}).get("allowConversationAccess"))
 sys.exit(0 if ok else 1)' "$PLUGIN" "$VERIFY_HOOKS"
     if [ -n "$VERIFY_ENV" ]; then
-      sudo docker exec "$CONTAINER" grep -q "^$VERIFY_ENV=" /home/node/.openclaw/.env
+      sudo docker exec "$NEW" grep -q "^$VERIFY_ENV=" /home/node/.openclaw/.env
     fi
     echo "  ok: $PLUGIN loaded, entry enabled${VERIFY_ENV:+, $VERIFY_ENV present}"
   )

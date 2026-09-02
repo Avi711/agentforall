@@ -62,7 +62,7 @@ const ProviderSchema = z.object({
 });
 
 const CreateInstanceBody = z.object({
-  displayName: z.string().min(1).max(255),
+  displayName: z.string().trim().min(1).max(255),
   provider: ProviderSchema.optional(),
   channels: z
     .array(ChannelSchema)
@@ -83,7 +83,7 @@ type CreateInstanceBody = z.infer<typeof CreateInstanceBody>;
 
 const PatchConfigBody = z
   .object({
-    displayName: z.string().min(1).max(255).optional(),
+    displayName: z.string().trim().min(1).max(255).optional(),
     provider: ProviderSchema.partial().optional(),
     channels: z.array(ChannelSchema).min(1).max(10).optional(),
     resources: z

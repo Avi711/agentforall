@@ -87,7 +87,10 @@ async function runTranscription(params, logger) {
       signal: requestSignal(params),
     });
   } catch (err) {
-    const reason = err?.name === "TimeoutError" ? "the gateway timed out" : errorText(err);
+    const reason =
+      err?.name === "TimeoutError" ? "the gateway timed out"
+      : err?.name === "AbortError" ? "the request was cancelled"
+      : errorText(err);
     throw new Error(`${FAILED}: ${reason}`, { cause: err });
   }
 

@@ -28,6 +28,8 @@ export function buildOpenclawBackupFileCommand(): string {
     'openclaw backup create --output "$dir" --verify --json >/dev/null',
     'src="$(find "$dir" -maxdepth 1 -name \'*.tar.gz\' | head -n 1)"',
     '[ -n "$src" ]',
+    // Cap before the rewrite: a second full copy of an oversized archive is what fills the disk.
+    `[ "$(wc -c < "$src")" -le ${OPENCLAW_MAX_BACKUP_BYTES} ]`,
     `python3 -c ${shellQuote(stripSecretsScript())} "$src" "$out"`,
     'openclaw backup verify "$out" --json >/dev/null',
     'size="$(wc -c < "$out")"',

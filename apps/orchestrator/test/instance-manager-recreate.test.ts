@@ -223,6 +223,22 @@ test("a rebuild the reconciler raced with still ends running", async () => {
   assert.equal(repo.instance.containerId, "container-2");
 });
 
+test("a recreate the reconciler raced with still ends running", async () => {
+  const repo = new FakeRepo({ ...baseInstance });
+  const runtime = new FakeRuntime();
+  const manager = createManager(repo, runtime, {
+    ...adapter({ staleImage: true }),
+    prepareState: async () => {
+      repo.markStopped();
+    },
+  });
+
+  await manager.recreate(baseInstance.id, baseInstance.userId);
+
+  assert.equal(repo.instance.status, "running");
+  assert.equal(repo.instance.containerId, "container-2");
+});
+
 test("a migration failure on restart marks the bot error with the cause", async () => {
   const repo = new FakeRepo({ ...baseInstance });
   const runtime = new FakeRuntime();
