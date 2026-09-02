@@ -8,7 +8,7 @@ import type { EventRepository, ProvisioningEvent } from "../storage/event-reposi
 import type { PairingManager } from "./pairing-manager.js";
 import type { AppConfig } from "../config.js";
 import type { AgentRuntimeRegistry } from "./agent-runtime/registry.js";
-import type { ConfigApplyOutcome } from "./agent-runtime/types.js";
+import type { AgentRuntimeAdapter, ConfigApplyOutcome } from "./agent-runtime/types.js";
 import type {
   LlmKeyProvisioner,
   LiteLlmProvisionResult,
@@ -45,6 +45,7 @@ import {
   findTelegramChannel,
   findWhatsappChannel,
 } from "../domain/channels.js";
+import { relayBindingFor } from "./integrations/relay-binding.js";
 
 export interface AgentBackupRestoreStorage {
   openObjectStream(
@@ -215,17 +216,20 @@ export class InstanceManager {
     if (!updated) throw new InvalidStateError(inst.status, "running");
 
     try {
-      await this.refreshRuntimeConfig(inst);
+      const { containerId } = await this.containerForBoot(inst);
       if (inst.hasWhatsappCreds) {
-        await this.injectWhatsappCreds(id, inst.containerId);
+        await this.injectWhatsappCreds(id, containerId);
       }
-      await this.runtime.start(inst.containerId);
+      await this.runtime.start(containerId);
     } catch (err) {
       await this.repo.updateStatus(id, inst.status, {
         expectedStatus: "running",
       });
       throw err;
     }
+    // A rebuild can outlast the reconciler's patience, which then marks the row stopped; the
+    // container is running now, so the row says so regardless.
+    await this.repo.updateStatus(id, "running");
 
     this.logger.info({ instanceId: id }, "instance started");
   }
@@ -247,15 +251,35 @@ export class InstanceManager {
       throw new InvalidStateError(inst.status, "running");
     }
 
-    await this.refreshRuntimeConfig(inst);
-    if (inst.hasWhatsappCreds) {
-      await this.injectWhatsappCreds(id, inst.containerId);
+    try {
+      const { containerId, rebuilt } = await this.containerForBoot(inst);
+      if (inst.hasWhatsappCreds) {
+        await this.injectWhatsappCreds(id, containerId);
+      }
+      if (rebuilt) await this.runtime.start(containerId);
+      else await this.restartContainer(containerId);
+    } catch (err) {
+      await this.repo.updateStatus(id, "error", { errorMessage: errorMessage(err) });
+      throw err;
     }
-    await this.restartContainer(inst.containerId);
-    await this.repo.updateStatus(id, "running", {
-      expectedStatus: inst.status,
-    });
+    await this.repo.updateStatus(id, "running");
     this.logger.info({ instanceId: id }, "instance restarted");
+  }
+
+  // The container to boot: the one under the bot's name (the row can lag a crashed rebuild) when
+  // it is on the current image, otherwise a rebuilt one, since another image cannot boot this config.
+  private async containerForBoot(inst: Instance): Promise<{ containerId: string; rebuilt: boolean }> {
+    const existing = await this.existingContainerId(inst);
+    if (existing && (await this.runtimes.get(inst.runtimeKind).isOnCurrentImage(existing))) {
+      if (existing !== inst.containerId) await this.repo.updateContainerId(inst.id, existing);
+      await this.refreshRuntimeConfig({ ...inst, containerId: existing });
+      return { containerId: existing, rebuilt: false };
+    }
+    const containerId = await this.recreateContainer(inst);
+    await this.eventLog.append(inst.id, "instance.recreated", {
+      payload: { containerId, reason: "runtime_image" },
+    });
+    return { containerId, rebuilt: true };
   }
 
   async recreate(id: string, userId: string): Promise<void> {
@@ -269,23 +293,8 @@ export class InstanceManager {
       throw new InvalidStateError(inst.status, "running");
     }
 
-    const existing =
-      inst.containerId ??
-      (await this.runtime.findContainerByName(inst.containerName));
-    if (existing) {
-      if (await this.runtime.isRunning(existing)) {
-        await this.runtime.stop(existing);
-      }
-      await this.runtime.remove(existing);
-    }
-
     try {
-      // buildContainerOptions bakes the config in at create, so there is nothing to refresh.
-      const containerId = await this.ensureContainerExists({
-        ...inst,
-        containerId: null,
-      });
-      await this.repo.updateContainerId(id, containerId);
+      const containerId = await this.recreateContainer(inst);
       if (inst.hasWhatsappCreds) {
         await this.injectWhatsappCreds(id, containerId);
       }
@@ -297,6 +306,9 @@ export class InstanceManager {
         actor: userId,
         payload: { containerId },
       });
+      if (!(await this.runtime.waitForHealthy(containerId, STARTUP_SETTLE_MS))) {
+        this.logger.warn({ instanceId: id }, "gateway not healthy after recreate");
+      }
     } catch (err) {
       await this.repo.updateStatus(id, "error", {
         errorMessage: errorMessage(err),
@@ -305,6 +317,50 @@ export class InstanceManager {
     }
 
     this.logger.info({ instanceId: id }, "instance recreated");
+  }
+
+  // Stop, migrate the volume, only then remove: a failed migration leaves the bot startable as it was.
+  private async recreateContainer(current: Instance): Promise<string> {
+    const inst = await this.ensureIntegrationsBinding(current);
+    const adapter = this.runtimes.get(inst.runtimeKind);
+    const existing = await this.existingContainerId(inst);
+    if (existing && (await this.runtime.isRunning(existing))) {
+      await this.runtime.stop(existing);
+    }
+    await adapter.prepareState(inst);
+    if (existing) await this.runtime.remove(existing);
+    const containerId = await this.ensureContainerExists({ ...inst, containerId: null });
+    await this.repo.updateContainerId(inst.id, containerId);
+    return containerId;
+  }
+
+  // The row's id can be stale after a crash mid-rebuild; the name is the durable handle.
+  private async existingContainerId(inst: Instance): Promise<string | null> {
+    if (inst.containerId && (await this.runtime.inspect(inst.containerId))) return inst.containerId;
+    return this.runtime.findContainerByName(inst.containerName);
+  }
+
+  // Best effort: guidance missing from a workspace is a support ticket, not a broken bot.
+  private async seedWorkspace(inst: Instance, containerId: string): Promise<void> {
+    try {
+      await this.runtimes.get(inst.runtimeKind).seedWorkspace(containerId);
+    } catch (err) {
+      this.logger.warn({ instanceId: inst.id, err }, "workspace guidance seed failed");
+    }
+  }
+
+  private async ensureIntegrationsBinding(inst: Instance): Promise<Instance> {
+    if (inst.config.integrations) return inst;
+    const binding = this.newIntegrationsBinding(inst.id);
+    if (!binding) return inst;
+    const config: InstanceConfig = { ...inst.config, integrations: binding };
+    await this.repo.updateConfig(inst.id, config);
+    return { ...inst, config };
+  }
+
+  private newIntegrationsBinding(instanceId: string): InstanceConfig["integrations"] {
+    if (!this.appConfig.integrationsProvider) return undefined;
+    return relayBindingFor(instanceId, this.appConfig.orchestratorInternalUrl);
   }
 
   private async stopLocked(id: string, userId: string): Promise<void> {
@@ -671,6 +727,7 @@ export class InstanceManager {
         if (!provider) {
           throw new Error("provider provisioning returned no provider");
         }
+        const integrations = this.newIntegrationsBinding(id);
         const config: InstanceConfig = {
           displayName: input.displayName,
           provider,
@@ -680,6 +737,7 @@ export class InstanceManager {
             cpuShares:
               input.resources?.cpuShares ?? DEFAULT_RESOURCE_LIMITS.cpuShares,
           },
+          ...(integrations ? { integrations } : {}),
         };
         const inserted = await this.repo.insertIfUserActiveBelowLimit(
           {
@@ -739,19 +797,27 @@ export class InstanceManager {
     throw lastError ?? new Error("failed to reserve instance identity");
   }
 
+  // Config and guidance are written whether the container was found or created, so one left
+  // behind by a crash between create and write never boots on whatever the volume held.
   private async ensureContainerExists(inst: Instance): Promise<string> {
-    if (inst.containerId) {
-      const info = await this.runtime.inspect(inst.containerId);
-      if (info) return inst.containerId;
+    const adapter = this.runtimes.get(inst.runtimeKind);
+    const containerId = await this.findOrCreateContainer(inst, adapter);
+    await adapter.writeConfig(containerId, { ...inst, containerId });
+    await this.seedWorkspace(inst, containerId);
+    return containerId;
+  }
+
+  private async findOrCreateContainer(inst: Instance, adapter: AgentRuntimeAdapter): Promise<string> {
+    const existing = await this.existingContainerId(inst);
+    if (existing && (await adapter.isOnCurrentImage(existing))) return existing;
+    // Left by an orchestrator on the previous image (a crash mid-provision): its volume needs the
+    // migration too, and the container itself cannot take this config.
+    if (existing) {
+      await this.runtime.remove(existing);
+      await adapter.prepareState(inst);
     }
 
-    const byName = await this.runtime.findContainerByName(inst.containerName);
-    if (byName) return byName;
-
-    const adapter = this.runtimes.get(inst.runtimeKind);
-    const stateVolume = adapter.stateVolumeName(inst.id);
-    await this.runtime.ensureVolumeExists(stateVolume);
-
+    await this.runtime.ensureVolumeExists(adapter.stateVolumeName(inst.id));
     return this.runtime.create(await adapter.buildContainerOptions(inst));
   }
 
@@ -799,20 +865,24 @@ export class InstanceManager {
     }
     try {
       await adapter.restoreState(containerId, source.body);
-      await this.refreshRuntimeConfig({ ...inst, containerId });
-      await this.repo.updateBackupImport(inst.id, { status: "restored" });
-      await this.backupRestoreStorage
-        .deleteObject(backup.objectName)
-        .catch((err) =>
-          this.logger.warn(
-            { instanceId: inst.id, err },
-            "backup import object cleanup failed",
-          ),
-        );
     } catch (err) {
       source.body.destroy();
       throw new InvalidBackupError(errorMessage(err));
     }
+    // The archive may predate the image: migrate it, then put our fields and guidance back on top.
+    // Failures here are the host's, not the archive's, so they keep their own error class.
+    await adapter.prepareState(inst);
+    await this.refreshRuntimeConfig({ ...inst, containerId });
+    await this.seedWorkspace(inst, containerId);
+    await this.repo.updateBackupImport(inst.id, { status: "restored" });
+    await this.backupRestoreStorage
+      .deleteObject(backup.objectName)
+      .catch((err) =>
+        this.logger.warn(
+          { instanceId: inst.id, err },
+          "backup import object cleanup failed",
+        ),
+      );
   }
 
   private async resolveContainerId(inst: Instance): Promise<string | null> {

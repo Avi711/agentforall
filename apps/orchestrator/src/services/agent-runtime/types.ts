@@ -60,4 +60,10 @@ export interface AgentRuntimeAdapter {
   listWhatsappPairingRequests(containerId: string): Promise<WhatsappPairingRequest[]>;
   // Owner peer ids the live runtime config currently holds; null when the runtime has no owner concept.
   readOwnerIds(containerId: string): Promise<string[] | null>;
+  // Brings a persisted state volume up to this image's schema while no container is running on it.
+  prepareState(instance: Instance): Promise<void>;
+  // Merges the platform's own guidance into the container's workspace; idempotent.
+  seedWorkspace(containerId: string): Promise<void>;
+  // false for a container built from another image, or one that is gone; its config is not ours to write.
+  isOnCurrentImage(containerId: string): Promise<boolean>;
 }

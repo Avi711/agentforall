@@ -3,6 +3,7 @@ import type { ContainerArchiveFile } from "../../container-runtime.js";
 import type { ContainerRuntime } from "../../container-runtime.js";
 import type { Instance, InstanceConfig } from "../../../domain/types.js";
 import {
+  RuntimeImageMismatchError,
   UpstreamUnavailableError,
   ValidationError,
   errorMessage,
@@ -29,6 +30,7 @@ import {
   configMatches,
   readOwnerAllowFrom,
 } from "./config.js";
+import { prepareOpenclawState, seedOpenclawWorkspace } from "./migrate.js";
 import { buildConfigApplyCommand, parseConfigApplyOutput } from "./config-rpc.js";
 import type { ConfigApplyResult } from "./config-rpc.js";
 import {
@@ -68,15 +70,15 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     return `oc-${instanceId.slice(0, 12)}-state`;
   }
 
+  // No config baked in at create: the volume may already hold one, and writeConfig patches or seeds it.
   async buildContainerOptions(instance: Instance) {
-    const files = this.generateConfig(instance.config, instance.gatewayToken);
     return {
       name: instance.containerName,
       image: this.image,
       internalPort: OPENCLAW_INTERNAL_PORT,
       healthPath: OPENCLAW_HEALTH_PATH,
       hostPort: instance.gatewayPort,
-      envVars: ["OPENCLAW_HEADLESS=true"],
+      envVars: [],
       memoryBytes: instance.config.resources.memoryMb * 1024 * 1024,
       cpuShares: instance.config.resources.cpuShares,
       labels: {
@@ -91,11 +93,20 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         },
       ],
       shmSizeBytes: 2 * 1024 * 1024 * 1024,
-      initialArchive: {
-        targetPath: OPENCLAW_STATE_PARENT,
-        content: await buildOpenclawConfigTar(files),
-      },
     };
+  }
+
+  prepareState(instance: Instance): Promise<void> {
+    return prepareOpenclawState(this.runtime, {
+      image: this.image,
+      volumeName: this.stateVolumeName(instance.id),
+      containerName: instance.containerName,
+      withWhatsapp: instance.config.channels.some((ch) => ch.type === "whatsapp"),
+    });
+  }
+
+  seedWorkspace(containerId: string): Promise<void> {
+    return seedOpenclawWorkspace(this.runtime, containerId);
   }
 
   generateConfig(
@@ -109,6 +120,11 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   // there. The pristine config is only ever right for a container that has none — writing it over
   // an existing one would discard the tenant's own settings.
   async writeConfig(containerId: string, instance: Instance): Promise<void> {
+    if (!(await this.isOnCurrentImage(containerId))) throw new RuntimeImageMismatchError();
+    await this.stageConfig(containerId, instance);
+  }
+
+  private async stageConfig(containerId: string, instance: Instance): Promise<void> {
     const existing = await this.readConfig(containerId);
     const files =
       existing === null
@@ -125,8 +141,14 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   // The gateway validates and applies the change itself and says whether it worked; a file write
   // only says the bytes landed, and nothing restarts a healthy container to make it read them.
   async applyConfig(containerId: string, instance: Instance): Promise<ConfigApplyOutcome> {
-    if (!(await this.runtime.isRunning(containerId))) {
-      await this.writeConfig(containerId, instance);
+    const running = await this.runtime.isRunning(containerId);
+    // A stopped container on another image is rebuilt from the row on its next start; nothing to write.
+    if (!(await this.isOnCurrentImage(containerId))) {
+      if (running) throw new RuntimeImageMismatchError();
+      return "restart_required";
+    }
+    if (!running) {
+      await this.stageConfig(containerId, instance);
       return "restart_required";
     }
 
@@ -172,6 +194,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       await buildOpenclawEnvTar(files.dotEnv),
     );
     return envWasCurrent ? "applied" : "restart_required";
+  }
+
+  isOnCurrentImage(containerId: string): Promise<boolean> {
+    return this.runtime.isOnImage(containerId, this.image);
   }
 
   // A write can land and still lose its acknowledgement (the gateway restarts, or rate-limits the

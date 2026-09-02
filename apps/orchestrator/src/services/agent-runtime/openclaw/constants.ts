@@ -2,7 +2,8 @@ import type { RuntimeUser } from "../../runtime-users.js";
 
 export const OPENCLAW_INTERNAL_PORT = 18789;
 export const OPENCLAW_HEALTH_PATH = "/healthz";
-export const OPENCLAW_READY_PATH = "/readyz";
+// /readyz is channel-aware in 2026.8 (503 while a channel is unlinked); startup is the gateway's own state.
+export const OPENCLAW_STARTUP_PATH = "/startupz";
 export const OPENCLAW_WHATSAPP_CHANNEL = "whatsapp";
 export const OPENCLAW_STATE_ROOT = "/home/node/.openclaw";
 export const OPENCLAW_STATE_PARENT = "/home/node";

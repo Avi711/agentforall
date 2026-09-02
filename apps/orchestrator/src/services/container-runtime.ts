@@ -3,10 +3,12 @@ import tar from "tar-stream";
 import { PassThrough, Readable, Writable } from "node:stream";
 import type { FastifyBaseLogger } from "fastify";
 import type { RuntimeUser } from "./runtime-users.js";
+import { UpstreamUnavailableError } from "../domain/errors.js";
 
 const DEFAULT_EXEC_STDOUT_LIMIT_BYTES = 512 * 1024 * 1024;
 // Docker re-checks health every 30s; poll faster so restarts are not needlessly delayed.
 const HEALTH_POLL_MS = 2_000;
+const ONE_OFF_LOG_TAIL_LINES = 200;
 
 export interface ContainerCreateOptions {
   name: string;
@@ -28,6 +30,21 @@ export interface ContainerCreateOptions {
     targetPath: string;
     content: Buffer | Readable;
   };
+}
+
+export interface OneOffOptions {
+  name: string;
+  image: string;
+  cmd: string[];
+  timeoutMs: number;
+  memoryBytes: number;
+  volumeMounts: VolumeMount[];
+}
+
+export interface OneOffResult {
+  exitCode: number;
+  // stdout and stderr interleaved, bounded.
+  output: string;
 }
 
 export interface VolumeMount {
@@ -319,6 +336,55 @@ export class ContainerRuntime {
       .putArchive(archive, { path: targetPath });
   }
 
+  // By image id, so the same digest under another reference is the same image; a gone container is on none.
+  async isOnImage(containerId: string, imageRef: string): Promise<boolean> {
+    const info = await this.inspect(containerId);
+    if (!info) return false;
+    try {
+      return info.Image === (await this.docker.getImage(imageRef).inspect()).Id;
+    } catch (err: unknown) {
+      if (!isDockerNotFound(err)) throw err;
+      throw new UpstreamUnavailableError("docker", `runtime image ${imageRef} is not present on this host`);
+    }
+  }
+
+  // Tenant hardening, no published ports, tenant-net egress (npm); always removed, even on timeout.
+  async runOneOff(opts: OneOffOptions): Promise<OneOffResult> {
+    await this.removeIfExists(opts.name);
+    const container = await this.docker.createContainer({
+      name: opts.name,
+      Image: opts.image,
+      Cmd: opts.cmd,
+      Labels: { "agent-forall.managed": "true", "agent-forall.one-off": "true" },
+      HostConfig: {
+        Memory: opts.memoryBytes,
+        MemorySwap: opts.memoryBytes,
+        RestartPolicy: { Name: "no" },
+        NetworkMode: this.networkName,
+        CapDrop: ["ALL"],
+        SecurityOpt: ["no-new-privileges:true"],
+        Binds: opts.volumeMounts.map(formatBind),
+      },
+    });
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      await container.start();
+      const waited = await Promise.race([
+        container.wait() as Promise<{ StatusCode: number }>,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`${opts.name} timed out after ${opts.timeoutMs}ms`)), opts.timeoutMs);
+        }),
+      ]);
+      const logs = (await container.logs({ stdout: true, stderr: true, tail: ONE_OFF_LOG_TAIL_LINES })) as Buffer;
+      return { exitCode: waited.StatusCode, output: demuxLogs(logs) };
+    } finally {
+      if (timer) clearTimeout(timer);
+      await container.remove({ force: true, v: false }).catch((err: unknown) => {
+        this.logger.warn({ name: opts.name, err }, "one-off container cleanup failed");
+      });
+    }
+  }
+
   async isRunning(containerId: string): Promise<boolean> {
     const info = await this.inspect(containerId);
     return Boolean(info?.State.Running);
@@ -338,8 +404,13 @@ export class ContainerRuntime {
     }
   }
 
+  // 304 = already running, which is the outcome asked for (a rebuild the reconciler raced with).
   async start(containerId: string): Promise<void> {
-    await this.docker.getContainer(containerId).start();
+    try {
+      await this.docker.getContainer(containerId).start();
+    } catch (err: unknown) {
+      if (!isDockerStatus(err, 304)) throw err;
+    }
   }
 
   async stop(containerId: string, timeoutSec = 30): Promise<void> {
@@ -530,6 +601,18 @@ export class ContainerRuntime {
 
 }
 
+// Docker's attached log stream frames each chunk with an 8-byte header (type, 3 pad, 4 length).
+function demuxLogs(raw: Buffer): string {
+  const parts: string[] = [];
+  let offset = 0;
+  while (offset + 8 <= raw.length) {
+    const length = raw.readUInt32BE(offset + 4);
+    parts.push(raw.subarray(offset + 8, offset + 8 + length).toString("utf8"));
+    offset += 8 + length;
+  }
+  return parts.join("");
+}
+
 function captureWritable(chunks: Buffer[]): Writable {
   return new Writable({
     write(chunk: Buffer, _encoding, callback) {
@@ -555,11 +638,15 @@ function captureBoundedWritable(chunks: Buffer[], maxBytes: number): Writable {
 }
 
 function isDockerNotFound(err: unknown): boolean {
+  return isDockerStatus(err, 404);
+}
+
+function isDockerStatus(err: unknown, statusCode: number): boolean {
   return (
     typeof err === "object" &&
     err !== null &&
     "statusCode" in err &&
-    (err as { statusCode: number }).statusCode === 404
+    (err as { statusCode: number }).statusCode === statusCode
   );
 }
 

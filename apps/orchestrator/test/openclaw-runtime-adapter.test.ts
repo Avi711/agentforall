@@ -4,7 +4,11 @@ import tar from "tar-stream";
 import { OpenClawRuntimeAdapter } from "../src/services/agent-runtime/openclaw/adapter.js";
 import type { ContainerRuntime } from "../src/services/container-runtime.js";
 import type { Instance, InstanceConfig } from "../src/domain/types.js";
-import { UpstreamUnavailableError, ValidationError } from "../src/domain/errors.js";
+import {
+  RuntimeImageMismatchError,
+  UpstreamUnavailableError,
+  ValidationError,
+} from "../src/domain/errors.js";
 
 test("generated config supports LiteLLM media provider", () => {
   const adapter = new OpenClawRuntimeAdapter({} as ContainerRuntime, "openclaw-image");
@@ -29,23 +33,7 @@ test("generated config supports LiteLLM media provider", () => {
         }
       >;
     };
-    tools?: {
-      media?: {
-        image?: { models: { provider: string; model: string; capabilities?: string[] }[] };
-        audio?: {
-          models: { provider: string; model: string; baseUrl?: string; capabilities?: string[] }[];
-        };
-        video?: { models: { provider: string; model: string; capabilities?: string[] }[] };
-        pdf?: unknown;
-      };
-    };
-    web?: {
-      whatsapp?: {
-        keepAliveIntervalMs: number;
-        connectTimeoutMs: number;
-        defaultQueryTimeoutMs: number;
-      };
-    };
+    tools?: { media?: MediaTools };
   };
 
   assert.equal(config.agents.defaults.model.primary, "litellm/gemini-agentforall");
@@ -66,18 +54,18 @@ test("generated config supports LiteLLM media provider", () => {
     contextWindow: 200000,
     maxTokens: 8192,
   });
-  assert.deepEqual(config.tools?.media?.image?.models[0], {
-    provider: "litellm",
-    model: "gemini-agentforall",
-    capabilities: ["image"],
-  });
-  // Audio goes through our plugin provider: OpenClaw only lets plugin-backed providers transcribe.
-  assert.deepEqual(config.tools?.media?.audio?.models[0], {
-    provider: "agentforall-media",
-    model: "gemini-agentforall",
-    capabilities: ["audio"],
-    baseUrl: "https://litellm-gateway.example/v1",
-  });
+  assert.deepEqual(config.tools?.media?.models, [
+    { provider: "litellm", model: "gemini-agentforall", capabilities: ["image"] },
+    // Audio goes through our plugin provider: OpenClaw only lets plugin-backed providers transcribe.
+    {
+      provider: "agentforall-media",
+      model: "gemini-agentforall",
+      capabilities: ["audio"],
+      baseUrl: "https://litellm-gateway.example/v1",
+    },
+  ]);
+  assert.equal(config.tools?.media?.image?.preferredModel, "litellm/gemini-agentforall");
+  assert.equal(config.tools?.media?.audio?.preferredModel, "agentforall-media/gemini-agentforall");
   // Without an auth block of its own, OpenClaw refuses the provider before the plugin is reached.
   assert.deepEqual(config.models?.providers["agentforall-media"], {
     api: "openai-completions",
@@ -88,12 +76,11 @@ test("generated config supports LiteLLM media provider", () => {
   // No video block on a gateway provider: OpenClaw has nothing that would answer it.
   assert.equal(config.tools?.media?.video, undefined);
   assert.equal(config.tools?.media?.pdf, undefined);
-  assert.deepEqual(config.web?.whatsapp, {
-    keepAliveIntervalMs: 15000,
-    connectTimeoutMs: 60000,
-    defaultQueryTimeoutMs: 60000,
-  });
   assert.match(files.dotEnv, /^LITELLM_API_KEY=litellm-key$/m);
+  // Retired by 2026.8: the WhatsApp plugin owns socket timing, and these variables are read by nothing.
+  assert.equal("web" in config, false);
+  assert.equal("logging" in config, false);
+  assert.doesNotMatch(files.dotEnv, /OPENCLAW_HEADLESS|WHATSAPP_ENABLED|WHATSAPP_SESSION_PATH/);
   // The plugin reads its own variables: the model client's key name follows the provider id.
   assert.match(files.dotEnv, /^AGENTFORALL_MEDIA_BASE_URL=https:\/\/litellm-gateway\.example\/v1$/m);
   assert.match(files.dotEnv, /^AGENTFORALL_MEDIA_API_KEY=litellm-key$/m);
@@ -117,18 +104,10 @@ test("a gateway provider under any name transcribes through the plugin", () => {
     },
     "gateway-token",
   );
-  const config = JSON.parse(files.configJson) as {
-    tools?: {
-      media?: {
-        image?: { models: { provider: string }[] };
-        audio?: { models: { provider: string; model: string; baseUrl?: string }[] };
-        video?: unknown;
-      };
-    };
-  };
+  const config = JSON.parse(files.configJson) as { tools?: { media?: MediaTools } };
 
-  assert.equal(config.tools?.media?.image?.models[0]?.provider, "proxy");
-  assert.deepEqual(config.tools?.media?.audio?.models[0], {
+  assert.equal(config.tools?.media?.image?.preferredModel, "proxy/gpt-5.5");
+  assert.deepEqual(mediaModelFor(config.tools?.media, "audio"), {
     provider: "agentforall-media",
     model: "gpt-5.5",
     capabilities: ["audio"],
@@ -156,21 +135,14 @@ test("a bot on a direct provider keeps OpenClaw's own audio provider", () => {
     },
     "gateway-token",
   );
-  const config = JSON.parse(files.configJson) as {
-    tools?: {
-      media?: {
-        audio?: { models: { provider: string; model: string; baseUrl?: string }[] };
-        video?: { models: { provider: string }[] };
-      };
-    };
-  };
+  const config = JSON.parse(files.configJson) as { tools?: { media?: MediaTools } };
 
-  assert.deepEqual(config.tools?.media?.audio?.models[0], {
+  assert.deepEqual(mediaModelFor(config.tools?.media, "audio"), {
     provider: "anthropic",
     model: "claude-sonnet-5",
     capabilities: ["audio"],
   });
-  assert.equal(config.tools?.media?.video?.models[0]?.provider, "anthropic");
+  assert.equal(config.tools?.media?.video?.preferredModel, "anthropic/claude-sonnet-5");
   assert.equal(files.dotEnv.includes("AGENTFORALL_MEDIA_"), false);
 });
 
@@ -184,6 +156,25 @@ test("a bot whose plan carries no audio gets no audio block", () => {
 
   assert.equal(config.tools?.media?.audio, undefined);
 });
+
+interface MediaModel {
+  provider: string;
+  model: string;
+  baseUrl?: string;
+  capabilities: string[];
+}
+
+interface MediaTools {
+  models: MediaModel[];
+  image?: { preferredModel: string };
+  audio?: { preferredModel: string };
+  video?: { preferredModel: string };
+  pdf?: unknown;
+}
+
+function mediaModelFor(media: MediaTools | undefined, capability: string): MediaModel | undefined {
+  return media?.models.find((entry) => entry.capabilities.includes(capability));
+}
 
 interface SentConfig {
   agents: { defaults: { model: { primary: string } } };
@@ -396,11 +387,56 @@ test("a change the container already matches never touches the gateway", async (
   assert.deepEqual(live.commands.filter((cmd) => cmd[0] === "node"), []);
 });
 
+// A 2026.8-shaped config is refused by a 2026.7 gateway and vice versa, so a container from
+// another image gets no config from this orchestrator: running, it must be recreated first;
+// stopped, its next start recreates it and renders from the row.
+test("a running container from another image is refused, not written to", async () => {
+  const live = liveRuntime({ onImage: false });
+  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+
+  await assert.rejects(adapter.applyConfig("container-1", instance), RuntimeImageMismatchError);
+  assert.deepEqual(live.commands, []);
+  assert.equal(live.archiveOrNull(), null);
+});
+
+// The restart and pairing paths write the file directly; they must be refused the same way.
+test("staging config onto a container from another image is refused", async () => {
+  let wrote = false;
+  const runtime = {
+    isOnImage: async () => false,
+    readFile: async () => Buffer.from(JSON.stringify(existingConfig)),
+    putArchive: async () => {
+      wrote = true;
+    },
+  } as unknown as ContainerRuntime;
+  const adapter = new OpenClawRuntimeAdapter(runtime, "openclaw-image");
+
+  await assert.rejects(adapter.writeConfig("container-1", instance), RuntimeImageMismatchError);
+  assert.equal(wrote, false);
+});
+
+test("a stopped container from another image is left for its next start to rebuild", async () => {
+  let wrote = false;
+  const runtime = {
+    isRunning: async () => false,
+    isOnImage: async () => false,
+    readFile: async () => Buffer.from(JSON.stringify(existingConfig)),
+    putArchive: async () => {
+      wrote = true;
+    },
+  } as unknown as ContainerRuntime;
+  const adapter = new OpenClawRuntimeAdapter(runtime, "openclaw-image");
+
+  assert.equal(await adapter.applyConfig("container-1", instance), "restart_required");
+  assert.equal(wrote, false);
+});
+
 // Nothing is running to accept the change, so the file its next boot reads is the way in.
 test("a stopped container is staged, never reported as applied", async () => {
   let archive: Buffer | null = null;
   const runtime = {
     isRunning: async () => false,
+    isOnImage: async () => true,
     readFile: async () => Buffer.from(JSON.stringify(existingConfig)),
     execCommandBuffer: async () => {
       throw new Error("exec must not be attempted on a stopped container");
@@ -459,6 +495,7 @@ test("staging a stopped container keeps the config it already has", async () => 
   };
   const runtime = {
     isRunning: async () => false,
+    isOnImage: async () => true,
     readFile: async () => Buffer.from(JSON.stringify(tenantEdited)),
     putArchive: async (_id: string, _path: string, content: Buffer) => {
       archive = content;
@@ -482,6 +519,7 @@ test("a container with no config yet gets the freshly generated one", async () =
   let archive: Buffer | null = null;
   const runtime = {
     isRunning: async () => false,
+    isOnImage: async () => true,
     readFile: async () => null,
     putArchive: async (_id: string, _path: string, content: Buffer) => {
       archive = content;
@@ -520,6 +558,7 @@ function liveRuntime(
     configMissing?: boolean;
     envOnDisk?: string | null;
     envReadThrows?: Error;
+    onImage?: boolean;
   } = {},
 ) {
   const commands: string[][] = [];
@@ -530,6 +569,7 @@ function liveRuntime(
 
   const runtime = {
     isRunning: async () => true,
+    isOnImage: async () => options.onImage ?? true,
     readFile: async (_containerId: string, path: string) => {
       reads.push(path);
       if (path.endsWith(".env")) {

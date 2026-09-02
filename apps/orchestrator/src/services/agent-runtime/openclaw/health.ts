@@ -8,7 +8,7 @@ import {
 import {
   OPENCLAW_HEALTH_PATH,
   OPENCLAW_INTERNAL_PORT,
-  OPENCLAW_READY_PATH,
+  OPENCLAW_STARTUP_PATH,
   OPENCLAW_WHATSAPP_CHANNEL,
 } from "./constants.js";
 
@@ -24,10 +24,16 @@ export async function probeOpenclawGateway(
   if (!(await isOk(`${base}${OPENCLAW_HEALTH_PATH}`, timeoutMs))) {
     return { healthy: false, degraded: null };
   }
-  // Readiness is observability only: it reports event-loop stalls and drain/startup states that
+  // Startup state is observability only: it reports a gateway still migrating or draining, which
   // liveness cannot see, and must never gate the health decision itself.
-  const ready = await isOk(`${base}${OPENCLAW_READY_PATH}`, timeoutMs);
-  return { healthy: true, degraded: !ready };
+  return { healthy: true, degraded: startupDegraded(await statusOf(`${base}${OPENCLAW_STARTUP_PATH}`, timeoutMs)) };
+}
+
+// 503 = still starting; a gateway without the endpoint (pre-2026.8) or one we could not ask
+// offers no signal, which is not the same as a bad one.
+function startupDegraded(status: number | null): boolean | null {
+  if (status === null || status === 404) return null;
+  return status !== 200;
 }
 
 export async function probeOpenclawWhatsapp(
@@ -52,11 +58,16 @@ export async function probeOpenclawWhatsapp(
 }
 
 async function isOk(url: string, timeoutMs: number): Promise<boolean> {
+  return (await statusOf(url, timeoutMs)) === 200;
+}
+
+async function statusOf(url: string, timeoutMs: number): Promise<number | null> {
   try {
     const resp = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
-    return resp.ok;
+    return resp.status;
   } catch {
-    return false;
+    // Unreachable is a liveness verdict, not a status.
+    return null;
   }
 }
 

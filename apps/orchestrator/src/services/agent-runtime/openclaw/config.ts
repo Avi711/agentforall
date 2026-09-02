@@ -6,7 +6,6 @@ import type {
   InstanceConfig,
   LlmProvider,
   ProviderConfig,
-  ProviderMediaCapability,
   WhatsappChannelConfig,
 } from "../../../domain/types.js";
 import { ownerIdentityOf, ownerPeerIds } from "../../../domain/owner.js";
@@ -19,7 +18,10 @@ import {
 } from "./constants.js";
 import type {
   ChannelsConfig,
+  HeartbeatConfig,
+  MediaCapability,
   MediaModelEntry,
+  MediaToolsConfig,
   OpenclawConfig,
   SessionConfig,
   WhatsAppChannelConfig,
@@ -39,6 +41,20 @@ const CREDIT_HOOK_TIMEOUT_MS = 3000;
 // one; it registers under the same id and calls the model the bot already replies with.
 const MEDIA_PLUGIN_ID = "agentforall-media";
 const MEDIA_ENV_KEY = "AGENTFORALL_MEDIA_API_KEY";
+const MEMORY_PLUGIN_ID = "memory-core";
+const MAIN_AGENT_ID = "main";
+const TENANT_TIMEZONE = "Asia/Jerusalem";
+
+// The 2026.8 default is a full main-session turn every 30 minutes (~100K tokens each). A few
+// isolated check-ins in waking hours keep the proactive behaviour at a fraction of the spend.
+const HEARTBEAT: HeartbeatConfig = {
+  every: "8h",
+  activeHours: { start: "08:00", end: "22:00", timezone: TENANT_TIMEZONE },
+  isolatedSession: true,
+  target: "owner",
+  // Explicit: doctor flags an owner-targeted heartbeat whose direct-message policy is left implicit.
+  directPolicy: "allow",
+};
 
 const OPENCLAW_PROVIDER_PREFIX: Record<LlmProvider, string> = {
   anthropic: "anthropic",
@@ -87,6 +103,14 @@ export async function buildOpenclawEnvTar(dotEnv: string): Promise<Buffer> {
       ...OPENCLAW_USER,
     });
     await writeEntry(pack, { name: ".openclaw/.env", mode: 0o600, ...OPENCLAW_USER }, dotEnv);
+  });
+}
+
+export async function buildOpenclawWorkspaceFileTar(fileName: string, content: string): Promise<Buffer> {
+  return packTar(async (pack) => {
+    await writeEntry(pack, { name: ".openclaw/", type: "directory", mode: 0o755, ...OPENCLAW_USER });
+    await writeEntry(pack, { name: ".openclaw/workspace/", type: "directory", mode: 0o700, ...OPENCLAW_USER });
+    await writeEntry(pack, { name: `.openclaw/workspace/${fileName}`, mode: 0o644, ...OPENCLAW_USER }, content);
   });
 }
 
@@ -148,6 +172,7 @@ function generateOpenclawConfig(
   const mcp = buildMcp(config);
   const media = new Set(provider.media ?? []);
   const owner = ownerPeerIds(ownerIdentityOf(config.channels));
+  const name = config.displayName.trim();
   const openclawConfig: OpenclawConfig = {
     agents: {
       defaults: {
@@ -156,8 +181,9 @@ function generateOpenclawConfig(
         ...(media.has("pdf") ? { pdfModel: model } : {}),
         workspace: OPENCLAW_WORKSPACE_PATH,
         maxConcurrent: 2,
+        heartbeat: HEARTBEAT,
       },
-      list: [{ id: "main", default: true }],
+      entries: { [MAIN_AGENT_ID]: name ? { identity: { name } } : {} },
     },
     ...(models ? { models } : {}),
     channels: buildChannels(config.channels),
@@ -174,25 +200,8 @@ function generateOpenclawConfig(
       headless: true,
       noSandbox: true,
     },
-    logging: { redactSensitive: "tools" },
     session: buildSession(owner),
     ...(owner.length > 0 ? { commands: { ownerAllowFrom: owner } } : {}),
-    web: {
-      whatsapp: {
-        keepAliveIntervalMs: 15000,
-        connectTimeoutMs: 60000,
-        defaultQueryTimeoutMs: 60000,
-      },
-      // Default cap is 30s, so a WhatsApp 405 throttle turns into ~120 handshakes/hour
-      // and keeps the block alive. Back off to 10min so throttles can expire.
-      reconnect: {
-        initialMs: 5000,
-        maxMs: 600000,
-        factor: 2,
-        jitter: 0.3,
-        maxAttempts: 12,
-      },
-    },
   };
 
   return JSON.stringify(openclawConfig, null, 2);
@@ -205,7 +214,6 @@ function generateOpenclawEnv(
   const lines: string[] = [];
 
   addEnvLine(lines, "OPENCLAW_GATEWAY_TOKEN", gatewayToken);
-  lines.push("OPENCLAW_HEADLESS=true");
   addEnvLine(lines, providerEnvKey(config.provider), config.provider.apiKey);
   // The credit plugin gets its own names: the model client's key variable is derived from the
   // provider id, so sharing it would break the plugin silently the day that id changes.
@@ -232,8 +240,6 @@ function generateOpenclawEnv(
         addEnvLine(lines, "SLACK_APP_TOKEN", ch.appToken);
         break;
       case "whatsapp":
-        lines.push("WHATSAPP_ENABLED=true");
-        lines.push(`WHATSAPP_SESSION_PATH=${OPENCLAW_WHATSAPP_SESSION_PATH}`);
         break;
     }
   }
@@ -255,6 +261,9 @@ function buildPlugins(channels: InstanceConfig["channels"]): OpenclawConfig["plu
         hooks: { allowConversationAccess: true, timeoutMs: CREDIT_HOOK_TIMEOUT_MS },
       },
       [MEDIA_PLUGIN_ID]: { enabled: true },
+      // Dreaming (nightly memory consolidation) is on by default; pinned so a default flip upstream
+      // cannot change tenant spend unnoticed.
+      [MEMORY_PLUGIN_ID]: { enabled: true, config: { dreaming: { enabled: true } } },
       ...(channels.some((ch) => ch.type === "whatsapp") ? { whatsapp: { enabled: true } } : {}),
     },
   };
@@ -274,6 +283,8 @@ function buildChannels(channels: InstanceConfig["channels"]): ChannelsConfig {
           ...(ch.allowFrom?.length ? { allowFrom: ch.allowFrom } : {}),
           // One error notice per incident instead of a reply to every message.
           errorPolicy: "once",
+          // 2026.8 defaults to a tool-progress draft; the answer-text preview is what tenants know.
+          streaming: { mode: "partial" },
           // Every group is blocked until listed, so without these the bot is silent in any group
           // the owner adds it to. The wildcard admits the group; "open" lets its other members
           // talk to the bot there, and the mention keeps it quiet until addressed.
@@ -422,43 +433,47 @@ function buildMcp(config: InstanceConfig): OpenclawConfig["mcp"] {
   };
 }
 
+// One capability-tagged model list; each capability names its preferred entry.
 function buildToolsConfig(provider: ProviderConfig): OpenclawConfig["tools"] {
   const media = new Set(provider.media ?? []);
   const providerId = openclawProviderId(provider);
-  const mediaConfig: NonNullable<OpenclawConfig["tools"]>["media"] = {
-    concurrency: 2,
-  };
+  const models: MediaModelEntry[] = [];
+  const mediaConfig: MediaToolsConfig = { concurrency: 2, models };
 
   if (media.has("image")) {
+    const entry = mediaModel(providerId, provider.model, "image");
+    models.push(entry);
     mediaConfig.image = {
       enabled: true,
+      preferredModel: mediaModelRef(entry),
       maxBytes: 20 * 1024 * 1024,
       timeoutSeconds: 180,
-      models: [mediaModel(providerId, provider.model, "image")],
     };
   }
   if (media.has("audio")) {
+    const entry = audioMediaModel(provider, providerId);
+    models.push(entry);
     mediaConfig.audio = {
       enabled: true,
+      preferredModel: mediaModelRef(entry),
       maxBytes: 20 * 1024 * 1024,
       timeoutSeconds: 90,
-      models: [audioMediaModel(provider, providerId)],
     };
   }
   // Video would need the same plugin treatment as audio; behind a gateway OpenClaw has no
   // video-capable provider to call, so the block is left out rather than promising a capability.
   if (media.has("video") && !isGatewayProvider(provider)) {
+    const entry = mediaModel(providerId, provider.model, "video");
+    models.push(entry);
     mediaConfig.video = {
       enabled: true,
+      preferredModel: mediaModelRef(entry),
       maxBytes: 50 * 1024 * 1024,
       timeoutSeconds: 180,
-      models: [mediaModel(providerId, provider.model, "video")],
     };
   }
 
-  return mediaConfig.image || mediaConfig.audio || mediaConfig.video
-    ? { media: mediaConfig }
-    : undefined;
+  return models.length > 0 ? { media: mediaConfig } : undefined;
 }
 
 // A direct provider (anthropic, openai, google…) is one OpenClaw transcribes with itself.
@@ -467,17 +482,17 @@ function audioMediaModel(provider: ProviderConfig, providerId: string): MediaMod
   return { ...mediaModel(MEDIA_PLUGIN_ID, provider.model, "audio"), baseUrl: provider.baseUrl };
 }
 
+function mediaModelRef(entry: MediaModelEntry): string {
+  return `${entry.provider}/${entry.model}`;
+}
+
 // The same rule buildModelsConfig and providerEnvKey use: a baseUrl makes it a config provider,
 // and OpenClaw registers those for image understanding alone.
 function isGatewayProvider(provider: ProviderConfig): provider is ProviderConfig & { baseUrl: string } {
   return Boolean(provider.baseUrl);
 }
 
-function mediaModel(
-  provider: string,
-  model: string,
-  capability: Exclude<ProviderMediaCapability, "pdf">,
-) {
+function mediaModel(provider: string, model: string, capability: MediaCapability): MediaModelEntry {
   return { provider, model, capabilities: [capability] };
 }
 
@@ -536,27 +551,34 @@ function parseJsonRecord(json: string): Record<string, unknown> {
   return parsed;
 }
 
-// Everything the orchestrator renders, addressed by path. `gateway` is here because it is the
-// control plane rather than a preference: losing it would lock us out of the container.
+// Everything the orchestrator renders, addressed by path. The gateway keys are here because they
+// are the control plane rather than a preference: losing them would lock us out of the container.
 const OWNED_PATHS: readonly (readonly string[])[] = [
   ["agents", "defaults", "model"],
   ["agents", "defaults", "imageModel"],
   ["agents", "defaults", "pdfModel"],
+  ["agents", "defaults", "heartbeat"],
+  // Only the name: the rest of the entry, and any other agent, is the tenant's.
+  ["agents", "entries", MAIN_AGENT_ID, "identity", "name"],
   ["models"],
   ["tools"],
-  ["gateway"],
+  ["gateway", "port"],
+  ["gateway", "mode"],
+  ["gateway", "bind"],
+  ["gateway", "auth"],
   ["session"],
   ["commands", "ownerAllowFrom"],
   ["plugins", "entries", "whatsapp"],
   ["plugins", "entries", CREDIT_PLUGIN_ID],
   ["plugins", "entries", MEDIA_PLUGIN_ID],
+  ["plugins", "entries", MEMORY_PLUGIN_ID],
   ["mcp", "servers", MCP_RELAY_SERVER_NAME],
 ];
 
 // Per channel, the keys the dashboard sets. Anything else under a channel — the per-group entries
 // the runtime writes, the WhatsApp device state — belongs to the container.
 const CHANNEL_OWNED_PATHS: Record<ChannelType, readonly (readonly string[])[]> = {
-  telegram: [["enabled"], ["botToken"], ["dmPolicy"], ["allowFrom"], ["errorPolicy"]],
+  telegram: [["enabled"], ["botToken"], ["dmPolicy"], ["allowFrom"], ["errorPolicy"], ["streaming", "mode"]],
   discord: [["enabled"], ["token"], ["groupPolicy"], ["guilds"]],
   slack: [["enabled"], ["botToken"], ["appToken"]],
   whatsapp: [

@@ -305,6 +305,30 @@ test("resolveRelay accepts only the bound token of a live bot", async () => {
   await assert.rejects(h.integrations.resolveRelay("22222222-2222-4222-8222-222222222222", token), AuthenticationError);
 });
 
+// The relay is bound at creation now, so the first thing a bot's container ever does may be a
+// relay call: the provider session is created then, once, however many calls race for it.
+test("resolveRelay creates the provider session on a bot's first call and shares it", async () => {
+  const binding = { relayToken: "a".repeat(64), relayUrl: "http://orchestrator:3000/api/v1/mcp/x" };
+  const h = harness({ instance: { config: { ...makeInstance([]).config, integrations: binding } } });
+  const inst = h.instance();
+
+  const targets = await Promise.all([
+    h.integrations.resolveRelay(inst.id, binding.relayToken),
+    h.integrations.resolveRelay(inst.id, binding.relayToken),
+  ]);
+
+  assert.equal(h.calls.createSession, 1);
+  assert.deepEqual(targets, [
+    { upstreamUrl: "https://mcp/1", headers: { "x-api-key": "project-key" } },
+    { upstreamUrl: "https://mcp/1", headers: { "x-api-key": "project-key" } },
+  ]);
+  assert.ok(h.calls.events.includes("integration.session_created"));
+  // A later dashboard connect reuses the session the relay created.
+  await h.integrations.connect(inst.id, inst.userId, "gmail", RETURN_URL);
+  assert.equal(h.calls.createSession, 1);
+  assert.equal(h.calls.updateConfig.length, 0);
+});
+
 test("resolveRelay refuses a bot that is being destroyed", async () => {
   const h = harness();
   const inst = h.instance();

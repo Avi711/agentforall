@@ -256,6 +256,13 @@ resource "google_compute_instance" "platform" {
   }
 
   allow_stopping_for_update = true
+
+  # Tenant Docker volumes live on this VM's auto-delete boot disk, so a replace destroys every bot.
+  deletion_protection = true
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "google_compute_disk_resource_policy_attachment" "snapshot" {

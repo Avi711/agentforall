@@ -11,10 +11,8 @@ interface Patched {
   channels: Record<string, Record<string, unknown> | undefined>;
   tools?: { media?: Record<string, unknown> };
   plugins?: { allow?: string[]; entries?: Record<string, unknown> };
-  web?: unknown;
   browser?: unknown;
-  logging?: unknown;
-  agents?: { defaults?: Record<string, unknown>; list?: unknown };
+  agents?: { defaults?: Record<string, unknown>; entries?: Record<string, unknown> };
   mcp?: unknown;
   messages?: unknown;
 }
@@ -87,20 +85,57 @@ test("runtime-written whatsapp state survives while access policy stays orchestr
 // must not be a silent factory reset. This is the whole point of the owned-paths patch.
 test("settings the dashboard does not render survive a config change untouched", () => {
   const existing = {
-    web: { reconnect: { maxMs: 30000 } },
     browser: { headless: false },
-    logging: { redactSensitive: "none" },
-    agents: { defaults: { model: "stale", maxConcurrent: 8 }, list: [{ id: "main" }, { id: "side" }] },
+    agents: {
+      defaults: { model: "stale", maxConcurrent: 8 },
+      entries: { main: { identity: { name: "Old", emoji: "🦥" }, skills: ["docs"] }, side: {} },
+    },
   };
   const patched = patch(existing, [{ type: "whatsapp" }]);
 
-  assert.deepEqual(patched.web, { reconnect: { maxMs: 30000 } });
   assert.deepEqual(patched.browser, { headless: false });
-  assert.deepEqual(patched.logging, { redactSensitive: "none" });
-  assert.deepEqual(patched.agents?.list, [{ id: "main" }, { id: "side" }]);
   assert.equal(patched.agents?.defaults?.maxConcurrent, 8);
-  // The model is the one field under agents the dashboard does render.
   assert.deepEqual(patched.agents?.defaults?.model, { primary: "openai/gpt-5" });
+  // Only the display name under the main agent is ours; the tenant keeps its emoji, skills, and
+  // any other agent.
+  assert.deepEqual(patched.agents?.entries, {
+    main: { identity: { name: "Bot", emoji: "🦥" }, skills: ["docs"] },
+    side: {},
+  });
+});
+
+// An empty name must not leave a stale one behind. Without `agents.entries` 2026.8.2 still runs
+// its default main agent (verified: config validates, `agents list` reports main).
+test("a blank display name clears the identity instead of leaving the old one", () => {
+  const files = generateRuntimePatchedOpenclawFiles(
+    JSON.stringify({ agents: { entries: { main: { identity: { name: "Old" } } } } }),
+    { ...configWith([{ type: "whatsapp" }]), displayName: "  " },
+    "token",
+  );
+  const patched = JSON.parse(files.configJson) as Patched;
+  // An entry that held nothing but our name goes with it; OpenClaw runs its single agent without one.
+  assert.equal(patched.agents?.entries, undefined);
+});
+
+// A 30-minute main-session heartbeat is ~$100/tenant/month; the shaped one is what we pay for.
+test("the heartbeat cadence is orchestrator-owned", () => {
+  const existing = { agents: { defaults: { heartbeat: { every: "30m" } } } };
+  const patched = patch(existing, [{ type: "whatsapp" }]);
+
+  assert.deepEqual(patched.agents?.defaults?.heartbeat, {
+    every: "8h",
+    activeHours: { start: "08:00", end: "22:00", timezone: "Asia/Jerusalem" },
+    isolatedSession: true,
+    target: "owner",
+    directPolicy: "allow",
+  });
+});
+
+test("telegram streaming stays on the answer preview a tenant may have changed upstream", () => {
+  const existing = { channels: { telegram: { enabled: true, botToken: "t", streaming: { mode: "progress" } } } };
+  const patched = patch(existing, [{ type: "telegram", botToken: "t" }]);
+
+  assert.deepEqual(patched.channels.telegram?.streaming, { mode: "partial" });
 });
 
 // The bug this whole change exists for: OpenClaw writes group allowlists into the telegram block
@@ -194,6 +229,7 @@ test("the plugin a channel needs is enabled without dropping the runtime's other
       hooks: { allowConversationAccess: true, timeoutMs: 3000 },
     },
     "agentforall-media": { enabled: true },
+    "memory-core": { enabled: true, config: { dreaming: { enabled: true } } },
   });
 });
 
@@ -209,12 +245,37 @@ test("the media plugin ships on every bot", () => {
 // a stale video entry would keep promising a capability the runtime cannot serve.
 test("a media block the orchestrator no longer renders is dropped from the live config", () => {
   const existing = {
-    tools: { media: { video: { enabled: true, models: [{ provider: "litellm", model: "old" }] } } },
+    tools: { media: { video: { enabled: true, preferredModel: "litellm/old" } } },
   };
   const patched = patchGateway(existing);
 
   assert.equal(patched.tools?.media?.video, undefined);
   assert.ok(patched.tools?.media?.audio, "audio is still rendered");
+});
+
+// One capability-tagged list; image goes to the gateway provider, audio to our plugin.
+test("media models are one list with a preferred entry per capability", () => {
+  const patched = patchGateway({});
+
+  assert.deepEqual(patched.tools?.media, {
+    concurrency: 2,
+    models: [
+      { provider: "openai", model: "gpt-5", capabilities: ["image"] },
+      {
+        provider: "agentforall-media",
+        model: "gpt-5",
+        baseUrl: "https://gateway.example/v1",
+        capabilities: ["audio"],
+      },
+    ],
+    image: { enabled: true, preferredModel: "openai/gpt-5", maxBytes: 20971520, timeoutSeconds: 180 },
+    audio: {
+      enabled: true,
+      preferredModel: "agentforall-media/gpt-5",
+      maxBytes: 20971520,
+      timeoutSeconds: 90,
+    },
+  });
 });
 
 // Without allowConversationAccess the plugin never receives before_agent_reply, so it would
@@ -254,7 +315,7 @@ test("config the orchestrator does not render is left alone", () => {
 // The patch delivers a fixed list of paths. A field added to the generator but not to that list
 // would silently never reach a container that already exists, which is invisible until a customer
 // reports it — so patching an empty config must reproduce everything the generator renders.
-const FROZEN_AFTER_CREATION = ["web", "browser", "logging"];
+const FROZEN_AFTER_CREATION = ["browser"];
 
 test("every field the generator renders is one a config change can deliver", () => {
   const cases: ChannelConfig[][] = [
@@ -268,22 +329,19 @@ test("every field the generator renders is one a config change can deliver", () 
     const pristine = JSON.parse(
       generateOpenclawFiles(configWith(channels), "token").configJson,
     ) as Record<string, unknown>;
+    const agents = pristine.agents as { defaults: Record<string, unknown>; entries: unknown };
     const deliverable: Record<string, unknown> = {
       ...pristine,
-      agents: { defaults: { model: agentModel(pristine) } },
+      agents: {
+        defaults: { model: agents.defaults.model, heartbeat: agents.defaults.heartbeat },
+        entries: agents.entries,
+      },
     };
     for (const key of FROZEN_AFTER_CREATION) delete deliverable[key];
 
     assert.deepEqual(patch({}, channels), deliverable, channels[0]?.type);
   }
 });
-
-// agents carries both rendered settings (the model) and creation-time ones (workspace, the agent
-// list) that a running container keeps for itself.
-function agentModel(pristine: Record<string, unknown>): unknown {
-  const agents = pristine.agents as { defaults: { model: unknown } };
-  return agents.defaults.model;
-}
 
 const RELAY = { relayToken: "relay-secret", relayUrl: "http://orchestrator:3000/api/v1/mcp/abc" };
 

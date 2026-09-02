@@ -281,6 +281,7 @@ function harness(overrides: Overrides) {
   };
   const runtime = {
     isRunning: async () => overrides.containerRunning ?? true,
+    inspect: async (containerId: string) => ({ Id: containerId }),
     waitForHealthy: async (containerId: string) => {
       calls.waited.push(containerId);
       return true;
@@ -292,6 +293,7 @@ function harness(overrides: Overrides) {
   const registry = {
     get: () => ({
       hotReloadsConfig: overrides.hotReload ?? true,
+      isOnCurrentImage: async () => true,
       writeConfig: async (containerId: string) => {
         calls.refreshedConfigs.push(containerId);
         calls.staged.push(containerId);

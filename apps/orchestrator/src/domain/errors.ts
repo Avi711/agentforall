@@ -35,6 +35,16 @@ export class InvalidStateError extends DomainError {
   }
 }
 
+// Rendered config is only valid for the adapter's image; a container from another one is recreated first.
+export class RuntimeImageMismatchError extends DomainError {
+  readonly statusCode = 409;
+  readonly code = "RUNTIME_IMAGE_MISMATCH";
+
+  constructor() {
+    super("container runs another runtime image; recreate it before changing its config");
+  }
+}
+
 export class PortExhaustedError extends DomainError {
   readonly statusCode = 503;
   readonly code = "PORT_EXHAUSTED";

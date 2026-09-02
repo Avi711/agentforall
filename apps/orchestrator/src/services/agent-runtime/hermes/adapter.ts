@@ -168,6 +168,14 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
     return [];
   }
 
+  async prepareState(): Promise<void> {}
+
+  async seedWorkspace(): Promise<void> {}
+
+  async isOnCurrentImage(): Promise<boolean> {
+    return true;
+  }
+
   // Hermes has no owner concept in its config, so there is nothing to read back.
   async readOwnerIds(): Promise<null> {
     return null;

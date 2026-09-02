@@ -6,8 +6,9 @@ export interface OpenclawConfig {
       pdfModel?: ModelSelection;
       workspace: string;
       maxConcurrent: number;
+      heartbeat: HeartbeatConfig;
     };
-    list: { id: string; default?: boolean }[];
+    entries: Record<string, AgentEntryConfig>;
   };
   models?: ModelsConfig;
   channels: ChannelsConfig;
@@ -18,18 +19,29 @@ export interface OpenclawConfig {
     bind: "lan" | "loopback";
     auth: { mode: "token"; token: string };
   };
-  plugins?: {
-    entries: Record<
-      string,
-      { enabled: boolean; hooks?: { allowConversationAccess?: boolean; timeoutMs?: number } }
-    >;
-  };
+  plugins?: { entries: Record<string, PluginEntryConfig> };
   browser?: BrowserConfig;
-  logging: { redactSensitive: "tools" | "all" | "none" };
-  web?: WebConfig;
   session: SessionConfig;
   commands?: CommandsConfig;
   mcp?: { servers: Record<string, McpServerConfig> };
+}
+
+export interface AgentEntryConfig {
+  identity?: { name?: string; emoji?: string };
+}
+
+export interface HeartbeatConfig {
+  every: string;
+  activeHours?: { start: string; end: string; timezone?: string };
+  isolatedSession?: boolean;
+  target?: "owner" | "last" | "none";
+  directPolicy?: "allow" | "block";
+}
+
+export interface PluginEntryConfig {
+  enabled: boolean;
+  hooks?: { allowConversationAccess?: boolean; timeoutMs?: number };
+  config?: { dreaming?: { enabled: boolean } };
 }
 
 export interface McpServerConfig {
@@ -90,6 +102,7 @@ export interface ToolsConfig {
 
 export interface MediaToolsConfig {
   concurrency?: number;
+  models: MediaModelEntry[];
   image?: MediaToolConfig;
   audio?: MediaToolConfig;
   video?: MediaToolConfig;
@@ -97,37 +110,25 @@ export interface MediaToolsConfig {
 
 export interface MediaToolConfig {
   enabled: boolean;
+  // "<provider>/<model>", matched against `models`.
+  preferredModel: string;
   maxBytes?: number;
   timeoutSeconds?: number;
-  models: MediaModelEntry[];
 }
 
 export interface MediaModelEntry {
   provider: string;
   model: string;
   baseUrl?: string;
-  capabilities?: ("image" | "audio" | "video")[];
+  capabilities: MediaCapability[];
   timeoutSeconds?: number;
 }
+
+export type MediaCapability = "image" | "audio" | "video";
 
 export interface BrowserConfig {
   headless?: boolean;
   noSandbox?: boolean;
-}
-
-export interface WebConfig {
-  whatsapp?: {
-    keepAliveIntervalMs?: number;
-    connectTimeoutMs?: number;
-    defaultQueryTimeoutMs?: number;
-  };
-  reconnect?: {
-    initialMs?: number;
-    maxMs?: number;
-    factor?: number;
-    jitter?: number;
-    maxAttempts?: number;
-  };
 }
 
 export interface ChannelsConfig {
@@ -138,6 +139,7 @@ export interface ChannelsConfig {
     dmPolicy?: "open" | "allowlist" | "pairing";
     allowFrom?: string[];
     errorPolicy?: "always" | "once" | "silent";
+    streaming?: { mode: "off" | "partial" | "block" | "progress" };
     groupPolicy?: "open" | "allowlist" | "disabled";
     // Chat id → per-group settings; "*" matches any group.
     groups?: Record<string, { requireMention?: boolean }>;

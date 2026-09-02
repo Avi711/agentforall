@@ -2,9 +2,27 @@
 
 **Purpose:** session-to-session continuity. Reads top-to-bottom as a complete state-of-the-world. Don't add session-by-session timelines — fold material into the live sections below.
 
-**Last updated:** 2026-08-29
+**Last updated:** 2026-09-02
+
+## Pending: OpenClaw 2026.8.2 upgrade (branch `feat/openclaw-2026.8.2`, not deployed)
+
+Implemented and rehearsed locally 2026-09-02; plan, deviations and rollout procedure in
+`docs/openclaw-2026.8.2-upgrade.md` (§5 status, §6b rehearsal, §7 window). Must land as one window
+before 2026-09-18: orchestrator deploy + `AGENT_RUNTIME_IMAGE` flip + `recreate-tenants.sh` for every
+live tenant, because a 2026.8-shaped config is refused by a 2026.7 gateway and the orchestrator now
+refuses config changes on a running container from another image (409 `RUNTIME_IMAGE_MISMATCH`).
 
 ## Production image policy
+
+### Tenant runtime images (2026-08-29)
+
+All 11 tenants run `openclaw-browser@sha256:a81764a4…`, the pinned `AGENT_RUNTIME_IMAGE`. They had drifted across three builds (9 on a 5-week-old one) because a container keeps the image it was created with. `infra/ops/recreate-tenants.sh` rebuilds them from the pinned ref, reattaching the state volume by name.
+
+**A recreate is never complete on its own.** A plugin installed by `rollout-plugin.sh` records the tarball path it came from, which lived in the old container's `/tmp`; the new container has a fresh `/tmp`, so the plugin stops loading while the container still reports **healthy**. Always follow a recreate with `rollout-plugin.sh --plugin agentforall-media …` and confirm the `http server listening` line names it. Plugins baked into the image install into `/home/node/.openclaw`, which Docker seeds only into an *empty* volume — that is why new bots need no rollout and existing ones do.
+
+OpenClaw also guards its config: an externally replaced `openclaw.json` without its metadata is saved as `openclaw.json.clobbered.<ts>` and reverted to `last-good` (`missing-meta-vs-last-good`). One tenant (`354e4d9e`) had silently lost its media entry that way hours before this pass, despite the earlier rollout reporting success.
+
+Disk after consolidating and pruning: 51% → 28% of 48 GB, one openclaw image on the VM. Rollback images remain in Artifact Registry (`6eb75c5c…` tagged `2026.7.1`, `d99dec8d…`).
 
 - Production must not deploy `:latest` or `:main`. Use a GAR digest or git-SHA tag for app images and a tested digest for third-party runtime images.
 - Current orchestrator image: `…orchestrator@sha256:d4f10dd1869760f8ef61d838ff60849f356a608a023cff36ef5f0c0bfb2c5c09` (deployed 2026-08-29, commit `e9846d4`: the integrations catalog is off the dashboard's critical path). The catalog cache holds a day-long list, refreshes behind a served answer, backs off 5 minutes after a failed attempt and is warmed at boot — `warmCatalog()` in `main.ts`. The cache holds only a list worth serving and the last attempt is tracked separately, so an empty answer at boot cannot take a day-long lease and a provider that is down is asked once per backoff instead of once per read. The dashboard no longer calls the catalog at all: the showcase row is `SHOWCASE_APPS` in `apps/web/src/lib/integrations/catalog.he.ts` with local logos under `apps/web/public/apps/`. Supersedes `8ef17ddd…`.

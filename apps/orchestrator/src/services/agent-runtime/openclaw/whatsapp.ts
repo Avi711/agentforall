@@ -4,6 +4,7 @@ import { normalizeE164 } from "../../../domain/phone.js";
 import type { WhatsappPairingRequest } from "../types.js";
 import {
   OPENCLAW_USER,
+  OPENCLAW_WHATSAPP_CHANNEL,
   OPENCLAW_WHATSAPP_SESSION_DIR,
   OPENCLAW_WHATSAPP_SESSION_PARENT,
   OPENCLAW_WHATSAPP_SESSION_PATH,
@@ -49,7 +50,7 @@ export async function logoutOpenclawWhatsapp(
 ): Promise<boolean> {
   await runtime.execCommand(
     containerId,
-    ["openclaw", "channels", "logout", "--account", "default"],
+    ["openclaw", "channels", "logout", "--channel", OPENCLAW_WHATSAPP_CHANNEL, "--account", "default"],
     LOGOUT_TIMEOUT_MS,
   );
   const clearExit = await runtime.execCommand(

@@ -54,7 +54,6 @@ async function assertAgentRuntimeContainerContract(
   assert.equal(options.image, expected.image);
   assert.equal(options.hostPort, instance.gatewayPort);
   assert.equal(options.labels["agent-forall.runtime"], adapter.kind);
-  assert.ok(options.initialArchive);
   assert.ok(options.volumeMounts?.length);
 
   const files = adapter.generateConfig(instance.config, instance.gatewayToken);

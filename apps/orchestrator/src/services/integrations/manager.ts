@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import type { FastifyBaseLogger } from "fastify";
 import type { AppConfig } from "../../config.js";
 import {
@@ -17,6 +17,7 @@ import type { InstanceRepository } from "../../storage/instance-repository.js";
 import type { InstanceManager } from "../instance-manager.js";
 import { InstanceOperationLock } from "../instance-operation-lock.js";
 import { searchCatalog } from "./catalog-search.js";
+import { relayBindingFor } from "./relay-binding.js";
 import type { ConnectLink, IntegrationProvider } from "./provider.js";
 import { SessionGoneError } from "./provider.js";
 import type { IntegrationSessions } from "./sessions.js";
@@ -162,17 +163,16 @@ export class IntegrationsManager {
       const current = await this.manager.get(instanceId, userId);
       if (!isLive(current)) throw new InvalidStateError(current.status, "integration connect");
 
-      const sessionCallback = new URL(DASHBOARD_CONNECTIONS_PATH, this.config.dashboardOrigin).toString();
+      const sessionCallback = this.sessionCallback();
       let session = await this.upstream(() => this.sessions.ensure(instanceId, sessionCallback));
 
+      // Only a bot created before the relay was bound at creation and not yet recreated on the
+      // current image lands here; the gateway wires MCP servers at startup, so it restarts while the
+      // user is on the consent page.
       if (!current.config.integrations) {
         await this.manager.updateConfig(instanceId, userId, {
-          integrations: {
-            relayToken: randomBytes(32).toString("hex"),
-            relayUrl: this.relayUrl(instanceId),
-          },
+          integrations: relayBindingFor(instanceId, this.config.orchestratorInternalUrl),
         });
-        // OpenClaw only wires new MCP servers at gateway startup; restart while the user is on the consent page.
         void this.manager.restart(instanceId, userId).catch((err) => {
           this.log.warn({ instanceId, err }, "restart after relay binding failed");
         });
@@ -213,12 +213,17 @@ export class IntegrationsManager {
   }
 
   // Bearer from the container is the only proof of identity; every failure looks the same.
+  // The provider session is created on the bot's first call, under the bot's lock so concurrent
+  // first calls share one; a provider outage fails this call and the next one tries again.
   async resolveRelay(instanceId: string, bearer: string): Promise<RelayTarget> {
     const inst = await this.instances.findById(instanceId);
     if (!inst || !isLive(inst) || !inst.config.integrations) throw new AuthenticationError();
     if (!tokensMatch(bearer, inst.config.integrations.relayToken)) throw new AuthenticationError();
-    const upstreamUrl = await this.sessions.resolveUpstream(instanceId);
-    if (!upstreamUrl) throw new AuthenticationError();
+    const upstreamUrl =
+      (await this.sessions.resolveUpstream(instanceId)) ??
+      (await this.lock.run(instanceId, () =>
+        this.upstream(() => this.sessions.ensure(instanceId, this.sessionCallback())),
+      )).upstreamMcpUrl;
     return { upstreamUrl, headers: this.provider.upstreamHeaders() };
   }
 
@@ -237,8 +242,8 @@ export class IntegrationsManager {
     }
   }
 
-  private relayUrl(instanceId: string): string {
-    return new URL(`/api/v1/mcp/${instanceId}`, this.config.orchestratorInternalUrl).toString();
+  private sessionCallback(): string {
+    return new URL(DASHBOARD_CONNECTIONS_PATH, this.config.dashboardOrigin).toString();
   }
 
   private assertReturnUrl(returnUrl: string): void {

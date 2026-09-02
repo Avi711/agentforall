@@ -84,7 +84,7 @@ async function runTranscription(params, logger) {
         "content-type": "application/json",
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(resolveTimeoutMs(params.timeoutMs)),
+      signal: requestSignal(params),
     });
   } catch (err) {
     const reason = err?.name === "TimeoutError" ? "the gateway timed out" : errorText(err);
@@ -132,6 +132,12 @@ function resolveApiKey(params) {
     if (trimmed && trimmed !== NO_AUTH_MARKER) return trimmed;
   }
   return null;
+}
+
+// The host cancels a transcription it no longer needs (session reset, shutdown); its signal joins ours.
+function requestSignal(params) {
+  const timeout = AbortSignal.timeout(resolveTimeoutMs(params.timeoutMs));
+  return params.signal ? AbortSignal.any([timeout, params.signal]) : timeout;
 }
 
 export function resolveTimeoutMs(raw) {

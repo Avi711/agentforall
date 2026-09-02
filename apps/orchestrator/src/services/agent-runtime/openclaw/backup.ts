@@ -15,41 +15,57 @@ import {
 // WhatsApp device creds never travel with a backup: they are secrets in a user-downloadable file,
 // and a restored bot booting with another bot's device would create a ghost session. Re-pair instead.
 const EXCLUDED_TOP_LEVEL_ENTRIES = new Set([".env", "logs", "npm", OPENCLAW_WHATSAPP_SESSION_DIR]);
+// Where `openclaw backup create` places the state directory inside its archive.
+const ARCHIVE_STATE_PREFIX = `payload/posix${OPENCLAW_STATE_ROOT}/`;
+const BACKUP_TMP_PREFIX = "/tmp/openclaw-backup.";
 
-export function buildOpenclawBackupCommand(
-  opts: { outputPath?: string } = {},
-): string {
-  const output = opts.outputPath ? `"${opts.outputPath}"` : "-";
-  const excludes = [...EXCLUDED_TOP_LEVEL_ENTRIES].map((name) => `! -name ${name}`).join(" ");
-  return [
-    `cd ${OPENCLAW_STATE_ROOT}`,
-    "&&",
-    "find . -mindepth 1 -maxdepth 1",
-    excludes,
-    "-print 2>/dev/null",
-    `| tar -czf ${output} -T -`,
-  ].join(" ");
-}
-
-export function shouldExportOpenclawTopLevelEntry(name: string): boolean {
-  return !EXCLUDED_TOP_LEVEL_ENTRIES.has(name);
-}
-
+// The runtime archives (a raw copy of a live SQLite store is not restorable); we strip and re-verify.
 export function buildOpenclawBackupFileCommand(): string {
   return [
-    'tmp="$(mktemp /tmp/openclaw-backup.XXXXXX.tar.gz)"',
-    'trap \'rm -f "$tmp"\' EXIT',
-    buildOpenclawBackupCommand({ outputPath: "$tmp" }),
-    'size="$(wc -c < "$tmp")"',
-    "trap - EXIT",
-    'printf "%s\\n%s\\n" "$tmp" "$size"',
+    `out="$(mktemp ${BACKUP_TMP_PREFIX}XXXXXX.tar.gz)"`,
+    `dir="$(mktemp -d ${BACKUP_TMP_PREFIX}XXXXXX.d)"`,
+    "trap 'rm -rf \"$dir\" \"$out\"' EXIT",
+    'openclaw backup create --output "$dir" --verify --json >/dev/null',
+    'src="$(find "$dir" -maxdepth 1 -name \'*.tar.gz\' | head -n 1)"',
+    '[ -n "$src" ]',
+    `python3 -c ${shellQuote(stripSecretsScript())} "$src" "$out"`,
+    'openclaw backup verify "$out" --json >/dev/null',
+    'size="$(wc -c < "$out")"',
+    `[ "$size" -le ${OPENCLAW_MAX_BACKUP_BYTES} ]`,
+    // The archive outlives the command: the caller streams it, then removes it.
+    "trap 'rm -rf \"$dir\"' EXIT",
+    'printf "%s\\n%s\\n" "$out" "$size"',
   ].join(" && ");
+}
+
+function shellQuote(text: string): string {
+  return `'${text.replace(/'/g, "'\\''")}'`;
+}
+
+// tarfile copies members header-for-header; tar(1) cannot delete from a gzip stream.
+function stripSecretsScript(): string {
+  const excluded = [...EXCLUDED_TOP_LEVEL_ENTRIES].map((name) => JSON.stringify(name)).join(", ");
+  return [
+    "import sys, tarfile",
+    `prefix = ${JSON.stringify(ARCHIVE_STATE_PREFIX)}`,
+    `excluded = {${excluded}}`,
+    "def secret(name):",
+    "    idx = name.find(prefix)",
+    "    if idx < 0:",
+    "        return False",
+    "    return name[idx + len(prefix):].split('/', 1)[0] in excluded",
+    "with tarfile.open(sys.argv[1], 'r:gz') as src, tarfile.open(sys.argv[2], 'w:gz') as dst:",
+    "    for member in src:",
+    "        if secret(member.name):",
+    "            continue",
+    "        dst.addfile(member, src.extractfile(member) if member.isfile() else None)",
+  ].join("\n");
 }
 
 export function parseOpenclawArchiveFile(output: string): ContainerArchiveFile {
   const [path, size] = output.trim().split(/\r?\n/);
   const sizeBytes = Number(size);
-  if (!path?.startsWith("/tmp/openclaw-backup.") || !Number.isSafeInteger(sizeBytes)) {
+  if (!path?.startsWith(BACKUP_TMP_PREFIX) || !Number.isSafeInteger(sizeBytes)) {
     throw new Error("invalid backup archive metadata");
   }
   if (sizeBytes > OPENCLAW_MAX_BACKUP_BYTES) {
@@ -96,7 +112,8 @@ export function rewrapOpenclawStateTarGzip(sourceTarGzip: Readable): Readable {
     }
 
     const relative = normalizeOpenclawEntryName(header.name);
-    if (!shouldRestoreOpenclawEntry(relative)) {
+    // "" is the state directory itself, which the leading entry already provides.
+    if (relative === null || relative === "" || !shouldRestoreOpenclawEntry(relative)) {
       stream.resume();
       next();
       return;
@@ -142,23 +159,29 @@ export function rewrapOpenclawStateTarGzip(sourceTarGzip: Readable): Readable {
 
 export { OPENCLAW_BACKUP_TIMEOUT_MS };
 
-function normalizeOpenclawEntryName(name: string): string {
+// Runtime archive (`<root>/payload/posix<state dir>/**`) or the older flat tarball; null = not state.
+function normalizeOpenclawEntryName(name: string): string | null {
   const normalized = name.replace(/\\/g, "/").replace(/^\.\/+/, "");
-  const withoutRoot =
-    normalized === ".openclaw" || normalized === ".openclaw/"
-      ? ""
-      : normalized.startsWith(".openclaw/")
-        ? normalized.slice(".openclaw/".length)
-        : normalized;
   if (
     normalized.startsWith("/") ||
     /^[A-Za-z]:\//.test(normalized) ||
-    withoutRoot.includes("\0") ||
-    withoutRoot.split("/").some((part) => part === "..")
+    normalized.includes("\0") ||
+    normalized.split("/").some((part) => part === "..")
   ) {
     throw new Error("backup archive contains an unsafe path");
   }
-  return withoutRoot;
+  const payload = normalized.indexOf(ARCHIVE_STATE_PREFIX);
+  if (payload >= 0) return normalized.slice(payload + ARCHIVE_STATE_PREFIX.length);
+  if (isRuntimeArchiveEntry(normalized)) return null;
+  if (normalized === ".openclaw" || normalized === ".openclaw/") return "";
+  return normalized.startsWith(".openclaw/") ? normalized.slice(".openclaw/".length) : normalized;
+}
+
+// The runtime names its archive root "<timestamp>-openclaw-backup"; that directory is not state.
+function isRuntimeArchiveEntry(name: string): boolean {
+  const parts = name.replace(/\/+$/, "").split("/");
+  if (parts.length === 1) return (parts[0] ?? "").endsWith("-openclaw-backup");
+  return parts[1] === "manifest.json" || parts[1] === "payload";
 }
 
 function isSupportedArchiveEntry(header: tar.Headers): boolean {

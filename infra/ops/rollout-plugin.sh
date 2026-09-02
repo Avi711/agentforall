@@ -43,7 +43,7 @@ sudo docker pull "$IMG" >/dev/null 2>&1
 CID="$(sudo docker create "$IMG")"
 # The copy fails on an image that predates the plugin; the container must not outlive it.
 trap 'sudo docker rm -f "$CID" >/dev/null 2>&1 || true' EXIT
-sudo docker cp "$CID:/opt/$PLUGIN" "$STAGE/"
+sudo docker cp "$CID:/opt/agentforall/src/$PLUGIN" "$STAGE/"
 sudo docker rm "$CID" >/dev/null
 trap - EXIT
 [ -f "$STAGE/$PLUGIN/$SENTINEL" ] || { echo "staged $PLUGIN is missing $SENTINEL: wrong image?" >&2; exit 1; }
@@ -98,10 +98,9 @@ while IFS=$'\t' read -r ID USER_ID CONTAINER STATUS PROVIDER BASE_URL NAME_JSON;
     DEST="/tmp/$PLUGIN-$(date +%s)"
     sudo docker cp "$STAGE/$PLUGIN" "$CONTAINER:$DEST"
     TARBALL="$(sudo docker exec "$CONTAINER" npm pack "$DEST" --pack-destination /tmp --silent)"
-    # A same-version copy makes install refuse, and uninstall strips the entry's hooks — the
-    # restart below re-renders them.
-    sudo docker exec "$CONTAINER" openclaw plugins uninstall "$PLUGIN" --force >/dev/null 2>&1 || true
-    sudo docker exec "$CONTAINER" openclaw plugins install "npm-pack:/tmp/$TARBALL" 2>&1 | grep -E "Installed plugin" >/dev/null
+    # --force overwrites the existing install in place (2026.8 keeps the entry's hooks; "plugins
+    # update" does not work for npm-pack sources); --accept-capabilities is the non-interactive consent.
+    sudo docker exec "$CONTAINER" openclaw plugins install "npm-pack:/tmp/$TARBALL" --force --accept-capabilities 2>&1 | grep -E "Installed plugin" >/dev/null
 
     # The orchestrator's restart re-renders openclaw.json (hooks entry) and .env (credit vars) and
     # then restarts unconditionally. A config PATCH renders the same files but only restarts when
