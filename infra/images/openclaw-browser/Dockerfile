@@ -19,8 +19,10 @@ RUN apt-get update \
       python3-venv \
       unzip \
  && rm -rf /var/lib/apt/lists/* \
- # Root-owned in the upstream image; every CLI call after the first fails without it.
- && chown node:node /home/node/.cache
+ # .cache is root-owned upstream (every CLI call after the first fails without it); /opt/agentforall
+ # must exist before the COPY below, which creates missing parents as root.
+ && chown node:node /home/node/.cache \
+ && mkdir -p /opt/agentforall && chown node:node /opt/agentforall
 
 USER node
 
