@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { CreditGrantView } from "@/lib/billing/credits/service";
 import { formatCredits, formatDate, formatIls } from "@/lib/billing/format";
-import { DEFAULT_TOPUP_PRESET_ILS, creditsForTopupIls, estimatedMessages } from "@/lib/billing/pricing";
+import { DEFAULT_TOPUP_PRESET_ILS, creditsForTopupIls } from "@/lib/billing/pricing";
 import type { BillingStatus } from "@/lib/billing/service";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 import { startTopup } from "../billing/client";
@@ -47,8 +47,7 @@ export function CreditsCard({ status }: { status: BillingStatus }) {
             {formatCredits(credits.available)}
           </h2>
           <p className="text-sm text-espresso-light mb-6">
-            זמינים · ≈ {formatCredits(estimatedMessages(credits.available))} הודעות
-            {credits.stale ? " · הנתונים מהעדכון האחרון" : ""}
+            קרדיטים זמינים{credits.stale ? " · הנתונים מהעדכון האחרון" : ""}
           </p>
         </>
       ) : (

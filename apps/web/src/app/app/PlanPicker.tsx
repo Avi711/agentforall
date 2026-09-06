@@ -2,7 +2,7 @@
 
 import type { KeyboardEvent } from "react";
 import { formatCredits, formatIls } from "@/lib/billing/format";
-import { estimatedMessages, type Plan, type PlanCode } from "@/lib/billing/pricing";
+import type { Plan, PlanCode } from "@/lib/billing/pricing";
 
 export function PlanPicker({
   plans,
@@ -59,7 +59,6 @@ export function PlanPicker({
               <span className="text-xs text-espresso-light"> / חודש</span>
             </p>
             <p className="mt-2 text-sm text-espresso">{formatCredits(plan.includedCredits)} קרדיטים בחודש</p>
-            <p className="text-xs text-espresso-light">≈ {formatCredits(estimatedMessages(plan.includedCredits))} הודעות</p>
           </button>
         );
       })}
