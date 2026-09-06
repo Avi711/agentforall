@@ -2,8 +2,11 @@
 
 **Purpose:** session-to-session continuity. Reads top-to-bottom as a complete state-of-the-world. Don't add session-by-session timelines — fold material into the live sections below.
 
-**Last updated:** 2026-09-02
+**Last updated:** 2026-09-07
 
+## Billing enforcement — on since 2026-09-07
+
+`BILLING_REQUIRED=true` on Vercel production (web `65d085f`). VM `.env.runtime` and `infra/startup.sh` now carry `LITELLM_DEFAULT_BUDGET_CENTS=200`, `LITELLM_DEFAULT_BUDGET_DURATION=` (empty); orchestrator recreated the same day, still image `a9d0150…`, healthy on both networks, 13 tenants healthy. New bots: 400-credit / 7-day trial on first creation, key capped from the ledger by the post-create sync and the daily cron. `PAYMENT_PROVIDER` is still unset, so an expired trial has no self-serve way back — top the user up from `/admin` (expanded row → Credits → Add credits; `POST /api/admin/credits`, idempotent per client `ref`, refuses users with no ledger, web `99e6ef1`). The 13 pre-enforcement keys were NOT converted: they keep `budget_duration=30d` (reset 2026-10-01) and were lowered by hand via LiteLLM `/key/update` on 2026-09-07 to `max_budget` $10, except `agentforall-bot-9901b13d` (`5438…aafc`) at $50. The orchestrator DB `litellm.budgetCents` for those instances still says 5000 (informational only; live values come from `/key/info`). A legacy user who deletes and recreates their bot becomes a trial user. Admin `/admin` was redesigned the same day (summary strip, usage per user, expandable ledger).
 ## OpenClaw 2026.8.2 — live since 2026-09-02 (merged to `main`)
 
 All 11 tenants (12 at rollout; the קוקי5 canary was deleted from the dashboard at 20:23 IL) run `openclaw-browser@sha256:f0e4aec97e55e0a3afd852ef72994cfe4ed3157ff4a90554de0a66b3940c31ca`
