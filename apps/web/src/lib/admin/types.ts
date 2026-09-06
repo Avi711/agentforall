@@ -1,3 +1,4 @@
+import type { CreditSummary } from "../billing/credits/service";
 import type { BotSnapshot } from "../bots/snapshot";
 import type { BotUsage } from "../orchestrator/types";
 
@@ -22,6 +23,8 @@ export interface AdminUser {
   // Current LiteLLM budget period, summed over the user's bots.
   spendCents: number;
   maxBudgetCents: number | null;
+  // null = no ledger; the user's bots run on the gateway default budget.
+  credits: CreditSummary | null;
 }
 
 export interface AdminOverview {

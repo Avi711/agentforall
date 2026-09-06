@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { LeadsPanel } from "./LeadsPanel";
 import { UsersPanel } from "./UsersPanel";
+import { BUTTON } from "./ui";
 
 type View = "users" | "leads";
 
@@ -18,16 +19,16 @@ export function AdminDashboard({ adminEmail }: { adminEmail: string }) {
 
   return (
     <div dir="ltr" lang="en" className="min-h-screen bg-cream text-left">
-      <header className="border-b border-sand/30 bg-white/80 px-6 py-4 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-4">
-          <h1 className="text-xl font-black text-espresso">
-            <span className="font-extrabold">Agent</span>
-            <span className="font-normal text-espresso-light">for</span>
-            <span className="font-extrabold text-terra">All</span>
-            <span className="ml-3 text-sm font-normal text-espresso-light">Admin</span>
-          </h1>
+      <header className="border-b border-sand-light bg-white px-6">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 py-3">
+          <p className="text-base text-espresso">
+            <span className="font-bold">Agent</span>
+            <span className="text-espresso-light">for</span>
+            <span className="font-bold text-terra">All</span>
+            <span className="ml-2 text-sm text-espresso-light">Admin</span>
+          </p>
 
-          <nav role="tablist" aria-label="Admin sections" className="flex gap-1 rounded-xl bg-cream p-1">
+          <nav role="tablist" aria-label="Admin sections" className="flex gap-1">
             {TABS.map((tab) => (
               <button
                 key={tab.id}
@@ -35,8 +36,8 @@ export function AdminDashboard({ adminEmail }: { adminEmail: string }) {
                 role="tab"
                 aria-selected={view === tab.id}
                 onClick={() => setView(tab.id)}
-                className={`rounded-lg px-4 py-1.5 text-sm font-bold transition-colors ${
-                  view === tab.id ? "bg-espresso text-cream" : "text-espresso-light hover:text-espresso"
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-espresso focus-visible:ring-offset-2 ${
+                  view === tab.id ? "bg-cream-dark text-espresso" : "text-espresso-light hover:text-espresso"
                 }`}
               >
                 {tab.label}
@@ -44,26 +45,19 @@ export function AdminDashboard({ adminEmail }: { adminEmail: string }) {
             ))}
           </nav>
 
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex items-center gap-2">
             <span className="hidden text-xs text-espresso-light sm:inline">{adminEmail}</span>
-            <button
-              type="button"
-              onClick={() => setReloadToken((t) => t + 1)}
-              className="rounded-lg bg-espresso px-4 py-2 text-sm font-bold text-cream transition-colors hover:bg-terra"
-            >
+            <button type="button" onClick={() => setReloadToken((t) => t + 1)} className={BUTTON.secondary}>
               Refresh
             </button>
-            <Link
-              href="/app"
-              className="rounded-lg px-4 py-2 text-sm font-medium text-espresso-light ring-1 ring-sand/50 transition-colors hover:bg-cream"
-            >
+            <Link href="/app" className={BUTTON.quiet}>
               Open app
             </Link>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-6 py-8">
+      <main className="mx-auto max-w-7xl px-6 py-6">
         {view === "users" ? <UsersPanel reloadToken={reloadToken} /> : <LeadsPanel reloadToken={reloadToken} />}
       </main>
     </div>

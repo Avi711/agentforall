@@ -211,8 +211,12 @@ export class InMemoryGrants implements CreditGrantRepository {
 
   constructor(private readonly clock: Clock) {}
 
-  async listByUserId(userId: string): Promise<CreditGrant[]> {
-    return this.rows.filter((r) => r.userId === userId).map((r) => ({ ...r }));
+  listByUserId(userId: string): Promise<CreditGrant[]> {
+    return this.listByUserIds([userId]);
+  }
+
+  async listByUserIds(userIds: readonly string[]): Promise<CreditGrant[]> {
+    return this.rows.filter((r) => userIds.includes(r.userId)).map((r) => ({ ...r }));
   }
 
   async insertIfAbsent(input: NewCreditGrant): Promise<CreditGrant | null> {
@@ -261,8 +265,12 @@ export class InMemoryUsage implements CreditUsageRepository {
     return row ? { ...row } : null;
   }
 
-  async listByUserId(userId: string): Promise<CreditUsageCursor[]> {
-    return this.rows.filter((r) => r.userId === userId).map((r) => ({ ...r }));
+  listByUserId(userId: string): Promise<CreditUsageCursor[]> {
+    return this.listByUserIds([userId]);
+  }
+
+  async listByUserIds(userIds: readonly string[]): Promise<CreditUsageCursor[]> {
+    return this.rows.filter((r) => userIds.includes(r.userId)).map((r) => ({ ...r }));
   }
 
   // Mirrors the SQL: version-guarded upsert, then attributions that must fit inside each grant, all-or-nothing.

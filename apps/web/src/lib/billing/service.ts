@@ -240,6 +240,14 @@ export class BillingService {
     return this.credits.syncAll();
   }
 
+  grantCreditsByAdmin(userId: string, credits: number, ref: string, actorId: string): Promise<CreditSummary> {
+    return this.credits.grantByAdmin(userId, credits, ref, actorId);
+  }
+
+  creditSummaries(userIds: readonly string[]): Promise<Map<string, CreditSummary>> {
+    return this.credits.summaries(userIds);
+  }
+
   async findCheckoutSession(user: BillingUser, id: string): Promise<CheckoutSession | null> {
     const session = await this.checkouts.findById(id);
     return session && session.userId === user.id ? session : null;

@@ -102,11 +102,10 @@ export function renderError(err: unknown): NextResponse {
             ? "conflict"
             : err.status === 425
               ? "too_early"
-              : err.status >= 500 || err.status === 0
+              : err.status >= 500 || err.status < 400
                 ? "orchestrator_unavailable"
                 : "bad_request";
-    const httpStatus =
-      err.status === 0 ? 502 : err.status >= 500 ? 502 : err.status;
+    const httpStatus = err.status >= 400 && err.status < 500 ? err.status : 502;
     return errorJson(code, httpStatus, err.body);
   }
   console.error("[api] unhandled error", err);

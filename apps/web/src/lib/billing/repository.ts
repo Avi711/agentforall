@@ -230,11 +230,16 @@ export class DrizzleCreditGrantRepository implements CreditGrantRepository {
     this.db = db ?? getDb();
   }
 
-  async listByUserId(userId: string): Promise<CreditGrant[]> {
+  listByUserId(userId: string): Promise<CreditGrant[]> {
+    return this.listByUserIds([userId]);
+  }
+
+  async listByUserIds(userIds: readonly string[]): Promise<CreditGrant[]> {
+    if (userIds.length === 0) return [];
     const rows = await this.db
       .select()
       .from(billingCreditGrants)
-      .where(eq(billingCreditGrants.userId, userId))
+      .where(inArray(billingCreditGrants.userId, [...userIds]))
       .orderBy(billingCreditGrants.grantedAt);
     return rows.map(toGrant);
   }
@@ -302,8 +307,16 @@ export class DrizzleCreditUsageRepository implements CreditUsageRepository {
     return rows[0] ? toCursor(rows[0]) : null;
   }
 
-  async listByUserId(userId: string): Promise<CreditUsageCursor[]> {
-    const rows = await this.db.select().from(billingCreditUsage).where(eq(billingCreditUsage.userId, userId));
+  listByUserId(userId: string): Promise<CreditUsageCursor[]> {
+    return this.listByUserIds([userId]);
+  }
+
+  async listByUserIds(userIds: readonly string[]): Promise<CreditUsageCursor[]> {
+    if (userIds.length === 0) return [];
+    const rows = await this.db
+      .select()
+      .from(billingCreditUsage)
+      .where(inArray(billingCreditUsage.userId, [...userIds]));
     return rows.map(toCursor);
   }
 

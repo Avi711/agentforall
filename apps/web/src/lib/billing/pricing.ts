@@ -32,6 +32,8 @@ export const PLAN_CATALOGUE: readonly Plan[] = PLAN_CODES.map((code) => PLANS[co
 export const DEFAULT_PLAN: PlanCode = "standard";
 
 export const TRIAL_CREDITS = 400;
+// Ceiling for a single admin top-up; larger amounts are a typo, not a policy.
+export const ADMIN_GRANT_MAX_CREDITS = 50_000;
 export const TRIAL_DAYS = 7;
 
 // Any whole-shekel amount in range; the minimum keeps card-testing fraud out.

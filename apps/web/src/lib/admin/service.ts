@@ -1,14 +1,20 @@
 import "server-only";
+import { getBillingService } from "../billing";
+import type { CreditSummary } from "../billing/credits/service";
+import type { BillingService } from "../billing/service";
 import { getOrchestratorClient, type OrchestratorClient } from "../orchestrator/client";
 import type { AdminInstance, BotUsage } from "../orchestrator/types";
 import { toBotSnapshot } from "../bots/snapshot";
 import { AdminRepository } from "./repository";
 import type { AdminBot, AdminOverview, AdminUser } from "./types";
 
+type AdminBilling = Pick<BillingService, "creditSummaries" | "grantCreditsByAdmin">;
+
 export class AdminService {
   constructor(
     private readonly repo: AdminRepository = new AdminRepository(),
     private readonly orchestrator: Pick<OrchestratorClient, "listAdminInstances"> = getOrchestratorClient(),
+    private readonly billing: () => AdminBilling = getBillingService,
   ) {}
 
   async overview(): Promise<AdminOverview> {
@@ -16,6 +22,7 @@ export class AdminService {
       this.repo.listUsers(),
       this.orchestrator.listAdminInstances(),
     ]);
+    const credits = await this.billing().creditSummaries(rows.map((r) => r.id));
     const botsByUser = groupBots(instances);
 
     const users: AdminUser[] = rows.map((row) => {
@@ -30,6 +37,7 @@ export class AdminService {
         bots,
         spendCents: sumSpend(bots),
         maxBudgetCents: sumBudget(bots),
+        credits: credits.get(row.id) ?? null,
       };
     });
 
@@ -47,6 +55,10 @@ export class AdminService {
       },
       generatedAt: new Date().toISOString(),
     };
+  }
+
+  grantCredits(userId: string, credits: number, ref: string, actorId: string): Promise<CreditSummary> {
+    return this.billing().grantCreditsByAdmin(userId, credits, ref, actorId);
   }
 }
 

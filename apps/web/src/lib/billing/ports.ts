@@ -119,6 +119,7 @@ export interface NewCreditGrant {
 
 export interface CreditGrantRepository {
   listByUserId(userId: string): Promise<CreditGrant[]>;
+  listByUserIds(userIds: readonly string[]): Promise<CreditGrant[]>;
   // Null = a grant with this sourceRef already exists (idempotent redelivery).
   insertIfAbsent(input: NewCreditGrant): Promise<CreditGrant | null>;
   // Least recently synced first, so a cron that runs out of time never starves the same users twice.
@@ -155,6 +156,7 @@ export interface AdvanceUsageInput {
 export interface CreditUsageRepository {
   findByBotId(botId: string): Promise<CreditUsageCursor | null>;
   listByUserId(userId: string): Promise<CreditUsageCursor[]>;
+  listByUserIds(userIds: readonly string[]): Promise<CreditUsageCursor[]>;
   // Atomic cursor advance + attributions; false (nothing written) when a concurrent sync changed the version or a grant.
   advance(input: AdvanceUsageInput): Promise<boolean>;
 }

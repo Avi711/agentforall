@@ -6,6 +6,7 @@ import { MAX_EVENT_ATTEMPTS } from "../../src/lib/billing/domain";
 import {
   AlreadySubscribedError,
   InvalidTopupAmountError,
+  NoLedgerError,
   NoSubscriptionError,
   PendingCheckoutError,
   SamePlanError,
@@ -836,5 +837,61 @@ describe("status and entitlement", () => {
     const session = await openSubscriptionCheckout(h);
     assert.ok(await h.service.findCheckoutSession(USER, session.id));
     assert.equal(await h.service.findCheckoutSession({ ...USER, id: "someone-else" }, session.id), null);
+  });
+});
+
+describe("admin grant", () => {
+  test("tops up a trial user, raises the bot's cap at once, and survives the trial's expiry", async () => {
+    let now = NOW;
+    const h = harness({ now: () => now });
+    h.llm.addBot(USER.id, BOT_ID);
+    await h.service.beforeBotCreate(USER);
+    await h.service.afterBotCreated(USER.id);
+
+    const ref = "5f0f2c6a-9d3b-4e8a-b1c2-7d4e5f6a7b8c";
+    const summary = await h.service.grantCreditsByAdmin(USER.id, 1000, ref, "admin-1");
+    assert.equal(summary.available, TRIAL_CREDITS + 1000);
+    assert.equal(h.llm.lastCeiling(BOT_ID), usdCentsFromCredits(TRIAL_CREDITS + 1000));
+    assert.deepEqual([last(h.grants.rows).kind, last(h.grants.rows).sourceRef], ["topup", `admin:${ref}`]);
+
+    const replayed = await h.service.grantCreditsByAdmin(USER.id, 1000, ref, "admin-1");
+    assert.equal(replayed.available, TRIAL_CREDITS + 1000);
+    assert.equal(h.grants.rows.length, 2);
+
+    now = new Date(NOW.getTime() + (TRIAL_DAYS + 1) * DAY_MS);
+    const after = await h.service.refreshStatus(USER);
+    assert.equal(after.credits.available, 1000);
+    assert.equal(after.credits.trial.kind, "used");
+  });
+
+  test("a failed sync after the grant returns the ledger flagged stale instead of throwing", async () => {
+    const h = harness();
+    h.llm.addBot(USER.id, BOT_ID);
+    await h.service.beforeBotCreate(USER);
+    h.llm.listLiveBotIds = async () => {
+      throw new Error("orchestrator down");
+    };
+    const summary = await h.service.grantCreditsByAdmin(USER.id, 1000, "5f0f2c6a-9d3b-4e8a-b1c2-7d4e5f6a7b8d", "admin-1");
+    assert.deepEqual([summary.stale, summary.available, h.grants.rows.length], [true, TRIAL_CREDITS + 1000, 2]);
+  });
+
+  test("refuses a user with no ledger so an uncapped bot is never capped by accident", async () => {
+    const h = harness({ enforcement: false });
+    h.llm.addBot(USER.id, BOT_ID);
+    await assert.rejects(
+      h.service.grantCreditsByAdmin(USER.id, 1000, "5f0f2c6a-9d3b-4e8a-b1c2-7d4e5f6a7b8c", "admin-1"),
+      NoLedgerError,
+    );
+    assert.equal(h.grants.rows.length, 0);
+    assert.equal(h.llm.ceilings.length, 0);
+  });
+
+  test("reads ledgers for many users in one pass and leaves ledger-less users out", async () => {
+    const h = harness();
+    h.llm.addBot(USER.id, BOT_ID);
+    await h.service.beforeBotCreate(USER);
+    const summaries = await h.service.creditSummaries([USER.id, "user-2"]);
+    assert.deepEqual([...summaries.keys()], [USER.id]);
+    assert.equal(summaries.get(USER.id)?.available, TRIAL_CREDITS);
   });
 });

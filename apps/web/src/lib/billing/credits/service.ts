@@ -1,5 +1,6 @@
 import { DAY_MS } from "../dates";
 import type { CreditGrant, CreditGrantKind, CreditUsageCursor } from "../domain";
+import { NoLedgerError } from "../errors";
 import { errorMessage, type BillingLogger } from "../logger";
 import type { BotSpend, CreditGrantRepository, CreditUsageRepository, LlmBudgetPort } from "../ports";
 import { LOW_BALANCE_RATIO, TRIAL_CREDITS, TRIAL_DAYS, creditsFromUsdCents, usdCentsFromCredits } from "../pricing";
@@ -96,6 +97,36 @@ export class CreditService {
     const grant = await this.grants.insertIfAbsent({ userId, kind: "topup", credits, sourceRef, expiresAt: null });
     if (grant) this.log.info("top-up granted", { userId, credits, sourceRef });
     return grant !== null;
+  }
+
+  // Only users already on the ledger; a first grant would cap an uncapped bot and burn the mailbox's trial.
+  // `ref` is the caller's idempotency key, so a retried request tops up once and re-syncs.
+  async grantByAdmin(userId: string, credits: number, ref: string, actorId: string): Promise<CreditSummary> {
+    const existing = await this.grants.listByUserId(userId);
+    if (existing.length === 0) throw new NoLedgerError();
+    const sourceRef = `admin:${ref}`;
+    const grant = await this.grants.insertIfAbsent({ userId, kind: "topup", credits, sourceRef, expiresAt: null });
+    if (grant) this.log.info("admin credits granted", { userId, credits, sourceRef, actorId });
+    try {
+      return await this.sync(userId);
+    } catch (err) {
+      // The grant is on the ledger either way; the caller must not read a failed sync as "nothing happened".
+      this.log.error("admin grant sync failed", { userId, error: errorMessage(err) });
+      return { ...(await this.summary(userId)), stale: true };
+    }
+  }
+
+  // Ledger-only, one round-trip per table; users without grants are absent from the result.
+  async summaries(userIds: readonly string[]): Promise<Map<string, CreditSummary>> {
+    const [grants, cursors] = await Promise.all([this.grants.listByUserIds(userIds), this.usage.listByUserIds(userIds)]);
+    const byUser = new Map<string, { grants: CreditGrant[]; cursors: CreditUsageCursor[] }>();
+    for (const g of grants) {
+      const entry = byUser.get(g.userId) ?? { grants: [], cursors: [] };
+      entry.grants.push(g);
+      byUser.set(g.userId, entry);
+    }
+    for (const c of cursors) byUser.get(c.userId)?.cursors.push(c);
+    return new Map([...byUser].map(([userId, entry]) => [userId, this.summarize(entry.grants, entry.cursors, false)]));
   }
 
   // Ledger-only read for polling: no gateway round-trips.
