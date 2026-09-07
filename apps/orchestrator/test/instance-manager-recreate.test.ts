@@ -205,6 +205,24 @@ test("restart rebuilds a running container that predates the current image", asy
   assert.equal(repo.instance.containerId, "container-2");
 });
 
+test("restart on the current image reseeds the workspace so guidance changes reach the tenant", async () => {
+  const repo = new FakeRepo({ ...baseInstance });
+  const runtime = new FakeRuntime();
+  const seeded: string[] = [];
+  const manager = createManager(repo, runtime, {
+    ...adapter({}),
+    seedWorkspace: async (containerId) => {
+      seeded.push(containerId);
+    },
+  });
+
+  await manager.restart(baseInstance.id, baseInstance.userId);
+
+  assert.deepEqual(seeded, ["container-1"]);
+  assert.deepEqual(runtime.restartedContainers, ["container-1"]);
+  assert.deepEqual(runtime.removedContainers, []);
+});
+
 // The rebuild can take longer than the reconciler waits before it marks the row stopped. The
 // container is up at the end, so the row must say running whatever happened to it meanwhile.
 test("a rebuild the reconciler raced with still ends running", async () => {

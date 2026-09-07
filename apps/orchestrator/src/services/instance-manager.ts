@@ -274,6 +274,8 @@ export class InstanceManager {
     if (existing && (await this.runtimes.get(inst.runtimeKind).isOnCurrentImage(existing))) {
       if (existing !== inst.containerId) await this.repo.updateContainerId(inst.id, existing);
       await this.refreshRuntimeConfig({ ...inst, containerId: existing });
+      // Guidance changes ship with the orchestrator; a restart is when tenants pick them up.
+      await this.seedWorkspace(inst, existing);
       return { containerId: existing, rebuilt: false };
     }
     const containerId = await this.recreateContainer(inst);
