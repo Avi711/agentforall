@@ -285,10 +285,8 @@ export function PairingFlow({ botId, botName, ownerNumber, suggestedNumber }: Pr
     <div className="space-y-6">
       <div className="relative bg-white rounded-[24px] border border-sand-light shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)] p-5 sm:p-8 overflow-hidden">
         <span aria-hidden className="absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-sand-light to-transparent" />
-        <p className="text-[11px] uppercase tracking-[0.22em] text-terra mb-2">
-          חיבור
-        </p>
-        <h1 className="font-display text-xl sm:text-2xl text-espresso mb-2 leading-tight">
+        <TwoPhonesSteps step={2} />
+        <h1 className="font-display text-xl sm:text-2xl text-espresso mt-6 mb-2 leading-tight">
           קחו את הטלפון של הבוט
         </h1>
         <p className="text-espresso-light mb-3 italic">
@@ -401,20 +399,16 @@ function OwnerNumberCard({
   return (
     <div className="relative bg-white rounded-[24px] border border-sand-light shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)] p-5 sm:p-8 overflow-hidden">
       <span aria-hidden className="absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-sand-light to-transparent" />
-      <p className="text-[11px] uppercase tracking-[0.22em] text-terra mb-2">שלב 1 מתוך 2</p>
-      <h1 className="font-display text-xl sm:text-2xl text-espresso mb-2 leading-tight">
+      <TwoPhonesSteps step={1} />
+
+      <h1 className="font-display text-xl sm:text-2xl text-espresso mt-6 mb-1.5 leading-tight">
         מאיזה מספר תכתבו ל{botName}?
       </h1>
-      <p className="text-espresso-light mb-5">
-        הוואטסאפ האישי שלכם, זה שבטלפון שביד. לא המספר של הבוט, אותו נחבר בשלב הבא. רק המספר
-        הזה יוכל לדבר עם הבוט; כל השאר לא יקבלו תשובה. אפשר להוסיף אנשים אחר כך מהדשבורד.
-      </p>
+      <p className="text-espresso-light mb-5">הוואטסאפ האישי שלכם. את הטלפון של הבוט נחבר בשלב הבא.</p>
 
-      <TwoPhonesFigure />
-
-      <form onSubmit={submit} className="mt-6 space-y-4 max-w-md">
+      <form onSubmit={submit} className="space-y-4 max-w-md">
         <label className="block">
-          <span className="block text-sm text-espresso-light mb-1.5">המספר שלכם בוואטסאפ</span>
+          <span className="block text-sm text-espresso-light mb-1.5">המספר האישי שלכם</span>
           <PhoneField
             value={value}
             onChange={(v) => {
@@ -426,7 +420,11 @@ function OwnerNumberCard({
         </label>
         {invalid ? (
           <p className="text-sm text-red-700">המספר לא נראה תקין. נסו בפורמט 050-1234567.</p>
-        ) : null}
+        ) : (
+          <p className="text-xs text-espresso-light">
+            רק המספר הזה יוכל לדבר עם הבוט. אפשר להוסיף אנשים אחר כך.
+          </p>
+        )}
         {error ? (
           <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">{error}</p>
         ) : null}
@@ -450,15 +448,16 @@ function OwnerNumberCard({
   );
 }
 
-// Two phones, so the number question cannot be read as "the bot's number". First card sits on
-// the start side in RTL, which is where the eye lands.
-function TwoPhonesFigure() {
+// The step indicator is the two phones themselves, so "your number" can never be read as the
+// bot's number. Step 1 sits on the start side in RTL, where the eye lands.
+function TwoPhonesSteps({ step }: { step: 1 | 2 }) {
   return (
-    <div className="grid grid-cols-2 gap-3 max-w-md" aria-hidden="true">
+    <ol className="grid grid-cols-2 gap-3 max-w-md list-none p-0 m-0" aria-label={`שלב ${step} מתוך 2`}>
       <PhoneCard
-        active
+        active={step === 1}
+        number={1}
         label="הטלפון שלכם"
-        caption="המספר הזה"
+        caption={step === 1 ? "עכשיו" : "מחובר"}
         glyph={
           <g>
             <path
@@ -478,8 +477,10 @@ function TwoPhonesFigure() {
         }
       />
       <PhoneCard
+        active={step === 2}
+        number={2}
         label="הטלפון של הבוט"
-        caption="סים נפרד · בשלב הבא"
+        caption={step === 2 ? "עכשיו · הסים הנפרד" : "בשלב הבא"}
         glyph={
           <g>
             <rect x="10" y="26" width="24" height="18" rx="6" className="fill-cream stroke-sand" strokeWidth="1.5" />
@@ -490,28 +491,38 @@ function TwoPhonesFigure() {
           </g>
         }
       />
-    </div>
+    </ol>
   );
 }
 
 function PhoneCard({
   active,
+  number,
   label,
   caption,
   glyph,
 }: {
-  active?: boolean;
+  active: boolean;
+  number: 1 | 2;
   label: string;
   caption: string;
   glyph: React.ReactNode;
 }) {
   return (
-    <div
-      className={`flex items-center gap-3 rounded-2xl border px-3 py-3 ${
+    <li
+      aria-current={active ? "step" : undefined}
+      className={`relative flex items-center gap-3 rounded-2xl border px-3 py-3 ${
         active ? "border-terra bg-terra-pale" : "border-sand-light bg-cream-dark"
       }`}
     >
-      <svg viewBox="0 0 44 72" width="40" height="66" className="shrink-0">
+      <span
+        className={`absolute top-2 start-2 inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold ${
+          active ? "bg-terra text-white" : "bg-sand-light text-espresso-light"
+        }`}
+      >
+        {number}
+      </span>
+      <svg viewBox="0 0 44 72" width="40" height="66" className="ms-4 shrink-0">
         <rect
           x="4"
           y="2"
@@ -533,7 +544,7 @@ function PhoneCard({
           {caption}
         </p>
       </div>
-    </div>
+    </li>
   );
 }
 
