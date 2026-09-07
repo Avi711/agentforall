@@ -125,6 +125,8 @@ export const PairStatusSchema = z.object({
   accountId: z.string().nullable().optional(),
   reason: z.string().nullable().optional(),
   updatedAt: IsoDate.optional(),
+  // Linked, channel up and the hello sent (or given up on); absent while the sidecar still answers.
+  ready: z.boolean().optional(),
 });
 export type PairStatus = z.infer<typeof PairStatusSchema>;
 

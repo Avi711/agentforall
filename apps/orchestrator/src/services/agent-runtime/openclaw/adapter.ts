@@ -10,6 +10,7 @@ import {
 } from "../../../domain/errors.js";
 import type {
   AgentRuntimeAdapter,
+  ChannelStartOutcome,
   ConfigApplyOutcome,
   GatewayLiveness,
   RuntimeConfigFiles,
@@ -43,13 +44,18 @@ import {
   OPENCLAW_MAX_BACKUP_BYTES,
   OPENCLAW_STATE_PARENT,
   OPENCLAW_STATE_ROOT,
+  OPENCLAW_WHATSAPP_CHANNEL,
 } from "./constants.js";
 import { probeOpenclawGateway, probeOpenclawWhatsapp } from "./health.js";
+import { startOpenclawChannel } from "./channel-rpc.js";
 import {
   injectOpenclawWhatsappSession,
   listOpenclawWhatsappPairingRequests,
   logoutOpenclawWhatsapp,
+  sendOpenclawWhatsappMessage,
 } from "./whatsapp.js";
+
+const CHANNEL_START_TIMEOUT_MS = 20_000;
 
 const CONFIG_READ_LIMIT_BYTES = 1024 * 1024;
 const ENV_READ_LIMIT_BYTES = 64 * 1024;
@@ -293,6 +299,14 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   logoutWhatsapp(containerId: string): Promise<WhatsappLogoutResult> {
     return logoutOpenclawWhatsapp(this.runtime, containerId);
+  }
+
+  startWhatsappChannel(containerId: string): Promise<ChannelStartOutcome> {
+    return startOpenclawChannel(this.runtime, containerId, OPENCLAW_WHATSAPP_CHANNEL, CHANNEL_START_TIMEOUT_MS);
+  }
+
+  sendWhatsappMessage(containerId: string, to: string, text: string): Promise<boolean> {
+    return sendOpenclawWhatsappMessage(this.runtime, containerId, to, text);
   }
 
   listWhatsappPairingRequests(containerId: string): Promise<WhatsappPairingRequest[]> {

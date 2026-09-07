@@ -84,3 +84,12 @@ export class LeadService {
 }
 
 export const leadService = new LeadService();
+
+// The phone from the signup form, when the same mailbox left one; null is a normal answer.
+export async function knownPhoneForEmail(email: string): Promise<string | null> {
+  try {
+    return await new LeadRepository().phoneByEmail(email.trim().toLowerCase());
+  } catch {
+    return null;
+  }
+}

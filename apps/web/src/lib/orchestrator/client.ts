@@ -230,11 +230,16 @@ export class OrchestratorClient {
     });
   }
 
-  async startPairing(userId: string, id: string): Promise<StartPairingResult> {
+  async startPairing(
+    userId: string,
+    id: string,
+    ownerNumber: string | null,
+  ): Promise<StartPairingResult> {
     return this.call({
       method: "POST",
       path: instancePath(id, "/pair"),
       userId,
+      body: ownerNumber ? { ownerNumber } : {},
       schema: StartPairingResultSchema,
     });
   }

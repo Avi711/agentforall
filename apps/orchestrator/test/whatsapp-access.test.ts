@@ -6,7 +6,7 @@ import {
 } from "../src/services/agent-runtime/openclaw/config.js";
 import { parsePairingListOutput } from "../src/services/agent-runtime/openclaw/whatsapp.js";
 import { normalizeE164 } from "../src/domain/phone.js";
-import { applyChannelDefaults } from "../src/domain/channels.js";
+import { applyChannelDefaults, withWhatsappOwnerNumber } from "../src/domain/channels.js";
 import { WhatsappAccessManager } from "../src/services/whatsapp-access-manager.js";
 import type { EventRepository } from "../src/storage/event-repository.js";
 import type { ChannelConfig } from "../src/domain/types.js";
@@ -174,4 +174,21 @@ test("WhatsappAccessManager switches access without touching the owner number", 
 
   channels.reset(makeInstance([{ type: "telegram" }]));
   await assert.rejects(() => access.update(inst.id, inst.userId, { access: "open" }), /not found/);
+});
+
+test("withWhatsappOwnerNumber adds the channel owner-only and records who writes to it", () => {
+  const added = withWhatsappOwnerNumber([{ type: "telegram" }], "+972501234567");
+  assert.deepEqual(added, [
+    { type: "telegram" },
+    { type: "whatsapp", ownerNumber: "+972501234567", dmAccess: "owner" },
+  ]);
+
+  const same = withWhatsappOwnerNumber(added, "+972501234567");
+  assert.equal(same, added);
+
+  const changed = withWhatsappOwnerNumber(added, "+972509999999");
+  assert.deepEqual(changed[1], { type: "whatsapp", ownerNumber: "+972509999999", dmAccess: "owner" });
+
+  const untouched = withWhatsappOwnerNumber(added, null);
+  assert.equal(untouched, added);
 });

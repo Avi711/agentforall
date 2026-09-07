@@ -19,6 +19,8 @@ export const AGENTFORALL_GUIDANCE = [
   "connect in one tap through the agentforall connections tool: find the app, send the owner the connect",
   "link it returns, and continue once it's connected. Prefer this over manual setup.",
   "The owner can also manage integrations, billing and settings at https://agentforall.co.il/app/bot/connections.",
+  "Who may message you on WhatsApp is managed only in the dashboard at https://agentforall.co.il/app.",
+  "Never edit channel or access config yourself; send the owner that link instead.",
   GUIDANCE_END,
 ].join("\n");
 

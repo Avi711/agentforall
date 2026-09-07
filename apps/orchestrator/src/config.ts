@@ -229,6 +229,7 @@ export interface PairingConfig {
   orchestratorInternalUrl: string;
   /** Dev only: orchestrator runs on host and can't use Docker DNS, so sidecar publishes a 127.0.0.1 port. */
   publishSidecarPort: boolean;
+  useDockerNetwork: boolean;
 }
 
 export function extractPairingConfig(config: AppConfig): PairingConfig {
@@ -241,6 +242,7 @@ export function extractPairingConfig(config: AppConfig): PairingConfig {
     logLevel: config.pairingLogLevel,
     orchestratorInternalUrl: config.orchestratorInternalUrl,
     publishSidecarPort: config.nodeEnv === "development",
+    useDockerNetwork: config.nodeEnv === "production",
   };
 }
 

@@ -44,6 +44,7 @@ import {
   applyChannelDefaults,
   findTelegramChannel,
   findWhatsappChannel,
+  withWhatsappOwnerNumber,
 } from "../domain/channels.js";
 import { relayBindingFor } from "./integrations/relay-binding.js";
 
@@ -596,12 +597,15 @@ export class InstanceManager {
     }
   }
 
-  // Adds the WhatsApp channel to bots created Telegram-first so pairing has a channel to land in.
-  async ensureWhatsappChannel(id: string, userId: string): Promise<Instance> {
+  // Adds the WhatsApp channel when missing and records who the owner writes from, so access is
+  // allowlisted before the first message ever arrives.
+  async ensureWhatsappChannel(
+    id: string,
+    userId: string,
+    ownerNumber: string | null = null,
+  ): Promise<Instance> {
     const { instance } = await this.updateChannels(id, userId, (channels) =>
-      findWhatsappChannel(channels)
-        ? channels
-        : applyChannelDefaults([...channels, { type: "whatsapp" }]),
+      withWhatsappOwnerNumber(channels, ownerNumber),
     );
     return instance;
   }

@@ -16,8 +16,20 @@ import type { PairingConfig } from "../config.js";
 import { PairingSessionRegistry } from "./pairing-session-registry.js";
 import type { PairingSidecarClient } from "./pairing-sidecar-client.js";
 import { PAIRING_USER, tmpfsOptions } from "./runtime-users.js";
+import { findWhatsappChannel } from "../domain/channels.js";
 
 const SIDECAR_TMPFS_SIZE_MB = 16;
+const LINK_WAIT_MS = 45_000;
+const LINK_POLL_MS = 2_000;
+const LINK_PROBE_TIMEOUT_MS = 5_000;
+const HELLO_ATTEMPTS = 3;
+const HELLO_RETRY_MS = 3_000;
+const READY_EVENT = "pair.ready";
+const AUTHENTICATED_EVENT = "pair.authenticated";
+
+export function helloMessage(displayName: string): string {
+  return `היי, זה ${displayName} 👋 החיבור הצליח. אפשר לכתוב לי כאן כל דבר.`;
+}
 
 export interface StartPairingResult {
   status: "started" | "already_active";
@@ -234,15 +246,25 @@ export class PairingManager {
       return;
     }
 
-    await this.eventLog.append(instance.id, "pair.authenticated", {
+    await this.eventLog.append(instance.id, AUTHENTICATED_EVENT, {
       payload: { accountId: accountId ?? null },
     });
-    await this.injectConfigAndCredsIntoMain(
-      instance,
-      instance.containerId,
-      credsTarGz,
-    );
     await this.teardownSidecar(instance.id, "completed");
+    // The sidecar's callback times out in seconds; linking and the hello take longer than that.
+    void this.activateWhatsapp(instance, instance.containerId, credsTarGz).catch((err) => {
+      this.logger.error({ instanceId: instance.id, err: errorMessage(err) }, "whatsapp activation crashed");
+    });
+  }
+
+  // True once the linked channel is up and the hello went out (or was given up on) after the
+  // latest link, so the dashboard can tell "linking" from "ready to chat".
+  async isReady(instanceId: string): Promise<boolean> {
+    const events = await this.eventLog.recent(instanceId, 30);
+    for (const event of events) {
+      if (event.eventType === READY_EVENT) return true;
+      if (event.eventType === AUTHENTICATED_EVENT) return false;
+    }
+    return false;
   }
 
   async completePairingCallback(
@@ -277,26 +299,84 @@ export class PairingManager {
     );
   }
 
-  // On failure the DB still holds the creds; InstanceManager.start() re-injects on next boot.
-  private async injectConfigAndCredsIntoMain(
+  // Creds go in and only the channel runtime starts, so the gateway keeps serving; a restart is the
+  // fallback, not the path. On failure the DB still holds the creds and the next boot re-injects.
+  private async activateWhatsapp(
     instance: Instance,
     containerId: string,
     creds: Buffer,
   ): Promise<void> {
+    const adapter = this.runtimes.get(instance.runtimeKind);
+    let linked = false;
     try {
-      const adapter = this.runtimes.get(instance.runtimeKind);
-      await adapter.writeConfig(containerId, instance);
       await adapter.injectWhatsappSession(containerId, creds);
-      await this.runtime.restart(containerId);
+      const started = await adapter.startWhatsappChannel(containerId);
+      if (started.status === "started") {
+        linked = await this.waitForLink(instance);
+      } else {
+        this.logger.warn(
+          { instanceId: instance.id, reason: started.reason },
+          "whatsapp channel start unavailable; restarting container",
+        );
+      }
+      if (!linked) {
+        await this.eventLog.append(instance.id, "pair.restart_fallback", {
+          payload: { reason: started.status === "started" ? "link_timeout" : started.reason },
+        });
+        await adapter.writeConfig(containerId, instance);
+        await this.runtime.restart(containerId);
+        linked = await this.waitForLink(instance);
+      }
     } catch (err) {
       this.logger.error(
         { instanceId: instance.id, err: errorMessage(err) },
-        "failed to inject creds into main container",
+        "failed to activate whatsapp in main container",
       );
       await this.eventLog.append(instance.id, "pair.inject_failed", {
         payload: { error: errorMessage(err) },
       });
+      return;
     }
+
+    const helloSent = linked ? await this.sendHello(instance, containerId) : false;
+    await this.eventLog.append(instance.id, READY_EVENT, {
+      payload: { linked, helloSent },
+    });
+  }
+
+  private async waitForLink(instance: Instance): Promise<boolean> {
+    const adapter = this.runtimes.get(instance.runtimeKind);
+    const deadline = Date.now() + LINK_WAIT_MS;
+    while (Date.now() < deadline) {
+      const state = await adapter
+        .probeWhatsapp(instance, LINK_PROBE_TIMEOUT_MS, this.pairing.useDockerNetwork)
+        .catch(() => "probe_failed" as const);
+      if (state === "connected") return true;
+      await sleep(LINK_POLL_MS);
+    }
+    return false;
+  }
+
+  // The owner is told the bot is live by the bot itself; without a known owner number there is
+  // nobody to tell, and the dashboard says so instead.
+  private async sendHello(instance: Instance, containerId: string): Promise<boolean> {
+    const ownerNumber = findWhatsappChannel(instance.config.channels)?.ownerNumber;
+    if (!ownerNumber) return false;
+    const adapter = this.runtimes.get(instance.runtimeKind);
+    const text = helloMessage(instance.displayName);
+    for (let attempt = 1; attempt <= HELLO_ATTEMPTS; attempt++) {
+      try {
+        if (await adapter.sendWhatsappMessage(containerId, ownerNumber, text)) return true;
+      } catch (err) {
+        this.logger.warn(
+          { instanceId: instance.id, attempt, err: errorMessage(err) },
+          "whatsapp hello failed",
+        );
+      }
+      if (attempt < HELLO_ATTEMPTS) await sleep(HELLO_RETRY_MS);
+    }
+    await this.eventLog.append(instance.id, "pair.hello_failed");
+    return false;
   }
 
   async cancelPairing(instanceId: string, reason: string): Promise<void> {
@@ -375,3 +455,6 @@ export class PairingManager {
 
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

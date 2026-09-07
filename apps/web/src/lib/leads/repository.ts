@@ -21,6 +21,15 @@ export class LeadRepository {
     this.db = db ?? getDb();
   }
 
+  async phoneByEmail(email: string): Promise<string | null> {
+    const rows = await this.db
+      .select({ phone: leads.phone })
+      .from(leads)
+      .where(eq(leads.email, email))
+      .limit(1);
+    return rows[0]?.phone ?? null;
+  }
+
   async existsByEmail(email: string): Promise<boolean> {
     const rows = await this.db
       .select({ id: leads.id })

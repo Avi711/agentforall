@@ -205,6 +205,8 @@ const openclawAdapter: AgentRuntimeAdapter = {
   probeWhatsapp: async () => "unknown" as const,
   logoutWhatsapp: async () => ({ unlinked: true, cleared: true }),
   listWhatsappPairingRequests: async () => [],
+  startWhatsappChannel: async () => ({ status: "started" as const }),
+  sendWhatsappMessage: async () => true,
   readOwnerIds: async () => [],
 };
 

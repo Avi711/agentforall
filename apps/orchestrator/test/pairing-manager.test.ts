@@ -9,6 +9,7 @@ import type { PairingConfig } from "../src/config.js";
 import { PairingSessionRegistry } from "../src/services/pairing-session-registry.js";
 import { PairingSidecarClient } from "../src/services/pairing-sidecar-client.js";
 import { AgentRuntimeRegistry } from "../src/services/agent-runtime/registry.js";
+import type { AgentRuntimeAdapter } from "../src/services/agent-runtime/types.js";
 
 test("startPairing serializes concurrent calls for the same instance", async () => {
   let pairingStatus: PairingStatus = "none";
@@ -224,6 +225,7 @@ const pairingConfig: PairingConfig = {
   logLevel: "silent",
   orchestratorInternalUrl: "http://orchestrator:3000",
   publishSidecarPort: false,
+  useDockerNetwork: false,
 };
 
 const logger = {
@@ -236,6 +238,7 @@ function createPairingManager(
   repo: InstanceRepository,
   runtime: ContainerRuntime,
   eventLog: EventRepository,
+  adapter?: AgentRuntimeAdapter,
 ): PairingManager {
   const sessions = new PairingSessionRegistry();
   const sidecarClient = new PairingSidecarClient(
@@ -246,7 +249,7 @@ function createPairingManager(
   return new PairingManager(
     repo,
     runtime,
-    new AgentRuntimeRegistry([]),
+    new AgentRuntimeRegistry(adapter ? [adapter] : []),
     eventLog,
     pairingConfig,
     logger,
@@ -258,3 +261,121 @@ function createPairingManager(
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+interface ActivationHarness {
+  calls: string[];
+  events: string[];
+  restarts: number;
+  manager: PairingManager;
+}
+
+function activationHarness(opts: {
+  startStatus?: "started" | "unavailable";
+  linkStates?: ("connected" | "disconnected")[];
+  sendOk?: boolean;
+}): ActivationHarness {
+  const calls: string[] = [];
+  const events: string[] = [];
+  const states = [...(opts.linkStates ?? ["connected"])];
+  const harness: ActivationHarness = { calls, events, restarts: 0, manager: undefined as never };
+
+  const adapter = {
+    kind: "openclaw",
+    injectWhatsappSession: async () => {
+      calls.push("inject");
+    },
+    startWhatsappChannel: async () => {
+      calls.push("start");
+      return opts.startStatus === "unavailable"
+        ? { status: "unavailable" as const, reason: "no gateway" }
+        : { status: "started" as const };
+    },
+    probeWhatsapp: async () => {
+      calls.push("probe");
+      return states.length > 1 ? states.shift()! : states[0];
+    },
+    writeConfig: async () => {
+      calls.push("writeConfig");
+    },
+    sendWhatsappMessage: async (_c: string, to: string) => {
+      calls.push(`hello:${to}`);
+      return opts.sendOk ?? true;
+    },
+  } as unknown as AgentRuntimeAdapter;
+
+  const repo = {
+    updatePairing: async () => true,
+    findById: async () => instance,
+  } as unknown as InstanceRepository;
+
+  const runtime = {
+    restart: async () => {
+      harness.restarts += 1;
+      calls.push("restart");
+    },
+    findContainerByName: async () => null,
+    remove: async () => undefined,
+  } as unknown as ContainerRuntime;
+
+  const eventLog = {
+    append: async (_id: string, type: string) => {
+      events.push(type);
+    },
+    recent: async () => events.map((eventType) => ({ eventType })).reverse(),
+  } as unknown as EventRepository;
+
+  harness.manager = createPairingManager(repo, runtime, eventLog, adapter);
+  return harness;
+}
+
+const ownedInstance: Instance = {
+  ...instance,
+  config: {
+    ...instance.config,
+    channels: [{ type: "whatsapp", dmAccess: "owner", ownerNumber: "+972501234567" }],
+  },
+};
+
+async function settle(harness: ActivationHarness): Promise<void> {
+  for (let i = 0; i < 200 && !harness.events.includes("pair.ready"); i++) await sleep(10);
+}
+
+test("completePairing links in place and the bot says hello, without a container restart", async () => {
+  const h = activationHarness({});
+  await h.manager.completePairing(ownedInstance, Buffer.from("creds"), "972552506938");
+  await settle(h);
+
+  assert.deepEqual(h.calls, ["inject", "start", "probe", "hello:+972501234567"]);
+  assert.equal(h.restarts, 0);
+  assert.deepEqual(h.events, ["pair.authenticated", "pair.ready"]);
+  assert.equal(await h.manager.isReady(ownedInstance.id), true);
+});
+
+test("completePairing falls back to a restart when the channel cannot be started in place", async () => {
+  const h = activationHarness({ startStatus: "unavailable" });
+  await h.manager.completePairing(ownedInstance, Buffer.from("creds"), null);
+  await settle(h);
+
+  assert.deepEqual(h.calls, ["inject", "start", "writeConfig", "restart", "probe", "hello:+972501234567"]);
+  assert.equal(h.restarts, 1);
+  assert.ok(h.events.includes("pair.restart_fallback"));
+});
+
+test("completePairing skips the hello when no owner number is known", async () => {
+  const h = activationHarness({});
+  await h.manager.completePairing(instance, Buffer.from("creds"), null);
+  await settle(h);
+
+  assert.ok(!h.calls.some((c) => c.startsWith("hello:")));
+  assert.equal(await h.manager.isReady(instance.id), true);
+});
+
+test("isReady is false between a fresh link and its activation", async () => {
+  const events = ["pair.ready", "pair.authenticated"];
+  const eventLog = {
+    append: async () => undefined,
+    recent: async () => events.map((eventType) => ({ eventType })).reverse(),
+  } as unknown as EventRepository;
+  const manager = createPairingManager({} as InstanceRepository, {} as ContainerRuntime, eventLog);
+  assert.equal(await manager.isReady(instance.id), false);
+});

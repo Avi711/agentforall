@@ -22,6 +22,22 @@ export function replaceWhatsappChannel(
   return channels.map((ch) => (ch.type === "whatsapp" ? whatsapp : ch));
 }
 
+// Adds the channel when missing; the number is the phone the owner writes from, not the bot's own.
+export function withWhatsappOwnerNumber(
+  channels: ChannelConfig[],
+  ownerNumber: string | null,
+): ChannelConfig[] {
+  const current = findWhatsappChannel(channels);
+  if (!current) {
+    return applyChannelDefaults([
+      ...channels,
+      { type: "whatsapp", ...(ownerNumber ? { ownerNumber } : {}) },
+    ]);
+  }
+  if (!ownerNumber || current.ownerNumber === ownerNumber) return channels;
+  return replaceWhatsappChannel(channels, { ...current, dmAccess: "owner", ownerNumber });
+}
+
 export function findTelegramChannel(
   channels: ChannelConfig[],
 ): TelegramChannelConfig | undefined {

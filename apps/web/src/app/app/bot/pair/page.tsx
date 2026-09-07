@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth/session";
 import { getConsentStatus } from "@/lib/consent/service";
 import { botService } from "@/lib/bots/service";
+import { knownPhoneForEmail } from "@/lib/leads/service";
+import { toBotSnapshot } from "@/lib/bots/snapshot";
 import { ConsentGate } from "./ConsentGate";
 import { PairingFlow } from "./PairingFlow";
 
@@ -25,14 +27,27 @@ export default async function PairPage() {
   }
 
   if (bot.pairingStatus === "paired") {
-    redirect("/app?paired=1");
+    redirect("/app");
   }
 
   const needsConsent = !consent.accepted || consent.stale;
+  const snapshot = toBotSnapshot(bot);
+  const suggestedNumber =
+    snapshot.owner.whatsappNumber ??
+    (session.user.email ? await knownPhoneForEmail(session.user.email) : null);
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-8 sm:pt-12 pb-28">
-      {needsConsent ? <ConsentGate /> : <PairingFlow botId={bot.id} />}
+      {needsConsent ? (
+        <ConsentGate />
+      ) : (
+        <PairingFlow
+          botId={bot.id}
+          botName={bot.displayName}
+          ownerNumber={snapshot.owner.whatsappNumber}
+          suggestedNumber={suggestedNumber}
+        />
+      )}
     </div>
   );
 }

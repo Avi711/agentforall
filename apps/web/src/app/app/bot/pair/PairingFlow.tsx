@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ESimCard } from "@/components/ESimCard";
-import { isValidIsraeliPhone, normalizeIsraeliPhone } from "@/lib/phone";
+import { isValidIsraeliPhone, normalizeIsraeliPhone, normalizePhoneInput } from "@/lib/phone";
 import type {
   PairStatus as CanonicalPairStatus,
   PairQr,
@@ -11,6 +11,7 @@ import type {
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 
 type Tab = "qr" | "code";
+type Step = "number" | "link" | "linking" | "done";
 
 type PairStatus = Pick<
   CanonicalPairStatus,
@@ -21,63 +22,76 @@ type PairStatus = Pick<
   | "codeAvailable"
   | "reason"
   | "updatedAt"
+  | "ready"
 >;
 type Qr = Pick<PairQr, "dataUrl" | "expiresAt">;
 
 interface Props {
   botId: string;
+  botName: string;
+  // The phone the owner writes from, when already on record.
+  ownerNumber: string | null;
+  // Best guess for the number field (signup form); never trusted without the user confirming it.
+  suggestedNumber: string | null;
 }
 
 const POLL_MS = 2_000;
+// The hello normally lands within seconds; past this the bot is linked either way.
+const READY_WAIT_MS = 90_000;
 
-export function PairingFlow({ botId }: Props) {
+export function PairingFlow({ botId, botName, ownerNumber, suggestedNumber }: Props) {
   const router = useRouter();
+  const [owner, setOwner] = useState<string | null>(ownerNumber);
+  const [step, setStep] = useState<Step>(ownerNumber ? "link" : "number");
   const [tab, setTab] = useState<Tab>("qr");
   const [status, setStatus] = useState<PairStatus | null>(null);
   const [qr, setQr] = useState<Qr | null>(null);
   const [phone, setPhone] = useState("");
   const [pairingCode, setPairingCode] = useState<string | null>(null);
-  const [starting, setStarting] = useState(true);
+  const [starting, setStarting] = useState(false);
   const [codeBusy, setCodeBusy] = useState(false);
   const [cancelBusy, setCancelBusy] = useState(false);
+  const [helloConfirmed, setHelloConfirmed] = useState(false);
   const [leaving, startLeave] = useTransition();
   const [error, setError] = useState<string | null>(null);
   // Bump to force QR re-fetch on user-triggered refresh.
   const [refreshNonce, setRefreshNonce] = useState(0);
-  const abortRef = useRef<AbortController | null>(null);
+  const linkingSinceRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    const ac = new AbortController();
-    abortRef.current = ac;
-
-    async function begin() {
-      try {
-        const res = await fetch(`/api/bot/${botId}/pair`, {
-          method: "POST",
-          signal: ac.signal,
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(codeToHe(data?.error?.code) ?? "לא הצלחנו להתחיל התאמה");
-        }
-      } catch (err) {
-        if (!cancelled && !isAbort(err)) {
-          setError(err instanceof Error ? err.message : UNEXPECTED_ERROR_HE);
-        }
-      } finally {
-        if (!cancelled) setStarting(false);
+  async function startPairing(number: string, signal?: AbortSignal): Promise<boolean> {
+    try {
+      const res = await fetch(`/api/bot/${botId}/pair`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ownerNumber: number }),
+        signal,
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(codeToHe(data?.error?.code) ?? "לא הצלחנו להתחיל התאמה");
       }
+      return true;
+    } catch (err) {
+      if (!isAbort(err)) {
+        setError(err instanceof Error ? err.message : UNEXPECTED_ERROR_HE);
+      }
+      return false;
     }
-    void begin();
-    return () => {
-      cancelled = true;
-      ac.abort();
-    };
-  }, [botId]);
+  }
+
+  // A number already on record skips the question; the pairing starts as soon as the page opens.
+  useEffect(() => {
+    if (step !== "link" || !owner) return;
+    const ac = new AbortController();
+    setStarting(true);
+    void startPairing(owner, ac.signal).finally(() => {
+      if (!ac.signal.aborted) setStarting(false);
+    });
+    return () => ac.abort();
+  }, [botId, owner, step]);
 
   useEffect(() => {
-    if (starting) return;
+    if (starting || step === "number" || step === "done") return;
     let cancelled = false;
     const ac = new AbortController();
 
@@ -87,13 +101,17 @@ export function PairingFlow({ botId }: Props) {
           signal: ac.signal,
           cache: "no-store",
         });
-        if (res.ok) {
-          const payload = (await res.json()) as PairStatus;
-          if (!cancelled) setStatus(payload);
-          if (payload.phase === "authenticated") {
-            router.replace("/app?paired=1");
-            return;
-          }
+        if (!res.ok) return;
+        const payload = (await res.json()) as PairStatus;
+        if (cancelled) return;
+        setStatus(payload);
+        if (payload.phase !== "authenticated") return;
+        linkingSinceRef.current ??= Date.now();
+        setStep("linking");
+        const waitedTooLong = Date.now() - linkingSinceRef.current > READY_WAIT_MS;
+        if (payload.ready || waitedTooLong) {
+          setHelloConfirmed(Boolean(payload.ready));
+          setStep("done");
         }
       } catch (err) {
         if (isAbort(err)) return;
@@ -110,10 +128,10 @@ export function PairingFlow({ botId }: Props) {
       clearInterval(interval);
       ac.abort();
     };
-  }, [botId, router, starting]);
+  }, [botId, starting, step]);
 
   useEffect(() => {
-    if (!status?.qrAvailable) return;
+    if (!status?.qrAvailable || step !== "link") return;
     let cancelled = false;
     const ac = new AbortController();
 
@@ -136,17 +154,20 @@ export function PairingFlow({ botId }: Props) {
       cancelled = true;
       ac.abort();
     };
-  }, [botId, status?.qrAvailable, status?.updatedAt, refreshNonce]);
+  }, [botId, step, status?.qrAvailable, status?.updatedAt, refreshNonce]);
+
+  function handleNumberSubmit(number: string) {
+    setError(null);
+    setOwner(number);
+    setStep("link");
+  }
 
   // startPairing is idempotent — reuses active session or recreates a missing sidecar.
   async function handleRefresh() {
+    if (!owner) return;
     setQr(null);
     setError(null);
-    try {
-      await fetch(`/api/bot/${botId}/pair`, { method: "POST" });
-    } catch {
-      // Best effort — status polling surfaces any real problem.
-    }
+    await startPairing(owner);
     setRefreshNonce((n) => n + 1);
   }
 
@@ -183,8 +204,45 @@ export function PairingFlow({ botId }: Props) {
     startLeave(() => router.replace("/app"));
   }
 
+  if (step === "number") {
+    return (
+      <div className="space-y-6">
+        <OwnerNumberCard
+          botName={botName}
+          initial={suggestedNumber}
+          error={error}
+          onSubmit={handleNumberSubmit}
+          onBack={() => startLeave(() => router.replace("/app"))}
+        />
+        <ESimCard />
+      </div>
+    );
+  }
+
+  if (step === "done") {
+    return (
+      <DoneCard
+        botName={botName}
+        botNumber={status?.whatsappAccountId ?? null}
+        helloConfirmed={helloConfirmed}
+        onDashboard={() => startLeave(() => router.replace("/app"))}
+        leaving={leaving}
+      />
+    );
+  }
+
+  if (step === "linking") {
+    return (
+      <PhaseCard
+        title="מחבר את הבוט…"
+        body={`עוד רגע ${botName} כותב לכם בוואטסאפ.`}
+        spinner
+      />
+    );
+  }
+
   if (starting) {
-    return <PhaseCard title="מתחיל התאמה…" body="רגע, מפעיל את חיבור WhatsApp." />;
+    return <PhaseCard title="מתחיל התאמה…" body="רגע, מפעיל את חיבור WhatsApp." spinner />;
   }
 
   if (status?.phase === "failed" || status?.pairingStatus === "failed") {
@@ -231,12 +289,12 @@ export function PairingFlow({ botId }: Props) {
           חיבור
         </p>
         <h1 className="font-display text-xl sm:text-2xl text-espresso mb-2 leading-tight">
-          חיבור WhatsApp לבוט שלכם
+          קחו את הטלפון של הבוט
         </h1>
         <p className="text-espresso-light mb-3 italic">
-          סרקו את הקוד בטלפון, או בקשו קוד בן 8 תווים אם סריקה לא נוחה.
+          סרקו את הקוד מהטלפון של הבוט, או בקשו קוד בן 8 תווים אם סריקה לא נוחה.
         </p>
-        <p className="mb-6 text-xs leading-relaxed">
+        <p className="mb-4 text-xs leading-relaxed">
           <strong className="font-bold text-espresso">
             חשוב: אל תחברו את המספר האישי שלכם. וואטסאפ עלולה לחסום מספרים שמריצים בוטים,
             לכן צריך מספר נפרד (eSIM או SIM נוסף).
@@ -250,6 +308,24 @@ export function PairingFlow({ botId }: Props) {
             איך משיגים ומגדירים מספר כזה — המדריך המלא
           </a>
         </p>
+
+        {owner ? (
+          <p className="mb-6 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-espresso-light">
+            <span>
+              הבוט יענה לכם מהמספר{" "}
+              <span dir="ltr" className="font-medium text-espresso">
+                {displayPhone(owner)}
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setStep("number")}
+              className="text-terra underline underline-offset-4 hover:text-terra-dark"
+            >
+              שינוי
+            </button>
+          </p>
+        ) : null}
 
         <TabBar value={tab} onChange={setTab} />
 
@@ -292,6 +368,173 @@ export function PairingFlow({ botId }: Props) {
       <ESimCard />
 
       <Instructions />
+    </div>
+  );
+}
+
+function OwnerNumberCard({
+  botName,
+  initial,
+  error,
+  onSubmit,
+  onBack,
+}: {
+  botName: string;
+  initial: string | null;
+  error: string | null;
+  onSubmit: (number: string) => void;
+  onBack: () => void;
+}) {
+  const [value, setValue] = useState(initial ? localInput(initial) : "");
+  const [invalid, setInvalid] = useState(false);
+  const normalized = normalizePhoneInput(value);
+
+  function submit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!normalized) {
+      setInvalid(true);
+      return;
+    }
+    onSubmit(normalized);
+  }
+
+  return (
+    <div className="relative bg-white rounded-[24px] border border-sand-light shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)] p-5 sm:p-8 overflow-hidden">
+      <span aria-hidden className="absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-sand-light to-transparent" />
+      <p className="text-[11px] uppercase tracking-[0.22em] text-terra mb-2">שלב 1 מתוך 2</p>
+      <h1 className="font-display text-xl sm:text-2xl text-espresso mb-2 leading-tight">
+        מאיזה מספר תכתבו ל{botName}?
+      </h1>
+      <p className="text-espresso-light mb-6">
+        הוואטסאפ האישי שלכם, זה שבטלפון שביד. רק המספר הזה יוכל לדבר עם הבוט; כל השאר לא יקבלו
+        תשובה. אפשר להוסיף אנשים אחר כך מהדשבורד.
+      </p>
+
+      <form onSubmit={submit} className="space-y-4 max-w-md">
+        <label className="block">
+          <span className="block text-sm text-espresso-light mb-1.5">המספר שלכם בוואטסאפ</span>
+          <PhoneField
+            value={value}
+            onChange={(v) => {
+              setValue(v);
+              setInvalid(false);
+            }}
+            autoFocus
+          />
+        </label>
+        {invalid ? (
+          <p className="text-sm text-red-700">המספר לא נראה תקין. נסו בפורמט 050-1234567.</p>
+        ) : null}
+        {error ? (
+          <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">{error}</p>
+        ) : null}
+        <button
+          type="submit"
+          disabled={!normalized}
+          className="w-full px-5 py-3 rounded-xl bg-espresso text-cream font-medium hover:bg-espresso-light transition disabled:opacity-50"
+        >
+          המשך לחיבור הבוט
+        </button>
+      </form>
+
+      <button
+        type="button"
+        onClick={onBack}
+        className="mt-5 -mx-2 px-2 py-2 text-sm text-espresso-light hover:text-espresso"
+      >
+        חזרה לדשבורד
+      </button>
+    </div>
+  );
+}
+
+function DoneCard({
+  botName,
+  botNumber,
+  helloConfirmed,
+  onDashboard,
+  leaving,
+}: {
+  botName: string;
+  botNumber: string | null;
+  helloConfirmed: boolean;
+  onDashboard: () => void;
+  leaving: boolean;
+}) {
+  const chatHref = botNumber
+    ? `https://wa.me/${botNumber.replace(/\D/g, "")}?text=${encodeURIComponent("היי")}`
+    : null;
+  return (
+    <div className="bg-white rounded-[24px] shadow-sm border border-sand-light p-6 sm:p-10 text-center space-y-5 max-w-md mx-auto">
+      <span
+        aria-hidden
+        className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-full bg-sage-pale text-sage-dark text-2xl"
+      >
+        ✓
+      </span>
+      <h2 className="font-display text-2xl text-espresso">{botName} מחובר</h2>
+      <p className="text-espresso-light leading-relaxed">
+        {helloConfirmed
+          ? `${botName} שלח לכם הודעה בוואטסאפ. פתחו את הצ'אט וכתבו לו.`
+          : `הבוט מחובר. אם עוד לא הגיעה ממנו הודעה, כתבו לו "היי" והוא יענה.`}
+      </p>
+      <div className="flex flex-col gap-2">
+        {chatHref ? (
+          <a
+            href={chatHref}
+            target="_blank"
+            rel="noopener"
+            className="inline-flex min-h-12 items-center justify-center rounded-xl bg-terra px-5 py-3 font-medium text-white transition hover:bg-terra-dark"
+          >
+            פתיחת הצ&apos;אט בוואטסאפ
+          </a>
+        ) : null}
+        <button
+          type="button"
+          onClick={onDashboard}
+          disabled={leaving}
+          className="min-h-11 rounded-xl px-5 py-2.5 text-sm font-medium text-espresso-light transition hover:text-espresso disabled:opacity-50"
+        >
+          לדשבורד
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PhoneField({
+  value,
+  onChange,
+  autoFocus,
+  disabled,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  autoFocus?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <div dir="ltr" className="flex items-stretch rounded-xl border border-sand bg-white focus-within:border-terra focus-within:ring-2 focus-within:ring-terra-pale">
+      <span className="px-3 flex items-center gap-2 border-e border-sand text-espresso-light text-sm select-none">
+        <span
+          aria-hidden
+          className="inline-flex items-center justify-center text-[10px] font-medium tracking-[0.08em] px-1.5 py-0.5 rounded-sm bg-cream-dark text-espresso border border-sand-light"
+        >
+          IL
+        </span>
+        <span className="font-mono">+972</span>
+      </span>
+      <input
+        type="tel"
+        required
+        dir="ltr"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="050-123-4567"
+        autoFocus={autoFocus}
+        disabled={disabled}
+        className="flex-1 px-4 py-3 rounded-xl bg-transparent text-espresso placeholder:text-sand focus:outline-none disabled:opacity-50"
+      />
     </div>
   );
 }
@@ -359,7 +602,7 @@ function QrPanel({
         </button>
       </div>
       <ol className="flex-1 space-y-2 text-espresso-light text-sm leading-relaxed list-decimal ps-5 marker:text-terra">
-        <li>פתחו את WhatsApp בטלפון</li>
+        <li>פתחו את WhatsApp בטלפון של הבוט</li>
         <li>תפריט ⋮ &larr; מכשירים מקושרים</li>
         <li>לחצו &quot;קישור מכשיר&quot;</li>
         <li>סרקו את הקוד שבמסך</li>
@@ -425,7 +668,7 @@ function CodePanel({
           {pairingCode}
         </p>
         <p className="text-sm text-espresso-light">
-          בטלפון: תפריט ⋮ &larr; מכשירים מקושרים &larr; קישור עם מספר טלפון &larr;
+          בטלפון של הבוט: תפריט ⋮ &larr; מכשירים מקושרים &larr; קישור עם מספר טלפון &larr;
           הזינו את הקוד.
         </p>
       </div>
@@ -435,29 +678,9 @@ function CodePanel({
     <form onSubmit={onSubmit} className="space-y-4 max-w-md">
       <label className="block">
         <span className="block text-sm text-espresso-light mb-1.5">
-          מספר הטלפון של WhatsApp
+          המספר של הטלפון של הבוט (הסים הנפרד)
         </span>
-        <div dir="ltr" className="flex items-stretch rounded-xl border border-sand bg-white focus-within:border-terra focus-within:ring-2 focus-within:ring-terra-pale">
-          <span className="px-3 flex items-center gap-2 border-e border-sand text-espresso-light text-sm select-none">
-            <span
-              aria-hidden
-              className="inline-flex items-center justify-center text-[10px] font-medium tracking-[0.08em] px-1.5 py-0.5 rounded-sm bg-cream-dark text-espresso border border-sand-light"
-            >
-              IL
-            </span>
-            <span className="font-mono">+972</span>
-          </span>
-          <input
-            type="tel"
-            required
-            dir="ltr"
-            value={phone}
-            onChange={(e) => onPhoneChange(e.target.value)}
-            placeholder="050-123-4567"
-            disabled={busy}
-            className="flex-1 px-4 py-3 rounded-xl bg-transparent text-espresso placeholder:text-sand focus:outline-none disabled:opacity-50"
-          />
-        </div>
+        <PhoneField value={phone} onChange={onPhoneChange} disabled={busy} />
       </label>
       <button
         type="submit"
@@ -489,18 +712,37 @@ function PhaseCard({
   title,
   body,
   action,
+  spinner,
 }: {
   title: string;
   body: string;
   action?: React.ReactNode;
+  spinner?: boolean;
 }) {
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-sand-light p-6 sm:p-8 text-center space-y-4 max-w-md mx-auto">
+    <div
+      role="status"
+      aria-live="polite"
+      className="bg-white rounded-2xl shadow-sm border border-sand-light p-6 sm:p-8 text-center space-y-4 max-w-md mx-auto"
+    >
+      {spinner ? (
+        <span className="mx-auto inline-block w-10 h-10 rounded-full border-[3px] border-sand border-t-terra animate-spin" />
+      ) : null}
       <h2 className="font-display text-xl sm:text-2xl text-espresso">{title}</h2>
       <p className="text-espresso-light">{body}</p>
       {action}
     </div>
   );
+}
+
+// "+972501234567" → "050-123-4567" for the input; other countries keep their international form.
+function localInput(e164: string): string {
+  const match = /^\+972(\d{2})(\d{3})(\d{4})$/.exec(e164);
+  return match ? `0${match[1]}-${match[2]}-${match[3]}` : e164;
+}
+
+function displayPhone(e164: string): string {
+  return localInput(e164);
 }
 
 function phaseLabelHe(phase: PairStatus["phase"] | undefined): string {
@@ -545,6 +787,8 @@ function codeToHe(code: string | undefined): string | undefined {
       return "הקוד עדיין לא מוכן. נסו בעוד שנייה.";
     case "not_found":
       return "הבוט לא נמצא.";
+    case "invalid_body":
+      return "המספר לא תקין.";
     default:
       return undefined;
   }
@@ -553,4 +797,3 @@ function codeToHe(code: string | undefined): string | undefined {
 function isAbort(err: unknown): boolean {
   return err instanceof DOMException && err.name === "AbortError";
 }
-

@@ -13,6 +13,13 @@ const PhoneBody = z.object({
     .regex(/^\+?[1-9]\d{9,14}$/, "phone must be E.164 (country code + number, 10–15 digits)"),
 });
 
+// The phone the owner will write from. Optional so older dashboards keep working (claim mode).
+const StartPairBody = z
+  .object({
+    ownerNumber: z.string().regex(/^\+[1-9]\d{6,14}$/, "ownerNumber must be E.164").optional(),
+  })
+  .default({});
+
 // Cap length so a rogue sidecar can't write unbounded strings.
 const ACCOUNT_ID_RE = /^[A-Za-z0-9@._+:-]{1,128}$/;
 const MAX_CREDS_BYTES = 8 * 1024 * 1024;
@@ -30,7 +37,12 @@ export const pairingRoutes: FastifyPluginAsync<PairRoutesDeps> = async (
 
   app.post("/:id/pair", async (request, reply) => {
     const { id } = UuidParam.parse(request.params);
-    const inst = await manager.ensureWhatsappChannel(id, request.authenticatedUserId);
+    const body = StartPairBody.parse(request.body ?? {});
+    const inst = await manager.ensureWhatsappChannel(
+      id,
+      request.authenticatedUserId,
+      body.ownerNumber ?? null,
+    );
     const result = await pairingManager.startPairing(inst);
     return reply.send(result);
   });
@@ -88,12 +100,14 @@ export const pairingRoutes: FastifyPluginAsync<PairRoutesDeps> = async (
       // Sidecar not reachable — fall back to DB
     }
 
+    const paired = inst.pairingStatus === "paired";
     return reply.send({
-      phase: inst.pairingStatus === "paired" ? "authenticated" : "idle",
+      phase: paired ? "authenticated" : "idle",
       pairingStatus: inst.pairingStatus,
       whatsappAccountId: inst.whatsappAccountId,
       qrAvailable: false,
       codeAvailable: false,
+      ready: paired ? await pairingManager.isReady(id) : false,
     });
   });
 };

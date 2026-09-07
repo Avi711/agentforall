@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizePhoneInput } from "@/lib/phone";
 import { BOT_CHANNELS, WHATSAPP_DM_ACCESS } from "../orchestrator/types";
 
 export const BotIdParamsSchema = z.object({
@@ -20,6 +21,22 @@ export const BackupUploadSessionBodySchema = z.object({
 export const BackupRestoreBodySchema = z.object({
   restoreToken: z.string().min(1),
 });
+
+// The phone the owner writes from; local Israeli or international input, normalized to E.164.
+export const StartPairingBodySchema = z.object({
+  ownerNumber: z
+    .string()
+    .trim()
+    .transform((raw, ctx) => {
+      const normalized = normalizePhoneInput(raw);
+      if (!normalized) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "invalid phone number" });
+        return z.NEVER;
+      }
+      return normalized;
+    }),
+});
+export type StartPairingBody = z.infer<typeof StartPairingBodySchema>;
 
 export const PhoneBodySchema = z.object({
   phone: z

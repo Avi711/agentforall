@@ -22,6 +22,11 @@ export type WhatsappLinkState =
 // container boots again. Only "applied" means a running runtime acknowledged it.
 export type ConfigApplyOutcome = "applied" | "restart_required";
 
+// "unavailable" means the runtime could not be asked; the caller falls back to a restart.
+export type ChannelStartOutcome =
+  | { status: "started" }
+  | { status: "unavailable"; reason: string };
+
 export interface GatewayLiveness {
   healthy: boolean;
   // null when the runtime exposes no readiness signal separate from liveness.
@@ -54,6 +59,10 @@ export interface AgentRuntimeAdapter {
   // Applies config to a running runtime without restarting it, and reports what actually happened.
   applyConfig(containerId: string, instance: Instance): Promise<ConfigApplyOutcome>;
   injectWhatsappSession(containerId: string, credsTar: Buffer): Promise<void>;
+  // Starts the WhatsApp channel runtime in place so freshly injected creds link without a restart.
+  startWhatsappChannel(containerId: string): Promise<ChannelStartOutcome>;
+  // Best-effort delivery through the linked channel; false when the runtime refused or cannot send.
+  sendWhatsappMessage(containerId: string, to: string, text: string): Promise<boolean>;
   exportState(containerId: string): Promise<ArchiveStreamResult>;
   restoreState(containerId: string, sourceTarGzip: Readable): Promise<void>;
   probeGateway(instance: Instance, timeoutMs: number, useDockerNetwork: boolean): Promise<GatewayLiveness>;

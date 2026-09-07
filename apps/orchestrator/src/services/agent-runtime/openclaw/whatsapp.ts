@@ -92,3 +92,20 @@ export function parsePairingListOutput(stdout: string): WhatsappPairingRequest[]
   }
   return requests;
 }
+
+const SEND_TIMEOUT_MS = 30_000;
+
+// Goes through the running gateway, so it only works once the channel is linked.
+export async function sendOpenclawWhatsappMessage(
+  runtime: ContainerRuntime,
+  containerId: string,
+  to: string,
+  text: string,
+): Promise<boolean> {
+  const result = await runtime.execCommandWithOutput(
+    containerId,
+    ["openclaw", "message", "send", "--channel", OPENCLAW_WHATSAPP_CHANNEL, "--target", to, "-m", text, "--json"],
+    SEND_TIMEOUT_MS,
+  );
+  return result.exitCode === 0;
+}

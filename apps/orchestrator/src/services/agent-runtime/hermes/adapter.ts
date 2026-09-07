@@ -10,6 +10,7 @@ import type {
   WhatsappLinkState,
   WhatsappPairingRequest,
   WhatsappLogoutResult,
+  ChannelStartOutcome,
 } from "../types.js";
 import {
   HERMES_BACKUP_TIMEOUT_MS,
@@ -163,6 +164,15 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
   async logoutWhatsapp(containerId: string): Promise<WhatsappLogoutResult> {
     const cleared = await logoutHermesWhatsapp(this.runtime, containerId);
     return { unlinked: cleared, cleared };
+  }
+
+  // Hermes reads creds only at boot; the caller's restart fallback covers it.
+  async startWhatsappChannel(): Promise<ChannelStartOutcome> {
+    return { status: "unavailable", reason: "hermes has no channel start" };
+  }
+
+  async sendWhatsappMessage(): Promise<boolean> {
+    return false;
   }
 
   // Hermes has no DM pairing store; owner claim is manual-entry only.

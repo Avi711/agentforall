@@ -56,7 +56,7 @@ export interface BotOrchestratorPort {
     },
   ): Promise<BackupUploadSession>;
   restoreBackupUpload(userId: string, restoreToken: string): Promise<Instance>;
-  startPairing(userId: string, id: string): Promise<StartPairingResult>;
+  startPairing(userId: string, id: string, ownerNumber: string | null): Promise<StartPairingResult>;
   cancelPairing(userId: string, id: string): Promise<void>;
   getPairQr(userId: string, id: string): Promise<PairQr>;
   requestPairCode(userId: string, id: string, phone: string): Promise<PairCode>;
@@ -177,8 +177,12 @@ export class BotService {
     }
   }
 
-  startPairing(userId: string, id: string): Promise<StartPairingResult> {
-    return this.orchestrator.startPairing(userId, id);
+  startPairing(
+    userId: string,
+    id: string,
+    ownerNumber: string | null = null,
+  ): Promise<StartPairingResult> {
+    return this.orchestrator.startPairing(userId, id, ownerNumber);
   }
 
   cancelPairing(userId: string, id: string): Promise<void> {
