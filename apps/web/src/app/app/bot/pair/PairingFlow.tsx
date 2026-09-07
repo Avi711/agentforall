@@ -285,12 +285,12 @@ export function PairingFlow({ botId, botName, ownerNumber, suggestedNumber }: Pr
     <div className="space-y-6">
       <div className="relative bg-white rounded-[24px] border border-sand-light shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)] p-5 sm:p-8 overflow-hidden">
         <span aria-hidden className="absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-sand-light to-transparent" />
-        <TwoPhonesSteps step={2} />
+        <TwoNumbersSteps step={2} />
         <h1 className="font-display text-xl sm:text-2xl text-espresso mt-6 mb-2 leading-tight">
-          קחו את הטלפון של הבוט
+          חברו את המספר של הבוט
         </h1>
-        <p className="text-espresso-light mb-3 italic">
-          סרקו את הקוד מהטלפון של הבוט, או בקשו קוד בן 8 תווים אם סריקה לא נוחה.
+        <p className="text-espresso-light mb-3">
+          פתחו את הוואטסאפ של המספר הזה, חשבון נוסף באפליקציה או וואטסאפ עסקי, וסרקו את הקוד.
         </p>
         <p className="mb-4 text-xs leading-relaxed">
           <strong className="font-bold text-espresso">
@@ -325,9 +325,7 @@ export function PairingFlow({ botId, botName, ownerNumber, suggestedNumber }: Pr
           </p>
         ) : null}
 
-        <TabBar value={tab} onChange={setTab} />
-
-        <div className="mt-6">
+        <div className="mt-2">
           {tab === "qr" ? (
             <QrPanel qr={qr} phase={status?.phase} onRefresh={handleRefresh} />
           ) : (
@@ -340,6 +338,29 @@ export function PairingFlow({ botId, botName, ownerNumber, suggestedNumber }: Pr
             />
           )}
         </div>
+
+        <p className="mt-5 text-sm text-espresso-light">
+          {tab === "qr" ? (
+            <>
+              המספר של הבוט על הטלפון הזה ואי אפשר לסרוק?{" "}
+              <button
+                type="button"
+                onClick={() => setTab("code")}
+                className="text-terra underline underline-offset-4 hover:text-terra-dark"
+              >
+                קישור עם קוד במקום סריקה
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setTab("qr")}
+              className="text-terra underline underline-offset-4 hover:text-terra-dark"
+            >
+              חזרה לסריקת QR
+            </button>
+          )}
+        </p>
 
         {error ? (
           <p className="mt-5 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
@@ -399,12 +420,12 @@ function OwnerNumberCard({
   return (
     <div className="relative bg-white rounded-[24px] border border-sand-light shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)] p-5 sm:p-8 overflow-hidden">
       <span aria-hidden className="absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-sand-light to-transparent" />
-      <TwoPhonesSteps step={1} />
+      <TwoNumbersSteps step={1} />
 
       <h1 className="font-display text-xl sm:text-2xl text-espresso mt-6 mb-1.5 leading-tight">
         מאיזה מספר תכתבו ל{botName}?
       </h1>
-      <p className="text-espresso-light mb-5">הוואטסאפ האישי שלכם. את הטלפון של הבוט נחבר בשלב הבא.</p>
+      <p className="text-espresso-light mb-5">הוואטסאפ שבו אתם מתכתבים ביום-יום.</p>
 
       <form onSubmit={submit} className="space-y-4 max-w-md">
         <label className="block">
@@ -448,25 +469,26 @@ function OwnerNumberCard({
   );
 }
 
-// The step indicator is the two phones themselves, so "your number" can never be read as the
-// bot's number. Step 1 sits on the start side in RTL, where the eye lands.
-function TwoPhonesSteps({ step }: { step: 1 | 2 }) {
+// The step indicator is the two WhatsApp numbers themselves, drawn as chat accounts rather than
+// handsets: the bot's number is often a second account on the owner's own phone.
+function TwoNumbersSteps({ step }: { step: 1 | 2 }) {
   return (
     <ol className="grid grid-cols-2 gap-3 max-w-md list-none p-0 m-0" aria-label={`שלב ${step} מתוך 2`}>
-      <PhoneCard
+      <NumberCard
         active={step === 1}
         number={1}
-        label="הטלפון שלכם"
+        label="המספר שלכם"
         caption={step === 1 ? "עכשיו" : "מחובר"}
         glyph={
           <g>
+            <circle cx="22" cy="22" r="19" className="fill-wa-light" />
             <path
-              d="M11 24h22a5 5 0 0 1 5 5v9a5 5 0 0 1-5 5H20l-6 5v-5h-3a5 5 0 0 1-5-5v-9a5 5 0 0 1 5-5z"
-              className="fill-wa-light stroke-wa-dark"
+              d="M12 15h20a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3H19l-5 4v-4h-2a3 3 0 0 1-3-3v-9a3 3 0 0 1 3-3z"
+              className="fill-white stroke-wa-dark"
               strokeWidth="1.5"
             />
             <path
-              d="M15 34l4 4 9-9"
+              d="M17 22l3 3 7-7"
               className="stroke-wa-dark"
               strokeWidth="2.2"
               strokeLinecap="round"
@@ -476,18 +498,19 @@ function TwoPhonesSteps({ step }: { step: 1 | 2 }) {
           </g>
         }
       />
-      <PhoneCard
+      <NumberCard
         active={step === 2}
         number={2}
-        label="הטלפון של הבוט"
-        caption={step === 2 ? "עכשיו · הסים הנפרד" : "בשלב הבא"}
+        label="המספר של הבוט"
+        caption={step === 2 ? "עכשיו" : "בשלב הבא"}
         glyph={
           <g>
-            <rect x="10" y="26" width="24" height="18" rx="6" className="fill-cream stroke-sand" strokeWidth="1.5" />
-            <circle cx="18" cy="35" r="2.2" className="fill-sand" />
-            <circle cx="26" cy="35" r="2.2" className="fill-sand" />
-            <path d="M22 20v6" className="stroke-sand" strokeWidth="1.5" strokeLinecap="round" />
-            <circle cx="22" cy="18.5" r="2" className="fill-sand" />
+            <circle cx="22" cy="22" r="19" className="fill-cream-dark" />
+            <rect x="11" y="16" width="22" height="16" rx="5" className="fill-white stroke-sand" strokeWidth="1.5" />
+            <circle cx="18" cy="24" r="2" className="fill-sand" />
+            <circle cx="26" cy="24" r="2" className="fill-sand" />
+            <path d="M22 11v5" className="stroke-sand" strokeWidth="1.5" strokeLinecap="round" />
+            <circle cx="22" cy="9.5" r="1.8" className="fill-sand" />
           </g>
         }
       />
@@ -495,7 +518,7 @@ function TwoPhonesSteps({ step }: { step: 1 | 2 }) {
   );
 }
 
-function PhoneCard({
+function NumberCard({
   active,
   number,
   label,
@@ -522,18 +545,7 @@ function PhoneCard({
       >
         {number}
       </span>
-      <svg viewBox="0 0 44 72" width="40" height="66" className="ms-4 shrink-0">
-        <rect
-          x="4"
-          y="2"
-          width="36"
-          height="68"
-          rx="8"
-          className={active ? "fill-white stroke-espresso" : "fill-white stroke-sand"}
-          strokeWidth="2"
-        />
-        <rect x="16" y="6" width="12" height="3" rx="1.5" className={active ? "fill-espresso" : "fill-sand"} />
-        <circle cx="22" cy="63" r="2.5" className={active ? "fill-espresso" : "fill-sand"} />
+      <svg viewBox="0 0 44 44" width="44" height="44" className="ms-4 shrink-0" aria-hidden="true">
         {glyph}
       </svg>
       <div className="min-w-0">
@@ -639,35 +651,6 @@ function PhoneField({
   );
 }
 
-function TabBar({ value, onChange }: { value: Tab; onChange: (t: Tab) => void }) {
-  const tabs: { id: Tab; label: string }[] = [
-    { id: "qr", label: "סריקה של קוד QR" },
-    { id: "code", label: "קוד התאמה של 8 ספרות" },
-  ];
-  return (
-    <div
-      role="tablist"
-      className="flex w-full sm:inline-flex sm:w-auto rounded-xl bg-cream-dark p-1 gap-1"
-    >
-      {tabs.map((t) => (
-        <button
-          key={t.id}
-          role="tab"
-          aria-selected={value === t.id}
-          onClick={() => onChange(t.id)}
-          className={`flex-1 sm:flex-none px-3 sm:px-4 py-2.5 rounded-lg text-[13px] sm:text-sm font-medium leading-snug text-center transition ${
-            value === t.id
-              ? "bg-white text-espresso shadow-sm"
-              : "text-espresso-light hover:text-espresso"
-          }`}
-        >
-          {t.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function QrPanel({
   qr,
   phase,
@@ -702,7 +685,7 @@ function QrPanel({
         </button>
       </div>
       <ol className="flex-1 space-y-2 text-espresso-light text-sm leading-relaxed list-decimal ps-5 marker:text-terra">
-        <li>פתחו את WhatsApp בטלפון של הבוט</li>
+        <li>פתחו את הוואטסאפ של המספר של הבוט</li>
         <li>תפריט ⋮ &larr; מכשירים מקושרים</li>
         <li>לחצו &quot;קישור מכשיר&quot;</li>
         <li>סרקו את הקוד שבמסך</li>
@@ -768,8 +751,8 @@ function CodePanel({
           {pairingCode}
         </p>
         <p className="text-sm text-espresso-light">
-          בטלפון של הבוט: תפריט ⋮ &larr; מכשירים מקושרים &larr; קישור עם מספר טלפון &larr;
-          הזינו את הקוד.
+          בוואטסאפ של המספר של הבוט: תפריט ⋮ &larr; מכשירים מקושרים &larr; קישור עם מספר טלפון
+          &larr; הזינו את הקוד.
         </p>
       </div>
     );
@@ -778,7 +761,7 @@ function CodePanel({
     <form onSubmit={onSubmit} className="space-y-4 max-w-md">
       <label className="block">
         <span className="block text-sm text-espresso-light mb-1.5">
-          המספר של הטלפון של הבוט (הסים הנפרד)
+          המספר של הבוט
         </span>
         <PhoneField value={phone} onChange={onPhoneChange} disabled={busy} />
       </label>
