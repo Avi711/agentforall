@@ -12,7 +12,7 @@ export function CreditsSection({ credits }: { credits: CreditSummary }) {
 
   return (
     <section className="mb-6 sm:mb-7 border-t border-sand-light/70 pt-6 sm:pt-7">
-      <p className={`${SECTION_LABEL} mb-2`}>קרדיטים</p>
+      <p className={`${SECTION_LABEL} mb-2`}>יתרת קרדיטים</p>
       <p className="text-2xl font-medium tabular-nums leading-none">
         <span className={empty ? "text-terra-dark" : "text-espresso"}>{formatCredits(credits.available)}</span>
         <span className="text-sm text-espresso-light font-normal"> מתוך {formatCredits(credits.allowance)}</span>
@@ -21,7 +21,7 @@ export function CreditsSection({ credits }: { credits: CreditSummary }) {
         className="mt-3 h-1.5 rounded-full bg-cream-dark overflow-hidden"
         dir="rtl"
         role="meter"
-        aria-label="קרדיטים זמינים"
+        aria-label="יתרת קרדיטים"
         aria-valuemin={0}
         aria-valuemax={credits.allowance}
         aria-valuenow={credits.available}
