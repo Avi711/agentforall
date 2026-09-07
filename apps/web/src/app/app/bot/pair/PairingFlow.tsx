@@ -405,12 +405,14 @@ function OwnerNumberCard({
       <h1 className="font-display text-xl sm:text-2xl text-espresso mb-2 leading-tight">
         מאיזה מספר תכתבו ל{botName}?
       </h1>
-      <p className="text-espresso-light mb-6">
-        הוואטסאפ האישי שלכם, זה שבטלפון שביד. רק המספר הזה יוכל לדבר עם הבוט; כל השאר לא יקבלו
-        תשובה. אפשר להוסיף אנשים אחר כך מהדשבורד.
+      <p className="text-espresso-light mb-5">
+        הוואטסאפ האישי שלכם, זה שבטלפון שביד. לא המספר של הבוט, אותו נחבר בשלב הבא. רק המספר
+        הזה יוכל לדבר עם הבוט; כל השאר לא יקבלו תשובה. אפשר להוסיף אנשים אחר כך מהדשבורד.
       </p>
 
-      <form onSubmit={submit} className="space-y-4 max-w-md">
+      <TwoPhonesFigure />
+
+      <form onSubmit={submit} className="mt-6 space-y-4 max-w-md">
         <label className="block">
           <span className="block text-sm text-espresso-light mb-1.5">המספר שלכם בוואטסאפ</span>
           <PhoneField
@@ -444,6 +446,93 @@ function OwnerNumberCard({
       >
         חזרה לדשבורד
       </button>
+    </div>
+  );
+}
+
+// Two phones, so the number question cannot be read as "the bot's number". First card sits on
+// the start side in RTL, which is where the eye lands.
+function TwoPhonesFigure() {
+  return (
+    <div className="grid grid-cols-2 gap-3 max-w-md" aria-hidden="true">
+      <PhoneCard
+        active
+        label="הטלפון שלכם"
+        caption="המספר הזה"
+        glyph={
+          <g>
+            <path
+              d="M11 24h22a5 5 0 0 1 5 5v9a5 5 0 0 1-5 5H20l-6 5v-5h-3a5 5 0 0 1-5-5v-9a5 5 0 0 1 5-5z"
+              className="fill-wa-light stroke-wa-dark"
+              strokeWidth="1.5"
+            />
+            <path
+              d="M15 34l4 4 9-9"
+              className="stroke-wa-dark"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
+            />
+          </g>
+        }
+      />
+      <PhoneCard
+        label="הטלפון של הבוט"
+        caption="סים נפרד · בשלב הבא"
+        glyph={
+          <g>
+            <rect x="10" y="26" width="24" height="18" rx="6" className="fill-cream stroke-sand" strokeWidth="1.5" />
+            <circle cx="18" cy="35" r="2.2" className="fill-sand" />
+            <circle cx="26" cy="35" r="2.2" className="fill-sand" />
+            <path d="M22 20v6" className="stroke-sand" strokeWidth="1.5" strokeLinecap="round" />
+            <circle cx="22" cy="18.5" r="2" className="fill-sand" />
+          </g>
+        }
+      />
+    </div>
+  );
+}
+
+function PhoneCard({
+  active,
+  label,
+  caption,
+  glyph,
+}: {
+  active?: boolean;
+  label: string;
+  caption: string;
+  glyph: React.ReactNode;
+}) {
+  return (
+    <div
+      className={`flex items-center gap-3 rounded-2xl border px-3 py-3 ${
+        active ? "border-terra bg-terra-pale" : "border-sand-light bg-cream-dark"
+      }`}
+    >
+      <svg viewBox="0 0 44 72" width="40" height="66" className="shrink-0">
+        <rect
+          x="4"
+          y="2"
+          width="36"
+          height="68"
+          rx="8"
+          className={active ? "fill-white stroke-espresso" : "fill-white stroke-sand"}
+          strokeWidth="2"
+        />
+        <rect x="16" y="6" width="12" height="3" rx="1.5" className={active ? "fill-espresso" : "fill-sand"} />
+        <circle cx="22" cy="63" r="2.5" className={active ? "fill-espresso" : "fill-sand"} />
+        {glyph}
+      </svg>
+      <div className="min-w-0">
+        <p className={`text-sm font-medium leading-snug ${active ? "text-espresso" : "text-espresso-light"}`}>
+          {label}
+        </p>
+        <p className={`text-xs leading-snug ${active ? "text-terra font-medium" : "text-espresso-light"}`}>
+          {caption}
+        </p>
+      </div>
     </div>
   );
 }

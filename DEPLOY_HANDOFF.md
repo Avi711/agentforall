@@ -615,13 +615,13 @@ Per-tenant resource cap: 4 GB RAM ceiling (`DEFAULT_RESOURCE_LIMITS` in `apps/or
 
 End of handoff.
 
-## WhatsApp onboarding without pairing mode (2026-09-07, built, not deployed)
+## WhatsApp onboarding without pairing mode (2026-09-07, deployed: orchestrator `09f5f299…` = commit `a0efe24`, web via Vercel)
 
 - Pair page asks once for the owner's personal number (prefilled from the signup lead when the mailbox matches), then QR/code as before. `POST /:id/pair` takes `{ ownerNumber }`; `ensureWhatsappChannel` writes `dmAccess: owner` + `ownerNumber` before the sidecar starts, so the tenant runs `dmPolicy: allowlist` from the first message. New bots never enter OpenClaw's `pairing` mode (it auto-replies a pairing code to every stranger who writes to the bot's number; upstream declined to change that, issues #8835/#75569).
 - Pair completion no longer restarts the container: creds are injected, then `channels.start` over the gateway RPC (`openclaw/channel-rpc.ts`, admin scope, loopback), then the WhatsApp probe waits for `connected` (45 s). Fallback on any failure: `writeConfig` + container restart (the old path), event `pair.restart_fallback`. Activation runs in the background because the sidecar's callback times out in 15 s.
 - The bot sends the first message (`helloMessage`, via `openclaw message send --channel whatsapp --target <owner>`); `pair.ready` event marks the end. `GET /:id/pair/status` returns `ready` once the sidecar is gone; the pair page shows "מחבר…" until then, then a done card with a wa.me link (90 s cap, then done with a "write היי" hint).
 - Injected AGENTS.md guidance now tells the bot that access is managed only in the dashboard and never to edit channel config itself.
-- Still to verify on a live tenant before rollout: that `channels.start` links freshly injected creds without a gateway restart (the fallback covers a "no", at the cost of the old 40 s). The in-container RPC program was not run on prod from this session (blocked); run `node - <config> whatsapp 8000 < channel-start.js` against a linked tenant first: an already-running channel must answer `started: false, status: "skipped"`.
+- Verified on prod: the in-container `channels.start` program authenticates and the gateway answers (an already-running channel returned `started: true, status: "retry", reason: "task-owned"`; the channel stayed linked). Still to observe: one real fresh link end to end. `pair.ready` with `linked: true` and no `pair.restart_fallback` means the in-place start worked.
 
 ## Channel access & sessions (2026-08-21)
 

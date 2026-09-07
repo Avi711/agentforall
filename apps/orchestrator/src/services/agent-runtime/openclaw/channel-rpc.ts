@@ -70,11 +70,12 @@ function main() {
         auth: { token },
       });
       const payload = await send("channels.start", { channel });
+      const outcome = (payload && payload.outcome) || {};
       finish({
         ok: true,
         started: Boolean(payload && payload.started),
-        status: payload && payload.outcome ? payload.outcome.status : null,
-        reason: payload && payload.outcome ? payload.outcome.reason : null,
+        status: outcome.status || null,
+        reason: outcome.reason || null,
       });
     } catch (error) {
       finish({ ok: false, error: String((error && error.message) || error) });
@@ -89,8 +90,8 @@ const startOutputSchema = z.discriminatedUnion("ok", [
   z.object({
     ok: z.literal(true),
     started: z.boolean(),
-    status: z.string().nullable(),
-    reason: z.string().nullable(),
+    status: z.string().nullable().optional(),
+    reason: z.string().nullable().optional(),
   }),
   z.object({ ok: z.literal(false), error: z.string() }),
 ]);

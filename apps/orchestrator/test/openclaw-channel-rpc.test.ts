@@ -27,6 +27,16 @@ test("a started or already-running channel reads as started", () => {
   );
 });
 
+test("a fresh start with no outcome reason still reads as started", () => {
+  assert.deepEqual(
+    parseChannelStartOutput(JSON.stringify({ ok: true, started: true, status: "handed-off" })),
+    { status: "started" },
+  );
+  assert.deepEqual(parseChannelStartOutput(JSON.stringify({ ok: true, started: true })), {
+    status: "started",
+  });
+});
+
 test("a refused start carries the gateway's reason", () => {
   assert.deepEqual(
     parseChannelStartOutput(
