@@ -75,7 +75,13 @@ export function HowItWorks() {
               שולחים הודעה ומתחילים
             </h3>
             <p className="mt-3 text-sm leading-relaxed text-white/50">
-              סורקים QR, שומרים באנשי קשר — וזהו. שולחים הודעה כמו לחבר.
+              סורקים QR עם המספר הייעודי של הסוכן — וזהו. שולחים הודעה כמו לחבר.{" "}
+              <a
+                href="/blog/dedicated-whatsapp-number"
+                className="text-terra-light underline underline-offset-4 hover:text-white"
+              >
+                איך מסדרים מספר ייעודי
+              </a>
             </p>
             {/* Preview: mini chat */}
             <div className="mt-6 space-y-2">

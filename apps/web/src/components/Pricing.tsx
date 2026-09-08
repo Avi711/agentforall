@@ -51,6 +51,14 @@ export function Pricing({ ctaHref = "/app" }: { ctaHref?: string }) {
                   <Perk>סוכן פרטי משלכם, 24/7</Perk>
                   <Perk>וואטסאפ או טלגרם</Perk>
                   <Perk>ביטול בכל רגע</Perk>
+                  {plan.code === "pro" ? (
+                    <Perk>
+                      וואטסאפ לעסקים דרך Meta API{" "}
+                      <span className="rounded-full bg-cream-dark px-2 py-0.5 text-[11px] text-espresso-light">
+                        בקרוב
+                      </span>
+                    </Perk>
+                  ) : null}
                 </ul>
                 <Link
                   href={ctaHref}

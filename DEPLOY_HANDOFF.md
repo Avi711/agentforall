@@ -615,7 +615,9 @@ Per-tenant resource cap: 4 GB RAM ceiling (`DEFAULT_RESOURCE_LIMITS` in `apps/or
 
 End of handoff.
 
-## WhatsApp onboarding without pairing mode (2026-09-07, deployed: orchestrator `09f5f299…` = commit `a0efe24`, web via Vercel)
+## WhatsApp onboarding without pairing mode (2026-09-07/08, deployed: orchestrator `5d7972ec…` = commit `91af52a`, web via Vercel)
+
+- Follow-ups shipped the same night: `1f77698` (parser accepted a `channels.start` answer without `reason`; before it every link fell to the 40 s restart), `37fd7f2`/`a60da1a` (number-language screens, two-number step indicator, code option demoted to one line, bot guidance: "you are Agent For All's assistant, never name OpenClaw/model/provider"), `91af52a` (a plain restart reseeds AGENTS.md; before, only recreate did). Existing tenants get the new guidance on their next restart; אבי1 was restarted by hand via the API from inside the VM (script: pg lookup of `user_id` + `POST /:id/restart` with `x-act-as-user`).
 
 - Pair page asks once for the owner's personal number (prefilled from the signup lead when the mailbox matches), then QR/code as before. `POST /:id/pair` takes `{ ownerNumber }`; `ensureWhatsappChannel` writes `dmAccess: owner` + `ownerNumber` before the sidecar starts, so the tenant runs `dmPolicy: allowlist` from the first message. New bots never enter OpenClaw's `pairing` mode (it auto-replies a pairing code to every stranger who writes to the bot's number; upstream declined to change that, issues #8835/#75569).
 - Pair completion no longer restarts the container: creds are injected, then `channels.start` over the gateway RPC (`openclaw/channel-rpc.ts`, admin scope, loopback), then the WhatsApp probe waits for `connected` (45 s). Fallback on any failure: `writeConfig` + container restart (the old path), event `pair.restart_fallback`. Activation runs in the background because the sidecar's callback times out in 15 s.
