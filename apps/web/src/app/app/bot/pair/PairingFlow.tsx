@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ESimCard } from "@/components/ESimCard";
 import { isValidIsraeliPhone, normalizeIsraeliPhone, normalizePhoneInput } from "@/lib/phone";
 import type {
   PairStatus as CanonicalPairStatus,
@@ -214,7 +213,6 @@ export function PairingFlow({ botId, botName, ownerNumber, suggestedNumber }: Pr
           onSubmit={handleNumberSubmit}
           onBack={() => startLeave(() => router.replace("/app"))}
         />
-        <ESimCard />
       </div>
     );
   }
@@ -289,23 +287,6 @@ export function PairingFlow({ botId, botName, ownerNumber, suggestedNumber }: Pr
         <h1 className="font-display text-xl sm:text-2xl text-espresso mt-6 mb-2 leading-tight">
           חברו את המספר של הבוט
         </h1>
-        <p className="text-espresso-light mb-3">
-          פתחו את הוואטסאפ של המספר הזה, חשבון נוסף באפליקציה או וואטסאפ עסקי, וסרקו את הקוד.
-        </p>
-        <p className="mb-4 text-xs leading-relaxed">
-          <strong className="font-bold text-espresso">
-            חשוב: אל תחברו את המספר האישי שלכם. וואטסאפ עלולה לחסום מספרים שמריצים בוטים,
-            לכן צריך מספר נפרד (eSIM או SIM נוסף).
-          </strong>{" "}
-          <a
-            href="/blog/dedicated-whatsapp-number"
-            target="_blank"
-            rel="noopener"
-            className="font-medium text-terra underline underline-offset-2 hover:text-terra-dark"
-          >
-            איך משיגים ומגדירים מספר כזה — המדריך המלא
-          </a>
-        </p>
 
         {owner ? (
           <p className="mb-6 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-espresso-light">
@@ -340,6 +321,17 @@ export function PairingFlow({ botId, botName, ownerNumber, suggestedNumber }: Pr
         </div>
 
         <p className="mt-5 text-sm text-espresso-light">
+          עוד אין לבוט מספר משלו?{" "}
+          <a
+            href="/blog/dedicated-whatsapp-number"
+            target="_blank"
+            rel="noopener"
+            className="text-terra underline underline-offset-4 hover:text-terra-dark"
+          >
+            למדריך
+          </a>
+        </p>
+        <p className="mt-2 text-sm text-espresso-light">
           {tab === "qr" ? (
             <>
               המספר של הבוט על הטלפון הזה ואי אפשר לסרוק?{" "}
@@ -383,8 +375,6 @@ export function PairingFlow({ botId, botName, ownerNumber, suggestedNumber }: Pr
           </span>
         </div>
       </div>
-
-      <ESimCard />
 
       <Instructions />
     </div>
