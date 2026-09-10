@@ -341,8 +341,17 @@ healthy, both networks, 16 tenants up, pinned in `infra/variables.tf` and the VM
 with `WHATSAPP_CLOUD_ENABLED` unset, so no tenant sees the channel. The inbox listener runs on the
 orchestrator's own `DATABASE_URL` (session pooler, 5432). Built, not pinned: openclaw-browser with the plugin
 `openclaw-browser@sha256:3a85792c67f1eb3c711bab51895aeb1e9f18be3ea70f23c68a7aa0ba2e65a068` (rehearsal only).
-Remaining: Meta setup (Vercel env, webhook URL, test number); rehearsal (doc §15) on one
-test bot recreated onto `3a85792c`; then `WHATSAPP_CLOUD_ENABLED=true`.
+Meta set up 2026-09-10: Embedded Signup config `1111278448072808` (60-day business tokens, expiry locked),
+webhook verified with `messages` subscribed, all four Meta vars in Vercel prod. A real message from the test
+number (WABA `1781328013209946`) reached the webhook with the app unpublished, once our app was added to that
+WABA's `subscribed_apps` by hand. Remaining: rehearsal (doc §15) on one test bot recreated onto `3a85792c`
+with the test number bound; a refresh job for the 60-day tokens before any client connects; business
+verification to publish; then `WHATSAPP_CLOUD_ENABLED=true`. Diagram: `docs/whatsapp-cloud-architecture.html`.
+Coexistence (number stays in the WhatsApp Business app) is coded, reviewed and tested but not committed (doc §14,
+seventh and eighth changes): deploy order is migration 0013 (nullable PIN, `contacts_synced_at`, `history_synced_at`, `held_until`, `mode_changed_at`),
+orchestrator, web; the orchestrator rollback target cannot read a coexistence channel, so roll back only before any
+exists; then add Meta webhook fields `smb_message_echoes` and
+`account_update`, and set `WHATSAPP_CLOUD_PREVIEW_USER_IDS` on Vercel for the rehearsal account.
 
 Reviewed and hardened 2026-09-09 (fresh reviewer against the code and the 2026.8.2 dist), all suites green:
 customer sessions now also lose `group:ui`/`group:media`/`group:openclaw`; relay rate limit keyed by caller

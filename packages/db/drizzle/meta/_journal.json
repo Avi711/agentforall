@@ -92,6 +92,13 @@
       "when": 1789025064575,
       "tag": "0012_whatsapp_cloud",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789070475825,
+      "tag": "0013_whatsapp_cloud_coexistence",
+      "breakpoints": true
     }
   ]
 }

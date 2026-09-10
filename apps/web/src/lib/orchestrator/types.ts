@@ -151,6 +151,7 @@ export const WhatsappCloudViewSchema = z.object({
   displayPhoneNumber: z.string().nullable(),
   verifiedName: z.string().nullable(),
   health: z.enum(["ok", "token_invalid", "unknown"]).nullable(),
+  syncPending: z.boolean().default(false),
 });
 export type WhatsappCloudView = z.infer<typeof WhatsappCloudViewSchema>;
 

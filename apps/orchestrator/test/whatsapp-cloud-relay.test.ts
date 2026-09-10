@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import rateLimit from "@fastify/rate-limit";
-import { AuthenticationError, CustomerWindowClosedError } from "../src/domain/errors.js";
+import { AuthenticationError, ConversationHeldByOwnerError, CustomerWindowClosedError } from "../src/domain/errors.js";
 import type { InboundMessage } from "../src/domain/whatsapp-cloud.js";
 import { errorHandler } from "../src/middleware/error-handler.js";
 import { relayRateLimitKey } from "../src/routes/relay-rate-limit.js";
@@ -44,6 +44,7 @@ const fakeManager = {
   send: async (_ctx: RelayContext, input: unknown) => {
     record("send")(input);
     if ((input as { to: string }).to === "972500000000") throw new CustomerWindowClosedError();
+    if ((input as { to: string }).to === "972500000009") throw new ConversationHeldByOwnerError();
     return "wamid.sent";
   },
   markRead: async (_ctx: RelayContext, wamid: string, typing: boolean) => record("markRead")(wamid, typing),
@@ -237,4 +238,15 @@ test("an unauthenticated burst is rate limited before any bearer lookup", async 
   } finally {
     await limited.close();
   }
+});
+
+test("a bot reply to a customer the owner holds is a 409 the plugin drops without retrying", async () => {
+  const res = await fetch(`${base}/${ID}/send`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" },
+    body: JSON.stringify({ to: "972500000009", text: "from the bot", kind: "reply" }),
+  });
+
+  assert.equal(res.status, 409);
+  assert.equal(((await res.json()) as { code: string }).code, "CONVERSATION_HELD_BY_OWNER");
 });

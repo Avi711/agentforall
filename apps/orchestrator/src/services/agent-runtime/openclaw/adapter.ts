@@ -381,7 +381,8 @@ function secretsOf(instance: Instance): (string | undefined)[] {
         secrets.push(channel.ownerNumber);
         break;
       case "whatsapp_cloud":
-        secrets.push(channel.accessToken, channel.pin, channel.relayToken);
+        secrets.push(channel.accessToken, channel.relayToken);
+        if (channel.pin !== null) secrets.push(channel.pin);
         break;
     }
   }

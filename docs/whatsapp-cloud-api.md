@@ -500,6 +500,16 @@ corrected (website `agentforall.co.il`, tax id on file).
    screencast of the working flow; needs §9 built. Standard Access already works for numbers owned by our
    own portfolio, which is enough to build and rehearse.
 4. **Embedded Signup v4** configuration → `config_id` (v2 deprecated 2026-10-15).
+   Created 2026-09-10 from Meta's template: config `1111278448072808` (WhatsApp Embedded Signup variation,
+   business token expires in 60 days; a custom config offers only the General variation until the Tech Provider
+   steps are done). Test number +1 555 669 2880: phone number id `1321959887663533`, WABA `1781328013209946`.
+   App settings filled (privacy/terms/data-deletion URLs, domain, category, icon); Facebook Login JS SDK on for
+   `https://agentforall.co.il/`. Despite the dashboard's warning, an unpublished app does receive real webhooks from
+   the test number (a tester's reply arrived at 20:23) once the WABA lists our app in `subscribed_apps`; Meta's
+   auto-created test WABA listed only Meta's own dashboard app, so it was subscribed by hand. Client WABAs are
+   subscribed by the connect flow (`manager.ts`).
+   Webhook registered and verified the same day (`messages` only, v26.0); Meta's dashboard test POST passed the
+   signature check and was dropped as an unknown number, as designed. Vercel prod has all four Meta variables.
 
 Client-side facts: no partner status and no verification needed to start (unverified WABA: 2 numbers, 250
 business-initiated conversations/24h; **service replies inside the 24h window are unlimited and free**);
@@ -530,8 +540,11 @@ session tools default to all-session visibility (helps the owner; customers have
 SDK of the core we deploy and pins `peerDependencies` to it.
 
 Open, to be settled in build: `conversations_send` across providers; empty `{}` owner policy semantics;
-memory-core write tool names; Israel coexistence eligibility; business-token expiry (documented as
-long-lived; handle `190` regardless).
+memory-core write tool names; Israel coexistence eligibility; business-token expiry is **60 days** (the only WhatsApp Embedded Signup config Meta
+offers us; its expiry is locked), so a refresh job is required before any tenant is 50 days in:
+`GET /oauth/access_token?grant_type=fb_exchange_token&fb_exchange_token&client_id&client_secret&set_token_expires_in_60_days=true`
+needs the app secret (web) and the business token (orchestrator) together, which is a design decision still to take;
+`190` stays the backstop.
 
 ## 14. What changed in this revision
 
@@ -667,6 +680,54 @@ pooler on 5432 (checked on the live VM). A probe through that pooler delivered a
 host and port. The listener's connect times out after 10 s and a client that cannot be created is retried like any
 failed connect, so neither can hang start-up; start-up no longer waits for the listener at all.
 
+Seventh change 2026-09-10 (coexistence: the number stays in the owner's WhatsApp Business app). The popup offers
+two modes and defaults to keeping the app: it passes `featureType: whatsapp_business_app_onboarding`, and Meta
+answers `FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING`, possibly with only `waba_id`; the orchestrator then looks up the
+account's one number and refuses an account with several. Such a number is never registered or deregistered (Meta
+forbids both), has no PIN (`pin_encrypted` nullable, migration 0013), sends at Meta's fixed 20 msg/s, and after a
+fresh connect starts Meta's one-shot contacts and history syncs; they are not retried, a failure is recorded as
+`whatsapp_cloud.sync_failed` and the connect stands, and the history webhooks are ignored. The owner's replies from
+the app arrive as `smb_message_echoes`: the webhook queues each as an `owner_echo` inbox row without its text, and
+the orchestrator applies it before handing the batch to the plugin, so that customer goes to `human` and the
+orchestrator stays the only writer of who answers. A bot reply to a customer in `human` is refused with 409
+`CONVERSATION_HELD_BY_OWNER`, which closes the race with a turn that was already running. For a coexistence number
+a forward is not copied to Telegram (the owner sees it in the app) and a hand-over needs no Telegram owner.
+`PARTNER_REMOVED` is logged; the next Meta call reports the dead token to the owner. `WHATSAPP_CLOUD_PREVIEW_USER_IDS`
+opens the Connect button to listed accounts while `WHATSAPP_CLOUD_ENABLED` stays off. Meta webhook fields:
+`messages`, `smb_message_echoes`, `account_update`.
+
+Eighth change 2026-09-10 (fresh-eyes review of the seventh, test first). When the owner answers from the app the
+customer is held for **24 hours from that message** (`OWNER_HOLD_MS`), each later owner message extends it, and
+afterwards the bot answers again; a hand-over chosen in Telegram stays open-ended, as in respond.io, WATI and Intercom.
+24 hours follows Meta's own Messenger handover lapse and the usual cap in ManyChat and Chatfuel. Two new ledger
+columns carry it: `held_until` (null with `human` = open-ended) and `mode_changed_at`, so an owner reply older than
+the owner's own later choice is ignored; the hold and the ack happen in one transaction (`applyOwnerEchoes`), and idle
+ledger rows are deleted after 30 days whatever the mode. Each accepted sync kind is kept on the channel config
+(`appDataSynced`), run before the connected event; a reconnect runs only what is missing, and the dashboard shows a
+"reconnect within 24h" banner while anything is (`syncPending`). The orchestrator reads Meta's `is_on_biz_app` before
+linking anything and refuses a mismatch with the owner's pick (409 `NUMBER_MODE_MISMATCH`); an account named without
+its number resolves to the one Meta marks as in the app. Configs saved before these fields load with defaults. A
+customer asking for a person on a coexistence bot with no Telegram is held the same way. Still open: `PARTNER_REMOVED`
+is only logged; whether the app's automatic greeting and away messages arrive as owner replies is undocumented (the
+connect page tells owners to switch them off; rehearsal item 24); the 409 guard is best-effort while the plugin's
+lanes are all busy.
+
+Ninth change 2026-09-10 (second fresh-eyes review). `mode_changed_at` is null until the owner first changes who
+answers, so a ledger row the webhook creates cannot make an earlier owner reply look stale. The syncs done are kept
+on the number (`contacts_synced_at`, `history_synced_at`), cleared by each fresh signup, and a failed contacts sync
+stops history, which Meta requires to follow it. Destroy takes the shared channel lock before the instance lock, the
+order a connect already uses, which removes a deadlock between the two. Owner replies and webhook ledger updates lock
+customers in the same order; a hold that meets a row created since it read one merges instead of shortening. An app
+Meta does not tell `is_on_biz_app` to reads numbers without it. Before `WHATSAPP_CLOUD_ENABLED=true`: rehearsal item
+24 must pass.
+
+Tenth change 2026-09-11 (`PARTNER_REMOVED` handled, not only logged). The webhook turns it into one inbox row per live
+bot on that business account (`kind: partner_removed`, id derived from the webhook so Meta's resend is a no-op); the
+orchestrator applies it under the channel lock like a disconnect without the Meta calls (Meta already cut us off):
+number released, channel removed, state purged, owner told on Telegram, and the rest of that batch is left for the
+business's app. A removal for another account, or a bot already disconnected, is acked and changes nothing. The
+plugin then gets 401 and stops polling, as designed.
+
 ## 15. Rehearsal checklist (before any tenant sees it)
 
 Run on the built `openclaw-browser` image with Meta's test number, in this order; each line is a thing
@@ -720,6 +781,29 @@ the code assumes and the SDK typings could not prove.
     iframe, which `frame-src` now allows).
 18. Kill the relay (stop the orchestrator) after the model answered but before the send: on restart the
     customer gets the reply once, and the orchestrator log shows no second model turn for that wamid.
+
+19. Coexistence connect with a number that lives in the WhatsApp Business app: the popup carries `featureType`,
+   no `/register` call, both syncs start once, the number row has no PIN and the channel says `coexistence: true`.
+20. The owner answers a customer from the app: `whatsapp_cloud.handoff` with reason `owner_replied_in_app`, the bot
+   stays silent for that customer, no Telegram copy of their next message; `bot` from Telegram restores replies.
+21. The owner answers from the app while a bot turn for that customer is running: the bot's reply is refused
+   (409 `CONVERSATION_HELD_BY_OWNER`) and not retried.
+22. Disconnect a coexistence number from the dashboard: only `DELETE subscribed_apps`; the number keeps working in
+   the app.
+23. The owner disconnects us inside the app (Settings > Account > Business Platform): `PARTNER_REMOVED` in the web
+   log; the owner is told at the next Meta call that the connection is gone.
+
+24. With the app's greeting message switched on, a new customer writes: note whether an `owner_echo` row appears.
+   If it does, the owner must keep greetings off (the connect page already says so) or the bot waits 24 hours.
+   Blocks `WHATSAPP_CLOUD_ENABLED=true` until answered.
+25. After an app reply, move the clock past 24 hours (or wait): the plugin's conversation reads `bot` and the bot
+   answers the customer's next message; a Telegram `human` hand-over does not lapse.
+
+26. Disconnect a coexistence number from the dashboard and connect it again through the popup: note Meta's answer to
+   the two syncs; the dashboard must not keep asking to reconnect.
+
+27. Disconnect us inside the app (Settings > Account > Business Platform): within a poll the bot drops the number,
+   the owner gets the Telegram notice and the dashboard offers to connect again.
 
 ## 16. Plain-language Q&A (2026-09-10)
 
@@ -797,3 +881,16 @@ Answers given to the founder while reviewing; kept here so the reasoning is not 
   `respond @wacloud 404` keeps the container-only relay unreachable from the internet (bearer auth still applies).
 - **Can we deploy to a test environment?** There is none (one VM, one Supabase, one Vercel project), so the
   feature went to production dark on 2026-09-10 with `WHATSAPP_CLOUD_ENABLED` off until the rehearsal passes.
+- **Can a client keep the WhatsApp Business app?** Yes, coexistence, the popup's default: the app stays on the
+  phone, the bot answers alongside, and when the owner answers a customer from the app the bot stops for that
+  customer. Limits: 20 msg/s, no groups, a few app features off (disappearing, view-once, live location).
+- **Who writes who answers?** Only the orchestrator. The webhook queues the owner's app replies like messages; the
+  orchestrator applies them, in order, before the bot sees the batch.
+- **Can a number that moved fully to the bot go back to the app?** Yes: disconnect deregisters it. The app may then
+  ask for the two-step PIN we set; showing that PIN to the owner at disconnect is a follow-up.
+- **When does the bot answer a customer again after the owner wrote to them from the app?** 24 hours after the
+  owner's last message to that customer; every owner message restarts it. The owner can hand the customer back at
+  once from Telegram. A hand-over chosen in Telegram has no timer.
+- **Why subscribe to `account_update`?** A business can disconnect us inside the WhatsApp Business app. The event lets
+  us take the number off the bot and tell the owner at once, instead of the dashboard showing "connected" until a
+  later message fails.

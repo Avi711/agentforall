@@ -1,14 +1,22 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import type { z } from "zod";
+import { WHATSAPP_CLOUD_OWNER_ECHO_KIND, WHATSAPP_CLOUD_PARTNER_REMOVED_KIND } from "@agent-forall/db";
 import { verifyBodySignature } from "../billing/provider/hmac";
 import type { WhatsappCloudIngressStore, InboundRow } from "./repository";
 import {
+  ACCOUNT_UPDATE_FIELD,
+  AccountUpdateSchema,
   ContactSchema,
   InboundMessageSchema,
   MESSAGES_FIELD,
+  OWNER_ECHOES_FIELD,
+  OwnerEchoSchema,
+  PARTNER_REMOVED_EVENT,
   WebhookChangeValueSchema,
   WebhookEnvelopeSchema,
   WebhookVerifyQuerySchema,
   type InboundMessage,
+  type OwnerEcho,
 } from "./schemas";
 
 export class IngressError extends Error {
@@ -35,7 +43,7 @@ export interface WebhookRequest {
 
 const SIGNATURE_PREFIX = "sha256=";
 
-// Verifies, routes by phone_number_id and stores; never talks to an orchestrator; non-messages are acked and ignored.
+// Verifies, routes by phone_number_id and stores; never talks to an orchestrator; fields it does not use are acked and ignored.
 export class WhatsappCloudIngress {
   constructor(
     private readonly store: WhatsappCloudIngressStore,
@@ -67,45 +75,51 @@ export class WhatsappCloudIngress {
 
     const rows: InboundRow[] = [];
     const receivedAt = this.now();
-    let received = 0;
-    let unknownNumbers = 0;
-    let rejected = 0;
+    const tally = { received: 0, unknownNumbers: 0, rejected: 0 };
     const instanceByNumber = new Map<string, string | null>();
+    const route = async (phoneNumberId: string, count: number): Promise<string | null> => {
+      let instanceId = instanceByNumber.get(phoneNumberId);
+      if (instanceId === undefined) {
+        instanceId = await this.store.findInstanceIdByPhoneNumberId(phoneNumberId);
+        instanceByNumber.set(phoneNumberId, instanceId);
+      }
+      if (instanceId === null) {
+        tally.unknownNumbers += count;
+        this.log.warn(`whatsapp cloud webhook for unknown phone_number_id ${phoneNumberId}`);
+      }
+      return instanceId;
+    };
 
     for (const entry of envelope.data.entry) {
       for (const change of entry.changes) {
-        if (change.field !== MESSAGES_FIELD) continue;
+        if (change.field === ACCOUNT_UPDATE_FIELD) {
+          rows.push(...(await this.partnerRemovals(entry, change.value, receivedAt)));
+          continue;
+        }
+        if (change.field !== MESSAGES_FIELD && change.field !== OWNER_ECHOES_FIELD) continue;
         const value = WebhookChangeValueSchema.safeParse(change.value);
         if (!value.success) {
-          rejected += 1;
+          tally.rejected += 1;
           this.log.warn(`whatsapp cloud webhook change for entry ${entry.id} rejected: ${value.error.issues.length} issue(s)`);
           continue;
         }
-        if (!value.data.messages?.length) continue;
-        const messages: InboundMessage[] = [];
-        for (const raw of value.data.messages) {
-          const message = InboundMessageSchema.safeParse(raw);
-          if (message.success) messages.push(message.data);
-          else {
-            rejected += 1;
-            this.log.warn(`whatsapp cloud message in entry ${entry.id} rejected: ${message.error.issues.length} issue(s)`);
-          }
-        }
-        if (messages.length === 0) continue;
-        received += messages.length;
-
         const phoneNumberId = value.data.metadata.phone_number_id;
-        let instanceId = instanceByNumber.get(phoneNumberId);
-        if (instanceId === undefined) {
-          instanceId = await this.store.findInstanceIdByPhoneNumberId(phoneNumberId);
-          instanceByNumber.set(phoneNumberId, instanceId);
-        }
-        if (instanceId === null) {
-          unknownNumbers += messages.length;
-          this.log.warn(`whatsapp cloud webhook for unknown phone_number_id ${phoneNumberId}`);
+
+        if (change.field === OWNER_ECHOES_FIELD) {
+          const echoes = this.accepted(value.data.message_echoes, OwnerEchoSchema, `owner echo in entry ${entry.id}`, tally);
+          if (echoes.length === 0) continue;
+          tally.received += echoes.length;
+          const instanceId = await route(phoneNumberId, echoes.length);
+          if (instanceId === null) continue;
+          for (const echo of echoes) rows.push(toEchoRow(instanceId, echo, receivedAt));
           continue;
         }
 
+        const messages = this.accepted(value.data.messages, InboundMessageSchema, `message in entry ${entry.id}`, tally);
+        if (messages.length === 0) continue;
+        tally.received += messages.length;
+        const instanceId = await route(phoneNumberId, messages.length);
+        if (instanceId === null) continue;
         const names = new Map<string, string>();
         for (const raw of value.data.contacts ?? []) {
           const contact = ContactSchema.safeParse(raw);
@@ -116,7 +130,43 @@ export class WhatsappCloudIngress {
     }
 
     const enqueued = await this.store.enqueue(rows);
-    return { received, enqueued, unknownNumbers, rejected };
+    return { received: tally.received, enqueued, unknownNumbers: tally.unknownNumbers, rejected: tally.rejected };
+  }
+
+  // One odd item is skipped and counted while the rest of its batch lands; only the count is logged, never the content.
+  private accepted<T>(raw: unknown[] | undefined, schema: z.ZodType<T>, what: string, tally: { rejected: number }): T[] {
+    const out: T[] = [];
+    for (const item of raw ?? []) {
+      const parsed = schema.safeParse(item);
+      if (parsed.success) out.push(parsed.data);
+      else {
+        tally.rejected += 1;
+        this.log.warn(`whatsapp cloud ${what} rejected: ${parsed.error.issues.length} issue(s)`);
+      }
+    }
+    return out;
+  }
+
+  // A business removed our app inside WhatsApp Business: every bot on that account is told, through the inbox like any row.
+  private async partnerRemovals(entry: { id: string; time?: number }, value: unknown, receivedAt: Date): Promise<InboundRow[]> {
+    const update = AccountUpdateSchema.safeParse(value);
+    if (!update.success || update.data.event !== PARTNER_REMOVED_EVENT) return [];
+    const wabaId = update.data.waba_info?.waba_id;
+    this.log.warn(`whatsapp cloud ${PARTNER_REMOVED_EVENT} for waba ${wabaId ?? "unknown"}`);
+    if (!wabaId) return [];
+    // The same webhook resent by Meta gives the same ids, so the inbox's unique wamid drops the repeat.
+    const digest = createHash("sha256").update(`${entry.id}:${entry.time ?? ""}:${JSON.stringify(value)}`).digest("hex").slice(0, 32);
+    const instanceIds = await this.store.findInstanceIdsByWabaId(wabaId);
+    return instanceIds.map((instanceId) => ({
+      kind: WHATSAPP_CLOUD_PARTNER_REMOVED_KIND,
+      wamid: `partner_removed:${instanceId}:${digest}`,
+      instanceId,
+      waId: null,
+      profileName: null,
+      waTimestamp: receivedAt,
+      receivedAt,
+      payload: { kind: WHATSAPP_CLOUD_PARTNER_REMOVED_KIND, wabaId },
+    }));
   }
 
   private signatureMatches(req: WebhookRequest): boolean {
@@ -128,6 +178,7 @@ export class WhatsappCloudIngress {
 // wa_timestamp is the customer's clock and only orders messages; the 24h window runs from our receipt, like Meta's.
 function toRow(instanceId: string, message: InboundMessage, profileName: string | null, receivedAt: Date): InboundRow {
   return {
+    kind: "message",
     wamid: message.id,
     instanceId,
     waId: message.from,
@@ -135,6 +186,20 @@ function toRow(instanceId: string, message: InboundMessage, profileName: string 
     waTimestamp: new Date(Number(message.timestamp) * 1000),
     receivedAt,
     payload: { from: message.from, profileName, message },
+  };
+}
+
+// Only who was answered is kept: the owner's own text is not ours to store.
+function toEchoRow(instanceId: string, echo: OwnerEcho, receivedAt: Date): InboundRow {
+  return {
+    kind: WHATSAPP_CLOUD_OWNER_ECHO_KIND,
+    wamid: echo.id,
+    instanceId,
+    waId: echo.to,
+    profileName: null,
+    waTimestamp: new Date(Number(echo.timestamp) * 1000),
+    receivedAt,
+    payload: { kind: WHATSAPP_CLOUD_OWNER_ECHO_KIND, to: echo.to },
   };
 }
 

@@ -2,6 +2,8 @@ import "server-only";
 import { and, eq, isNotNull, notInArray, sql } from "drizzle-orm";
 import {
   WHATSAPP_CLOUD_INBOX_CHANNEL,
+  WHATSAPP_CLOUD_OWNER_ECHO_KIND,
+  WHATSAPP_CLOUD_PARTNER_REMOVED_KIND,
   instances,
   whatsappCloudConversations,
   whatsappCloudInbox,
@@ -11,9 +13,11 @@ import {
 import { getDb } from "../db";
 
 export interface InboundRow {
+  kind: "message" | typeof WHATSAPP_CLOUD_OWNER_ECHO_KIND | typeof WHATSAPP_CLOUD_PARTNER_REMOVED_KIND;
   wamid: string;
   instanceId: string;
-  waId: string;
+  // The customer; null for a row about the whole number.
+  waId: string | null;
   profileName: string | null;
   waTimestamp: Date;
   receivedAt: Date;
@@ -22,6 +26,7 @@ export interface InboundRow {
 
 export interface WhatsappCloudIngressStore {
   findInstanceIdByPhoneNumberId(phoneNumberId: string): Promise<string | null>;
+  findInstanceIdsByWabaId(wabaId: string): Promise<string[]>;
   enqueue(rows: InboundRow[]): Promise<number>;
 }
 
@@ -49,6 +54,22 @@ export class WhatsappCloudRepository implements WhatsappCloudIngressStore {
     return rows[0]?.instanceId ?? null;
   }
 
+  // Every live bot on the business account: a removal from inside the app covers all of its numbers.
+  async findInstanceIdsByWabaId(wabaId: string): Promise<string[]> {
+    const rows = await this.db
+      .select({ instanceId: whatsappCloudNumbers.instanceId })
+      .from(whatsappCloudNumbers)
+      .innerJoin(instances, eq(instances.id, whatsappCloudNumbers.instanceId))
+      .where(
+        and(
+          eq(whatsappCloudNumbers.wabaId, wabaId),
+          isNotNull(whatsappCloudNumbers.instanceId),
+          notInArray(instances.status, ["destroying", "destroyed"]),
+        ),
+      );
+    return rows.flatMap((row) => (row.instanceId ? [row.instanceId] : []));
+  }
+
   // One transaction per webhook: a redelivered batch inserts nothing and touches nothing twice.
   async enqueue(rows: InboundRow[]): Promise<number> {
     if (rows.length === 0) return 0;
@@ -70,8 +91,10 @@ export class WhatsappCloudRepository implements WhatsappCloudIngressStore {
       for (const instanceId of new Set(rows.filter((r) => fresh.has(r.wamid)).map((r) => r.instanceId))) {
         await tx.execute(sql`select pg_notify(${WHATSAPP_CLOUD_INBOX_CHANNEL}, ${instanceId})`);
       }
-      for (const row of rows) {
-        if (!fresh.has(row.wamid)) continue;
+      // One lock order for every writer of these rows (the orchestrator sorts the same way), so no two wait on each other.
+      for (const row of [...rows].sort(byWaId)) {
+        // Who answers is the orchestrator's to record; the ledger only tracks what the customer sent.
+        if (!fresh.has(row.wamid) || row.kind !== "message" || row.waId === null) continue;
         await tx
           .insert(whatsappCloudConversations)
           .values({
@@ -93,4 +116,10 @@ export class WhatsappCloudRepository implements WhatsappCloudIngressStore {
       return inserted.length;
     });
   }
+}
+
+function byWaId(a: InboundRow, b: InboundRow): number {
+  const left = a.waId ?? "";
+  const right = b.waId ?? "";
+  return left < right ? -1 : left > right ? 1 : 0;
 }

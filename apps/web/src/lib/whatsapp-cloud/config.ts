@@ -8,9 +8,16 @@ export interface WhatsappCloudConfig {
 
 const DEFAULT_GRAPH_API_VERSION = "v24.0";
 
-// The webhook and the Meta app can be live (for registration and rehearsal) before tenants may connect.
-export function isWhatsappCloudEnabled(): boolean {
-  return readWhatsappCloudConfig() !== null && process.env.WHATSAPP_CLOUD_ENABLED?.trim() === "true";
+// The webhook and the Meta app can be live (for registration and rehearsal) before tenants may connect; preview accounts first.
+export function isWhatsappCloudEnabledFor(userId: string): boolean {
+  if (readWhatsappCloudConfig() === null) return false;
+  if (process.env.WHATSAPP_CLOUD_ENABLED?.trim() === "true") return true;
+  return previewUserIds().has(userId);
+}
+
+function previewUserIds(): Set<string> {
+  const ids = (process.env.WHATSAPP_CLOUD_PREVIEW_USER_IDS ?? "").split(",").map((id) => id.trim());
+  return new Set(ids.filter((id) => id.length > 0));
 }
 
 // Null = the Meta app is not configured; the webhook answers 404 and the dashboard hides the channel.

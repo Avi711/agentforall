@@ -1,16 +1,17 @@
 import "server-only";
 import type { WhatsappCloudView } from "../orchestrator/types";
 import { getOrchestratorClient } from "../orchestrator/client";
-import { isWhatsappCloudEnabled, readWhatsappCloudConfig } from "./config";
+import { isWhatsappCloudEnabledFor, readWhatsappCloudConfig } from "./config";
 import { MetaGraphOAuth, type MetaOAuthClient } from "./meta-oauth";
 import type { WhatsappCloudConnectBody } from "./schemas";
 
 export interface WhatsappCloudConnectInput {
   accessToken: string;
-  phoneNumberId: string;
+  phoneNumberId?: string;
   wabaId: string;
-  businessId: string;
+  businessId?: string;
   pin?: string;
+  coexistence?: boolean;
 }
 
 export interface WhatsappCloudPort {
@@ -31,18 +32,19 @@ export class WhatsappCloudService {
   constructor(
     private readonly port: WhatsappCloudPort,
     private readonly oauth: MetaOAuthClient | null,
-    private readonly enabled: boolean,
+    private readonly isEnabledFor: (userId: string) => boolean,
   ) {}
 
   async connect(userId: string, botId: string, body: WhatsappCloudConnectBody): Promise<WhatsappCloudView> {
-    if (!this.oauth || !this.enabled) throw new WhatsappCloudUnavailableError();
+    if (!this.oauth || !this.isEnabledFor(userId)) throw new WhatsappCloudUnavailableError();
     const accessToken = await this.oauth.exchangeCode(body.code);
     return this.port.connectWhatsappCloud(userId, botId, {
       accessToken,
-      phoneNumberId: body.phoneNumberId,
       wabaId: body.wabaId,
-      businessId: body.businessId,
+      ...(body.phoneNumberId ? { phoneNumberId: body.phoneNumberId } : {}),
+      ...(body.businessId ? { businessId: body.businessId } : {}),
       ...(body.pin ? { pin: body.pin } : {}),
+      ...(body.coexistence ? { coexistence: true } : {}),
     });
   }
 
@@ -63,7 +65,7 @@ export function getWhatsappCloudService(): WhatsappCloudService {
     cached = new WhatsappCloudService(
       getOrchestratorClient(),
       config ? new MetaGraphOAuth(config.appId, config.appSecret, config.graphApiVersion) : null,
-      isWhatsappCloudEnabled(),
+      isWhatsappCloudEnabledFor,
     );
   }
   return cached;

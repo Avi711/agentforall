@@ -4,15 +4,23 @@ import { PHONE_NUMBER_ID_PATTERN, PIN_PATTERN } from "../domain/whatsapp-cloud.j
 import type { WhatsappCloudManager } from "../services/whatsapp-cloud/manager.js";
 
 const UuidParam = z.object({ id: z.string().uuid() });
+// A number kept in the WhatsApp Business app may arrive with the account id alone, and never has a PIN to send.
 const ConnectBody = z
   .object({
     accessToken: z.string().min(1).max(4096),
-    phoneNumberId: z.string().regex(PHONE_NUMBER_ID_PATTERN),
+    phoneNumberId: z.string().regex(PHONE_NUMBER_ID_PATTERN).optional(),
     wabaId: z.string().regex(PHONE_NUMBER_ID_PATTERN),
-    businessId: z.string().regex(PHONE_NUMBER_ID_PATTERN),
+    businessId: z.string().regex(PHONE_NUMBER_ID_PATTERN).optional(),
     pin: z.string().regex(PIN_PATTERN).optional(),
+    coexistence: z.boolean().optional(),
   })
-  .strict();
+  .strict()
+  .refine((body) => body.coexistence === true || (body.phoneNumberId !== undefined && body.businessId !== undefined), {
+    message: "phoneNumberId and businessId are required unless the number stays in the WhatsApp Business app",
+  })
+  .refine((body) => body.coexistence !== true || body.pin === undefined, {
+    message: "a number kept in the WhatsApp Business app has no PIN",
+  });
 
 export interface WhatsappCloudRouteDeps {
   manager: WhatsappCloudManager;

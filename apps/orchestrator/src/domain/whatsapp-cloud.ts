@@ -1,6 +1,11 @@
-import { WHATSAPP_CLOUD_CONVERSATION_MODES, WHATSAPP_CLOUD_SEND_KINDS } from "@agent-forall/db";
+import {
+  WHATSAPP_CLOUD_CONVERSATION_MODES,
+  WHATSAPP_CLOUD_OWNER_ECHO_KIND,
+  WHATSAPP_CLOUD_PARTNER_REMOVED_KIND,
+  WHATSAPP_CLOUD_SEND_KINDS,
+} from "@agent-forall/db";
 
-export { WHATSAPP_CLOUD_CONVERSATION_MODES, WHATSAPP_CLOUD_SEND_KINDS };
+export { WHATSAPP_CLOUD_CONVERSATION_MODES, WHATSAPP_CLOUD_OWNER_ECHO_KIND, WHATSAPP_CLOUD_PARTNER_REMOVED_KIND, WHATSAPP_CLOUD_SEND_KINDS };
 export type ConversationMode = (typeof WHATSAPP_CLOUD_CONVERSATION_MODES)[number];
 export type SendKind = (typeof WHATSAPP_CLOUD_SEND_KINDS)[number];
 
@@ -22,6 +27,10 @@ export const MEDIA_MAX_BYTES = 100 * 1024 * 1024;
 export const HEALTH_CACHE_MS = 60_000;
 // Meta's default per-number throughput; we stop before Meta answers 130429.
 export const SEND_RATE_PER_SECOND = 80;
+// Meta's fixed throughput for a number shared with the WhatsApp Business app.
+export const COEXISTENCE_SEND_RATE_PER_SECOND = 20;
+// After the owner answers a customer from the app the bot stays out for a day from that message (Meta's own handover lapse).
+export const OWNER_HOLD_MS = 24 * 60 * 60 * 1000;
 // Telegram's message limit is 4096; the lead lines take the rest.
 export const OWNER_MESSAGE_MAX_CHARS = 3500;
 export const PROFILE_NAME_MAX_CHARS = 80;
@@ -47,12 +56,19 @@ export const TOKEN_BUCKET_PRUNE_AT = 1000;
 export const ESCALATION_KINDS = ["request", "forward"] as const;
 export type EscalationKind = (typeof ESCALATION_KINDS)[number];
 
+// Meta's two one-shot syncs for a number that stays in the WhatsApp Business app: contacts first, then history.
+export const APP_DATA_SYNC_TYPES = ["smb_app_state_sync", "history"] as const;
+export type AppDataSyncType = (typeof APP_DATA_SYNC_TYPES)[number];
+
+// Meta's coexistence popup may name only the account; the number is then looked up.
 export interface ConnectInput {
   accessToken: string;
-  phoneNumberId: string;
+  phoneNumberId?: string;
   wabaId: string;
-  businessId: string;
+  businessId?: string;
   pin?: string;
+  // The number stays in the WhatsApp Business app; Meta already registered it.
+  coexistence?: boolean;
 }
 
 export type ChannelHealth = "ok" | "token_invalid" | "unknown";
@@ -64,6 +80,8 @@ export interface WhatsappCloudView {
   displayPhoneNumber: string | null;
   verifiedName: string | null;
   health: ChannelHealth | null;
+  // A coexistence number whose one-shot sync Meta has not accepted yet; reconnecting runs what is missing.
+  syncPending: boolean;
 }
 
 // One queued customer message. `message` is Meta's own object, passed through to the plugin untouched.
@@ -76,6 +94,38 @@ export interface InboundMessage {
   message: Record<string, unknown>;
 }
 
+// The owner answered `to` from the WhatsApp Business app.
+export interface OwnerEcho {
+  kind: typeof WHATSAPP_CLOUD_OWNER_ECHO_KIND;
+  id: string;
+  wamid: string;
+  to: string;
+  timestamp: Date;
+}
+
+// A business removed our app inside WhatsApp Business; the orchestrator drops the number and the plugin never sees it.
+export interface PartnerRemoved {
+  kind: typeof WHATSAPP_CLOUD_PARTNER_REMOVED_KIND;
+  id: string;
+  wamid: string;
+  wabaId: string;
+  timestamp: Date;
+}
+
+export type InboxItem = InboundMessage | OwnerEcho | PartnerRemoved;
+
+export function isOwnerEcho(item: InboxItem): item is OwnerEcho {
+  return "kind" in item && item.kind === WHATSAPP_CLOUD_OWNER_ECHO_KIND;
+}
+
+export function isPartnerRemoved(item: InboxItem): item is PartnerRemoved {
+  return "kind" in item && item.kind === WHATSAPP_CLOUD_PARTNER_REMOVED_KIND;
+}
+
+export function isCustomerMessage(item: InboxItem): item is InboundMessage {
+  return !("kind" in item);
+}
+
 export interface Conversation {
   instanceId: string;
   waId: string;
@@ -83,6 +133,9 @@ export interface Conversation {
   lastInboundAt: Date | null;
   lastOutboundAt: Date | null;
   mode: ConversationMode;
+  // Set when the owner answered from the app: the bot answers again after it. "human" with null is open-ended.
+  heldUntil: Date | null;
+  modeChangedAt: Date | null;
   updatedAt: Date;
 }
 
@@ -96,11 +149,21 @@ export interface SendTextInput {
 export interface PhoneNumberFacts {
   displayPhoneNumber: string;
   verifiedName: string;
+  // Meta's is_on_biz_app; null when Meta did not say.
+  isOnBizApp: boolean | null;
+}
+
+export interface ListedPhoneNumber extends PhoneNumberFacts {
+  id: string;
 }
 
 export interface MediaLocation {
   url: string;
   mimeType: string;
+}
+
+export function isHeldByOwner(conversation: Pick<Conversation, "mode" | "heldUntil">, now: Date): boolean {
+  return conversation.mode === "human" && (conversation.heldUntil === null || conversation.heldUntil.getTime() > now.getTime());
 }
 
 export function isWithinCustomerWindow(lastInboundAt: Date | null, now: Date): boolean {

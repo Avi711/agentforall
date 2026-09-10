@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { FastifyBaseLogger } from "fastify";
 import { InstanceManager, type IntegrationCleanup } from "../src/services/instance-manager.js";
+import { InstanceOperationLock } from "../src/services/instance-operation-lock.js";
 import { Reconciler } from "../src/services/reconciler.js";
 import type { ContainerRuntime } from "../src/services/container-runtime.js";
 import type { AppConfig } from "../src/config.js";
@@ -215,6 +216,7 @@ function createManager(
   runtime: FakeRuntime,
   adapter: AgentRuntimeAdapter,
   integrationCleanup: IntegrationCleanup | null = null,
+  channelLock: InstanceOperationLock | null = null,
 ): InstanceManager {
   const registry = {
     get: () => adapter,
@@ -239,6 +241,7 @@ function createManager(
     undefined,
     null,
     integrationCleanup,
+    channelLock,
   );
 }
 
@@ -293,3 +296,37 @@ const baseInstance: Instance = {
   stoppedAt: null,
   destroyedAt: null,
 };
+
+test("destroy takes the channel lock before the instance lock, so a WhatsApp Business connect in flight finishes first and neither waits on the other", async () => {
+  const repo = new FakeRepo({ ...baseInstance });
+  const channelLock = new InstanceOperationLock();
+  const order: string[] = [];
+  const manager = createManager(
+    repo,
+    new FakeRuntime(),
+    openclawAdapter,
+    {
+      revokeAll: async () => {
+        order.push("destroy cleanup");
+      },
+    },
+    channelLock,
+  );
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  // A connect holds the channel lock, talks to Meta, then needs the instance lock to save the channel.
+  const connecting = channelLock.run(baseInstance.id, async () => {
+    await gate;
+    await manager.updateChannels(baseInstance.id, baseInstance.userId, (channels) => channels);
+    order.push("connect saved");
+  });
+  const destroying = manager.destroy(baseInstance.id, baseInstance.userId);
+  await new Promise((r) => setTimeout(r, 10));
+  release();
+  await Promise.all([connecting, destroying]);
+
+  assert.deepEqual(order, ["connect saved", "destroy cleanup"]);
+  assert.equal(repo.instance.status, "destroyed");
+});

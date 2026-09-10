@@ -129,6 +129,30 @@ export class CustomerWindowClosedError extends DomainError {
   }
 }
 
+// The owner took this customer over; a bot turn that was already running must not answer over them.
+export class ConversationHeldByOwnerError extends DomainError {
+  readonly statusCode = 409;
+  readonly code = "CONVERSATION_HELD_BY_OWNER";
+
+  constructor() {
+    super("the owner is answering this customer; the bot's reply was not sent");
+  }
+}
+
+// Meta says whether the number is still in the WhatsApp Business app, and the owner picked the other kind.
+export class NumberModeMismatchError extends DomainError {
+  readonly statusCode = 409;
+  readonly code = "NUMBER_MODE_MISMATCH";
+
+  constructor(readonly stillInApp: boolean) {
+    super(
+      stillInApp
+        ? "this number is still in the WhatsApp Business app; connect it keeping the app"
+        : "this number is not in the WhatsApp Business app; connect it as a new number",
+    );
+  }
+}
+
 export class ChannelCredentialError extends DomainError {
   readonly statusCode = 409;
   readonly code = "CHANNEL_CREDENTIAL_INVALID";

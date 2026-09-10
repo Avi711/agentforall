@@ -6,11 +6,13 @@ import {
   ChannelCredentialError,
   ChannelPinRequiredError,
   ConflictError,
+  ConversationHeldByOwnerError,
   CustomerWindowClosedError,
   DomainError,
   InvalidStateError,
   MediaTooLargeError,
   NotFoundError,
+  NumberModeMismatchError,
   OwnerUnreachableError,
   UpstreamRateLimitedError,
   UpstreamUnavailableError,
@@ -24,21 +26,31 @@ import type {
   ConnectInput,
   Conversation,
   ConversationMode,
+  AppDataSyncType,
   EscalationKind,
   InboundMessage,
+  InboxItem,
+  PartnerRemoved,
   PhoneNumberFacts,
   SendTextInput,
   WhatsappCloudView,
 } from "../../domain/whatsapp-cloud.js";
 import {
+  APP_DATA_SYNC_TYPES,
+  COEXISTENCE_SEND_RATE_PER_SECOND,
   ESCALATION_KEYS_MAX,
   ESCALATION_MIN_INTERVAL_MS,
   ESCALATION_WINDOW_MS,
   ESCALATIONS_PER_BOT_PER_MINUTE,
   HEALTH_CACHE_MS,
+  OWNER_HOLD_MS,
   OWNER_MESSAGE_MAX_CHARS,
   PROFILE_NAME_MAX_CHARS,
   SEND_RATE_PER_SECOND,
+  isCustomerMessage,
+  isHeldByOwner,
+  isOwnerEcho,
+  isPartnerRemoved,
   isWithinCustomerWindow,
 } from "../../domain/whatsapp-cloud.js";
 import type { EventRepository } from "../../storage/event-repository.js";
@@ -71,6 +83,10 @@ type ChannelStore = Pick<
   | "findConversation"
   | "touchOutbound"
   | "setMode"
+  | "holdForOwner"
+  | "applyOwnerEchoes"
+  | "markAppDataSynced"
+  | "clearAppDataSync"
   | "recordSend"
   | "ack"
 >;
@@ -83,6 +99,8 @@ type Graph = Pick<
   | "registerNumber"
   | "deregisterNumber"
   | "getPhoneNumber"
+  | "listPhoneNumbers"
+  | "startAppDataSync"
   | "sendText"
   | "markRead"
   | "getMediaLocation"
@@ -127,8 +145,18 @@ interface EscalationToken {
   at: number;
 }
 
+type ResolvedConnectInput = ConnectInput & { phoneNumberId: string };
+
 const CHANNEL_LABEL = "WhatsApp Business";
-const NOT_CONNECTED: WhatsappCloudView = { status: "none", phoneNumberId: null, wabaId: null, displayPhoneNumber: null, verifiedName: null, health: null };
+const NOT_CONNECTED: WhatsappCloudView = {
+  status: "none",
+  phoneNumberId: null,
+  wabaId: null,
+  displayPhoneNumber: null,
+  verifiedName: null,
+  health: null,
+  syncPending: false,
+};
 const ZERO_WIDTH_JOINER = "\u200D";
 
 // Owner delivery is a plain Bot API message from the orchestrator: no agent turn, so customer text is never an instruction.
@@ -138,8 +166,7 @@ export class WhatsappCloudManager {
   private readonly tokenInvalidReported = new Set<string>();
   private readonly healthCache = new Map<string, CachedHealth>();
   private readonly sendBuckets: TokenBuckets;
-  // Connect and disconnect read, talk to Meta, then write; two at once for one bot would race on the PIN and the row.
-  private readonly channelOps = new InstanceOperationLock();
+  private readonly coexistenceSendBuckets: TokenBuckets;
 
   constructor(
     private readonly instances: Instances,
@@ -152,8 +179,11 @@ export class WhatsappCloudManager {
     private readonly log: FastifyBaseLogger,
     private readonly ownerMessenger: OwnerMessengerFactory = (token) => new TelegramBotApi(token),
     private readonly now: () => Date = () => new Date(),
+    // Connect, disconnect and destroy of one bot take turns; destroy takes it before the instance lock, as connect does.
+    private readonly channelOps: InstanceOperationLock = new InstanceOperationLock(),
   ) {
     this.sendBuckets = new TokenBuckets(SEND_RATE_PER_SECOND, now);
+    this.coexistenceSendBuckets = new TokenBuckets(COEXISTENCE_SEND_RATE_PER_SECOND, now);
   }
 
   // Every step is idempotent, so a half-finished connect is simply run again by the user.
@@ -161,13 +191,17 @@ export class WhatsappCloudManager {
     return this.channelOps.run(instanceId, () => this.connectLocked(instanceId, userId, input));
   }
 
-  private async connectLocked(instanceId: string, userId: string, input: ConnectInput): Promise<WhatsappCloudView> {
+  private async connectLocked(instanceId: string, userId: string, given: ConnectInput): Promise<WhatsappCloudView> {
     const inst = await this.instances.get(instanceId, userId);
     if (!acceptsChannels(inst)) throw new InvalidStateError(inst.status, "whatsapp cloud connect");
+    const input: ResolvedConnectInput = { ...given, phoneNumberId: given.phoneNumberId ?? (await this.onlyNumberOf(given)) };
     const existing = findWhatsappCloudChannel(inst.config.channels);
     if (existing) {
       if (existing.phoneNumberId !== input.phoneNumberId) {
         throw new ConflictError("this bot already has a WhatsApp Business number; disconnect it first");
+      }
+      if (existing.coexistence !== (input.coexistence === true)) {
+        throw new ConflictError("this number is connected the other way; disconnect it first");
       }
       return this.refresh(instanceId, userId, existing, input);
     }
@@ -176,7 +210,7 @@ export class WhatsappCloudManager {
     if (known?.instanceId && known.instanceId !== instanceId) {
       throw new ConflictError("this WhatsApp number is already connected to a bot");
     }
-    const pin = input.pin ?? known?.pin ?? freshPin();
+    const pin = input.coexistence ? null : input.pin ?? known?.pin ?? freshPin();
     const binding = whatsappCloudBindingFor(instanceId, this.config.orchestratorInternalUrl);
     const facts = await this.registerAtMeta(input, pin);
     // A stale row from an earlier number of this bot would otherwise collide on instance_id.
@@ -187,11 +221,12 @@ export class WhatsappCloudManager {
       type: "whatsapp_cloud",
       wabaId: input.wabaId,
       phoneNumberId: input.phoneNumberId,
-      businessId: input.businessId,
+      businessId: input.businessId ?? null,
       displayPhoneNumber: facts.displayPhoneNumber,
       verifiedName: facts.verifiedName,
       accessToken: input.accessToken,
       pin,
+      coexistence: input.coexistence === true,
       relayToken: binding.relayToken,
       relayUrl: binding.relayUrl,
     };
@@ -206,11 +241,44 @@ export class WhatsappCloudManager {
       throw err;
     }
     this.forgetHealth(instanceId);
+    // Before the event: a failure recording it must not skip Meta's 24-hour sync. A fresh signup needs its own syncs.
+    if (channel.coexistence) await this.repo.clearAppDataSync(channel.phoneNumberId);
+    const synced = channel.coexistence ? await this.syncAppData(instanceId, channel, []) : [];
     await this.eventLog.append(instanceId, "whatsapp_cloud.connected", {
       actor: userId,
       payload: { phoneNumberId: input.phoneNumberId, wabaId: input.wabaId },
     });
-    return this.viewOf(channel, "ok");
+    return this.viewOf(channel, "ok", syncPendingOf(channel, synced));
+  }
+
+  // The coexistence popup names the account; the number is its one number, or its one number Meta says is in the app.
+  private async onlyNumberOf(input: ConnectInput): Promise<string> {
+    const numbers = await this.upstream(() => this.graph.listPhoneNumbers(input.wabaId, input.accessToken));
+    const inApp = numbers.filter((number) => number.isOnBizApp === true);
+    const [pick] = inApp.length === 1 ? inApp : numbers.length === 1 ? numbers : [];
+    if (!pick) throw new ValidationError(`the WhatsApp Business account has ${numbers.length} numbers and none stands out; connect one number`);
+    return pick.id;
+  }
+
+  // Meta offboards a coexistence number not synced within 24h and runs each sync once per signup, contacts before history.
+  // Each success is kept on the number; a failure stops the rest and shows as pending until a reconnect runs what is missing.
+  private async syncAppData(instanceId: string, channel: WhatsappCloudChannelConfig, done: readonly AppDataSyncType[]): Promise<AppDataSyncType[]> {
+    const synced = [...done];
+    for (const syncType of APP_DATA_SYNC_TYPES) {
+      if (synced.includes(syncType)) continue;
+      try {
+        await this.graph.startAppDataSync(channel.phoneNumberId, channel.accessToken, syncType);
+      } catch (err) {
+        this.log.warn({ instanceId, syncType, err: errorMessage(err) }, "whatsapp cloud app data sync failed");
+        await this.eventLog
+          .append(instanceId, "whatsapp_cloud.sync_failed", { payload: { phoneNumberId: channel.phoneNumberId, syncType } })
+          .catch((logErr) => this.log.warn({ instanceId, err: errorMessage(logErr) }, "whatsapp cloud sync event failed"));
+        break;
+      }
+      await this.repo.markAppDataSynced(channel.phoneNumberId, syncType, this.now());
+      synced.push(syncType);
+    }
+    return synced;
   }
 
   // Same number again: the popup minted a new token (a revoked one is the usual reason), so store it.
@@ -218,33 +286,47 @@ export class WhatsappCloudManager {
     instanceId: string,
     userId: string,
     existing: WhatsappCloudChannelConfig,
-    input: ConnectInput,
+    input: ResolvedConnectInput,
   ): Promise<WhatsappCloudView> {
     const known = await this.repo.findNumber(existing.phoneNumberId);
     if (known?.instanceId && known.instanceId !== instanceId) {
       throw new ConflictError("this WhatsApp number is already connected to a bot");
     }
     // The row holds the PIN Meta was last told; the channel copy can lag a connect that raced this one.
-    const pin = input.pin ?? known?.pin ?? existing.pin;
+    const pin = existing.coexistence ? null : input.pin ?? known?.pin ?? existing.pin ?? freshPin();
     const facts = await this.registerAtMeta(input, pin);
     await this.repo.bindNumber({ phoneNumberId: existing.phoneNumberId, instanceId, wabaId: input.wabaId, pin });
-    const refreshed: WhatsappCloudChannelConfig = { ...existing, ...facts, wabaId: input.wabaId, accessToken: input.accessToken, pin };
+    const refreshed: WhatsappCloudChannelConfig = {
+      ...existing,
+      ...facts,
+      wabaId: input.wabaId,
+      businessId: input.businessId ?? existing.businessId,
+      accessToken: input.accessToken,
+      pin,
+    };
     await this.instances.updateChannels(instanceId, userId, (channels) =>
       channels.map((ch) => (ch.type === "whatsapp_cloud" ? refreshed : ch)),
     );
     this.forgetHealth(instanceId);
+    const synced = refreshed.coexistence ? await this.syncAppData(instanceId, refreshed, known?.appDataSynced ?? []) : [];
     await this.eventLog.append(instanceId, "whatsapp_cloud.reconnected", {
       actor: userId,
       payload: { phoneNumberId: existing.phoneNumberId },
     });
-    return this.viewOf(refreshed, "ok");
+    return this.viewOf(refreshed, "ok", syncPendingOf(refreshed, synced));
   }
 
-  private registerAtMeta(input: ConnectInput, pin: string): Promise<PhoneNumberFacts> {
+  // Meta's word on the app must match the owner's pick before anything is linked. No PIN means a coexistence number:
+  // the WhatsApp Business app keeps it registered, and Meta says to skip the step.
+  private registerAtMeta(input: ResolvedConnectInput, pin: string | null): Promise<PhoneNumberFacts> {
     return this.upstream(async () => {
+      const facts = await this.graph.getPhoneNumber(input.phoneNumberId, input.accessToken);
+      if (facts.isOnBizApp !== null && facts.isOnBizApp !== (input.coexistence === true)) {
+        throw new NumberModeMismatchError(facts.isOnBizApp);
+      }
       await this.graph.subscribeApp(input.wabaId, input.accessToken);
-      await this.graph.registerNumber(input.phoneNumberId, input.accessToken, pin);
-      return this.graph.getPhoneNumber(input.phoneNumberId, input.accessToken);
+      if (pin !== null) await this.graph.registerNumber(input.phoneNumberId, input.accessToken, pin);
+      return facts;
     });
   }
 
@@ -274,23 +356,22 @@ export class WhatsappCloudManager {
     });
   }
 
-  // Destroy path: the bot is going away, so only Meta and our own tables need cleaning. Waits for a connect in flight.
-  cleanupForDestroy(inst: Instance): Promise<void> {
-    return this.channelOps.run(inst.id, async () => {
-      const channel = findWhatsappCloudChannel(inst.config.channels);
-      if (!channel) return;
-      await this.repo.releaseNumber(inst.id);
-      if (await this.stillOurs(inst.id, channel)) await this.leaveMeta(inst.id, channel, "destroy");
-      await this.repo.purgeInstance(inst.id);
-      this.forgetHealth(inst.id);
-    });
+  // Destroy path, run while destroy holds the shared channel lock, so a connect in flight has already finished.
+  async cleanupForDestroy(inst: Instance): Promise<void> {
+    const channel = findWhatsappCloudChannel(inst.config.channels);
+    if (!channel) return;
+    await this.repo.releaseNumber(inst.id);
+    if (await this.stillOurs(inst.id, channel)) await this.leaveMeta(inst.id, channel, "destroy");
+    await this.repo.purgeInstance(inst.id);
+    this.forgetHealth(inst.id);
   }
 
   async status(instanceId: string, userId: string): Promise<WhatsappCloudView> {
     const inst = await this.instances.get(instanceId, userId);
     const channel = findWhatsappCloudChannel(inst.config.channels);
     if (!channel) return NOT_CONNECTED;
-    return this.viewOf(channel, await this.health(inst, channel));
+    const synced = channel.coexistence ? ((await this.repo.findNumber(channel.phoneNumberId))?.appDataSynced ?? []) : [];
+    return this.viewOf(channel, await this.health(inst, channel), syncPendingOf(channel, synced));
   }
 
   // Bearer from the container is the only proof of identity; every failure looks the same.
@@ -302,8 +383,26 @@ export class WhatsappCloudManager {
     return { instance, channel };
   }
 
-  pull(instanceId: string, waitMs: number): Promise<InboundMessage[]> {
-    return this.dispatcher.wait(instanceId, waitMs);
+  // Owner replies from the app are applied first, in order, and never reach the plugin; a failure leaves the batch for redelivery.
+  async pull(instanceId: string, waitMs: number): Promise<InboundMessage[]> {
+    const items: InboxItem[] = await this.dispatcher.wait(instanceId, waitMs);
+    const removals = items.filter(isPartnerRemoved);
+    if (removals.length > 0) {
+      const detached = await this.applyPartnerRemovals(instanceId, removals);
+      await this.repo.ack(instanceId, removals.map((removal) => BigInt(removal.id)));
+      // The number left this bot: what was queued for it now belongs to the business's own app.
+      if (detached) return [];
+    }
+    const echoes = items.filter(isOwnerEcho);
+    if (echoes.length > 0) {
+      const held = await this.repo.applyOwnerEchoes(
+        instanceId,
+        echoes.map((echo) => ({ id: BigInt(echo.id), to: echo.to, at: echo.timestamp })),
+        OWNER_HOLD_MS,
+      );
+      for (const waId of held) await this.recordHandoff(instanceId, waId, "owner_replied_in_app");
+    }
+    return items.filter(isCustomerMessage);
   }
 
   ack(instanceId: string, ids: bigint[]): Promise<number> {
@@ -316,7 +415,9 @@ export class WhatsappCloudManager {
     if (!isWithinCustomerWindow(conversation?.lastInboundAt ?? null, this.now())) {
       throw new CustomerWindowClosedError();
     }
-    if (!this.sendBuckets.take(ctx.channel.phoneNumberId)) throw new UpstreamRateLimitedError("WhatsApp");
+    if (input.kind === "reply" && conversation && isHeldByOwner(conversation, this.now())) throw new ConversationHeldByOwnerError();
+    const buckets = ctx.channel.coexistence ? this.coexistenceSendBuckets : this.sendBuckets;
+    if (!buckets.take(ctx.channel.phoneNumberId)) throw new UpstreamRateLimitedError("WhatsApp");
     const wamid = await this.upstream(
       () =>
         this.graph.sendText(ctx.channel.phoneNumberId, ctx.channel.accessToken, {
@@ -347,13 +448,15 @@ export class WhatsappCloudManager {
     }, ctx);
   }
 
-  conversation(ctx: RelayContext, waId: string): Promise<Conversation | null> {
-    return this.repo.findConversation(ctx.instance.id, waId);
+  // The plugin sees who answers now: a hold from the app that ran out reads as the bot's again.
+  async conversation(ctx: RelayContext, waId: string): Promise<Conversation | null> {
+    const found = await this.repo.findConversation(ctx.instance.id, waId);
+    return found && { ...found, mode: isHeldByOwner(found, this.now()) ? "human" : "bot" };
   }
 
-  // Handing a customer to a human needs a human to hand them to.
+  // Handing a customer to a human needs a human to hand them to: on Telegram, or in the app for a coexistence number.
   async setMode(ctx: RelayContext, waId: string, mode: ConversationMode): Promise<Conversation> {
-    if (mode === "human" && !ownerTarget(ctx.instance)) {
+    if (mode === "human" && !ctx.channel.coexistence && !ownerTarget(ctx.instance)) {
       throw new ValidationError("this bot has no Telegram owner to hand the conversation to");
     }
     const updated = await this.repo.setMode(ctx.instance.id, waId, mode);
@@ -366,8 +469,17 @@ export class WhatsappCloudManager {
   async escalate(ctx: RelayContext, input: EscalationInput): Promise<EscalationResult> {
     const conversation = await this.repo.findConversation(ctx.instance.id, input.waId);
     if (!conversation) throw new NotFoundError("conversation", input.waId);
+    // The owner reads this customer in the WhatsApp Business app already; a Telegram copy would only duplicate it.
+    if (input.kind === "forward" && ctx.channel.coexistence) return { notified: true, fallbackToBot: false };
     const target = ownerTarget(ctx.instance);
     if (!target) {
+      // No Telegram, but the owner reads this chat in the app: the bot steps aside the way an app reply makes it.
+      if (ctx.channel.coexistence) {
+        if (await this.repo.holdForOwner(ctx.instance.id, input.waId, this.now(), OWNER_HOLD_MS)) {
+          await this.recordHandoff(ctx.instance.id, input.waId, "customer_asked_for_owner");
+        }
+        return { notified: true, fallbackToBot: false };
+      }
       if (input.kind === "forward") return this.handBackToBot(ctx, input.waId, "owner_missing");
       throw new ValidationError("this bot has no Telegram owner to escalate to");
     }
@@ -385,6 +497,39 @@ export class WhatsappCloudManager {
     }
     await this.eventLog.append(ctx.instance.id, "whatsapp_cloud.escalated", { payload: { waId: input.waId, kind: input.kind } });
     return { notified: true, fallbackToBot: false };
+  }
+
+  // Meta already dropped our access, so only our side is cleaned, like a disconnect without the Meta calls. The owner hears
+  // it here because nobody else would tell them. Connect and disconnect take the same lock, so this cannot race them.
+  private applyPartnerRemovals(instanceId: string, removals: PartnerRemoved[]): Promise<boolean> {
+    return this.channelOps.run(instanceId, async () => {
+      const inst = await this.store.findById(instanceId);
+      const channel = inst ? findWhatsappCloudChannel(inst.config.channels) : undefined;
+      if (!inst || !channel || !removals.some((removal) => removal.wabaId === channel.wabaId)) return false;
+      await this.repo.releaseNumber(instanceId);
+      await this.instances.updateChannels(instanceId, inst.userId, (channels) => channels.filter((ch) => ch.type !== "whatsapp_cloud"));
+      await this.repo.purgeInstance(instanceId);
+      this.forgetHealth(instanceId);
+      await this.eventLog
+        .append(instanceId, "whatsapp_cloud.partner_removed", { payload: { phoneNumberId: channel.phoneNumberId, wabaId: channel.wabaId } })
+        .catch((err) => this.log.warn({ instanceId, err: errorMessage(err) }, "whatsapp cloud removal event failed"));
+      const target = ownerTarget(inst);
+      if (target) {
+        await this.messageOwner(
+          inst,
+          target,
+          `המספר העסקי ${channel.displayPhoneNumber} נותק מהסוכן מתוך אפליקציית WhatsApp Business. כדי שהסוכן יענה בו שוב, חברו אותו מחדש מהדשבורד.`,
+        ).catch((err) => this.log.warn({ instanceId, err: errorMessage(err) }, "whatsapp cloud removal notice failed"));
+      }
+      return true;
+    });
+  }
+
+  // The hold is already saved; losing its log line must not undo or repeat it.
+  private async recordHandoff(instanceId: string, waId: string, reason: string): Promise<void> {
+    await this.eventLog
+      .append(instanceId, "whatsapp_cloud.handoff", { payload: { waId, mode: "human", reason } })
+      .catch((err) => this.log.warn({ instanceId, reason, err: errorMessage(err) }, "whatsapp cloud handoff event failed"));
   }
 
   // A customer parked with a human who is gone would otherwise wait forever; the bot answers again.
@@ -452,6 +597,8 @@ export class WhatsappCloudManager {
     const warn = (call: string) => (err: unknown) =>
       this.log.warn({ instanceId, step, call, err: errorMessage(err) }, "whatsapp cloud meta cleanup failed");
     await this.graph.unsubscribeApp(channel.wabaId, channel.accessToken).catch(warn("unsubscribe"));
+    // Meta refuses deregister for a number still in the WhatsApp Business app; unlinking is the whole offboarding.
+    if (channel.coexistence) return;
     await this.graph.deregisterNumber(channel.phoneNumberId, channel.accessToken).catch(warn("deregister"));
   }
 
@@ -510,7 +657,7 @@ export class WhatsappCloudManager {
     }
   }
 
-  private viewOf(channel: WhatsappCloudChannelConfig, health: ChannelHealth): WhatsappCloudView {
+  private viewOf(channel: WhatsappCloudChannelConfig, health: ChannelHealth, syncPending = false): WhatsappCloudView {
     return {
       status: "connected",
       phoneNumberId: channel.phoneNumberId,
@@ -518,6 +665,7 @@ export class WhatsappCloudManager {
       displayPhoneNumber: channel.displayPhoneNumber,
       verifiedName: channel.verifiedName,
       health,
+      syncPending,
     };
   }
 
@@ -555,6 +703,10 @@ function ownerTarget(inst: Instance): OwnerTarget | null {
   if (!telegram?.botToken || !identity.telegramUserId) return null;
   const chatId = Number(identity.telegramUserId);
   return Number.isSafeInteger(chatId) ? { botToken: telegram.botToken, chatId } : null;
+}
+
+function syncPendingOf(channel: WhatsappCloudChannelConfig, synced: readonly AppDataSyncType[]): boolean {
+  return channel.coexistence && !APP_DATA_SYNC_TYPES.every((syncType) => synced.includes(syncType));
 }
 
 function isCredentialFailure(err: MetaGraphError): boolean {

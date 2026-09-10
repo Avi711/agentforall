@@ -86,6 +86,8 @@ export class InstanceManager {
     private readonly operationLock = new InstanceOperationLock(),
     private readonly telegramApi: TelegramBotApi | null = null,
     private readonly integrationCleanup: IntegrationCleanup | null = null,
+    // WhatsApp Business connect takes this before the instance lock; destroy takes it first too, so neither waits on the other.
+    private readonly channelLock: InstanceOperationLock | null = null,
   ) {}
 
   async create(userId: string, rawInput: CreateInstanceInput): Promise<Instance> {
@@ -393,7 +395,8 @@ export class InstanceManager {
   }
 
   async destroy(id: string, userId: string): Promise<void> {
-    return this.operationLock.run(id, () => this.destroyLocked(id, userId));
+    const destroy = () => this.operationLock.run(id, () => this.destroyLocked(id, userId));
+    return this.channelLock ? this.channelLock.run(id, destroy) : destroy();
   }
 
   private async destroyLocked(id: string, userId: string): Promise<void> {

@@ -373,7 +373,7 @@ export class OrchestratorClient {
   async connectWhatsappCloud(
     userId: string,
     id: string,
-    input: { accessToken: string; phoneNumberId: string; wabaId: string; businessId: string; pin?: string },
+    input: { accessToken: string; phoneNumberId?: string; wabaId: string; businessId?: string; pin?: string; coexistence?: boolean },
   ): Promise<WhatsappCloudView> {
     return this.call({
       method: "POST",
@@ -381,7 +381,7 @@ export class OrchestratorClient {
       userId,
       body: input,
       schema: WhatsappCloudViewSchema,
-      // Three Meta calls happen behind this one.
+      // Up to six Meta calls happen behind this one.
       timeoutMs: 60_000,
     });
   }

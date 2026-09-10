@@ -1,5 +1,5 @@
 import type { FastifyBaseLogger } from "fastify";
-import type { InboundMessage } from "../../domain/whatsapp-cloud.js";
+import type { InboxItem } from "../../domain/whatsapp-cloud.js";
 import {
   CONVERSATION_RETENTION_MS,
   INBOX_BACKLOG_WARN_MS,
@@ -10,18 +10,18 @@ import {
   SENDS_RETENTION_MS,
 } from "../../domain/whatsapp-cloud.js";
 import type { EventRepository } from "../../storage/event-repository.js";
-import type { WhatsappCloudRepository } from "../../storage/whatsapp-cloud-repository.js";
+import type { LeasedMessage, WhatsappCloudRepository } from "../../storage/whatsapp-cloud-repository.js";
 
 type InboxStore = Pick<WhatsappCloudRepository, "leasePending" | "sweep">;
 type EventLog = Pick<EventRepository, "append">;
 
 interface Waiter {
-  resolve(items: InboundMessage[]): void;
+  resolve(items: InboxItem[]): void;
   timer: NodeJS.Timeout;
 }
 
 interface Queued {
-  items: InboundMessage[];
+  items: InboxItem[];
   leasedAt: number;
 }
 
@@ -70,7 +70,7 @@ export class InboxDispatcher {
   }
 
   // One consumer per bot: a newer poll replaces the older one, which returns empty. After stop nothing waits.
-  wait(instanceId: string, waitMs: number): Promise<InboundMessage[]> {
+  wait(instanceId: string, waitMs: number): Promise<InboxItem[]> {
     if (this.stopped) return Promise.resolve([]);
     const ready = this.queued.get(instanceId);
     if (ready) {
@@ -149,7 +149,7 @@ export class InboxDispatcher {
     }
   }
 
-  private handOut(instanceId: string, items: InboundMessage[], leasedAt: number): void {
+  private handOut(instanceId: string, items: InboxItem[], leasedAt: number): void {
     const waiter = this.waiters.get(instanceId);
     if (waiter) {
       clearTimeout(waiter.timer);
@@ -180,10 +180,10 @@ export class InboxDispatcher {
   }
 }
 
-function groupByInstance(leased: { instanceId: string; message: InboundMessage }[]): Map<string, InboundMessage[]> {
-  const groups = new Map<string, InboundMessage[]>();
-  for (const { instanceId, message } of leased) {
-    groups.set(instanceId, [...(groups.get(instanceId) ?? []), message]);
+function groupByInstance(leased: LeasedMessage[]): Map<string, InboxItem[]> {
+  const groups = new Map<string, InboxItem[]>();
+  for (const { instanceId, item } of leased) {
+    groups.set(instanceId, [...(groups.get(instanceId) ?? []), item]);
   }
   return groups;
 }

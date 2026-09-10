@@ -4,10 +4,10 @@ import Script from "next/script";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PendingLink } from "@/app/app/Pending";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
+import { COEXISTENCE_FEATURE_TYPE, parseSignupMessage } from "@/lib/whatsapp-cloud/signup-message";
 import { isEmbeddedSignupOrigin } from "@/lib/whatsapp-cloud/signup-origin";
 
 const SDK_URL = "https://connect.facebook.net/en_US/sdk.js";
-const SIGNUP_EVENT = "WA_EMBEDDED_SIGNUP";
 const CODE_REJECTED_HE = "החיבור לא הושלם בזמן. לחצו שוב על החיבור — נפתח את החלון של Meta מחדש.";
 const CANCELLED_HE = "החלון של Meta נסגר לפני שהחיבור הושלם. אפשר לנסות שוב בכל רגע.";
 const POPUP_BLOCKED_HE = "הדפדפן חסם את החלון של Meta. אפשרו חלונות קופצים לאתר ונסו שוב.";
@@ -19,6 +19,10 @@ const TOKEN_INVALID_HE = "החיבור ל-Meta פג. לחצו על החיבור 
 const META_DOWN_HE = "Meta לא זמינה כרגע. נסו שוב בעוד כמה דקות.";
 const BOT_NOT_READY_HE = "הסוכן עדיין מוקם. נסו שוב בעוד דקה.";
 const NO_NUMBER_HE = "החלון של Meta נסגר בלי לבחור מספר טלפון. פתחו אותו שוב ובחרו מספר לחיבור.";
+const SYNC_PENDING_HE =
+  "המספר מחובר, אבל Meta לא השלימה את העברת אנשי הקשר וההיסטוריה מהאפליקציה. לחצו שוב על החיבור תוך 24 שעות, אחרת Meta תנתק את המספר.";
+const MODE_MISMATCH_HE =
+  "סוג המספר לא תואם לבחירה. אם המספר פעיל באפליקציית WhatsApp Business בחרו ״המספר שכבר עובד באפליקציה״, ואחרת ״מספר חדש״, ונסו שוב.";
 // Meta sends the ids by window message and the code by callback, in no fixed order.
 const IDS_GRACE_MS = 5_000;
 
@@ -37,10 +41,13 @@ type Phase =
   | { kind: "unavailable" }
   | { kind: "error"; message: string; needsPin?: boolean };
 
+type NumberMode = "coexistence" | "new_number";
+
 interface SignupIds {
-  phoneNumberId: string;
   wabaId: string;
-  businessId: string;
+  phoneNumberId?: string;
+  businessId?: string;
+  coexistence: boolean;
 }
 
 interface FbLoginResponse {
@@ -56,7 +63,7 @@ interface FbSdk {
       config_id: string;
       response_type: "code";
       override_default_response_type: true;
-      extras: { setup: Record<string, never>; sessionInfoVersion: "3" };
+      extras: { setup: Record<string, never>; sessionInfoVersion: "3"; featureType?: typeof COEXISTENCE_FEATURE_TYPE };
     },
   ): void;
 }
@@ -67,6 +74,10 @@ export function WhatsappBusinessConnectFlow({ botId, meta }: { botId: string; me
   const [phase, setPhase] = useState<Phase>(meta ? { kind: "loading" } : { kind: "unavailable" });
   const [pin, setPin] = useState("");
   const [askPin, setAskPin] = useState(false);
+  // Meta's popup decides the path, whatever the radio said: only a number that left the app can have a PIN.
+  const [pinApplies, setPinApplies] = useState(false);
+  // Most businesses already answer from the WhatsApp Business app; keeping it is the default.
+  const [mode, setMode] = useState<NumberMode>("coexistence");
   // Ids arrive through a window message; the login callback delivers the code and may come first.
   const ids = useRef<SignupIds | null>(null);
   const idsWaiter = useRef<((ids: SignupIds | null) => void) | null>(null);
@@ -78,8 +89,8 @@ export function WhatsappBusinessConnectFlow({ botId, meta }: { botId: string; me
       .then(async (res) => {
         const data: unknown = await res.json().catch(() => null);
         if (cancelled || !res.ok || !isView(data) || data.status !== "connected") return;
-        if (data.health === "token_invalid") {
-          setPhase({ kind: "error", message: TOKEN_INVALID_HE });
+        if (data.health === "token_invalid" || data.syncPending === true) {
+          setPhase({ kind: "error", message: data.syncPending === true ? SYNC_PENDING_HE : TOKEN_INVALID_HE });
           return;
         }
         setPhase({ kind: "connected", displayPhoneNumber: data.displayPhoneNumber, verifiedName: data.verifiedName });
@@ -96,25 +107,17 @@ export function WhatsappBusinessConnectFlow({ botId, meta }: { botId: string; me
     if (!meta) return;
     const onMessage = (event: MessageEvent) => {
       if (!isEmbeddedSignupOrigin(event.origin) || typeof event.data !== "string") return;
-      let payload: unknown;
-      try {
-        payload = JSON.parse(event.data);
-      } catch {
+      const signup = parseSignupMessage(event.data);
+      if (!signup) return;
+      if (signup.kind === "finish") {
+        const { kind: _kind, ...found } = signup;
+        ids.current = found;
+        idsWaiter.current?.(ids.current);
         return;
       }
-      if (!isSignupMessage(payload)) return;
-      if (payload.event === "FINISH") {
-        ids.current = { phoneNumberId: payload.data.phone_number_id, wabaId: payload.data.waba_id, businessId: payload.data.business_id };
-        idsWaiter.current?.(ids.current);
-      } else if (payload.event === "FINISH_ONLY_WABA") {
-        ids.current = null;
-        idsWaiter.current?.(null);
-        setPhase({ kind: "error", message: NO_NUMBER_HE });
-      } else if (payload.event === "CANCEL") {
-        ids.current = null;
-        idsWaiter.current?.(null);
-        setPhase({ kind: "error", message: CANCELLED_HE });
-      }
+      ids.current = null;
+      idsWaiter.current?.(null);
+      setPhase({ kind: "error", message: signup.kind === "cancel" ? CANCELLED_HE : NO_NUMBER_HE });
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
@@ -135,14 +138,28 @@ export function WhatsappBusinessConnectFlow({ botId, meta }: { botId: string; me
     else w.fbAsyncInit = initSdk;
   }, [meta, initSdk]);
 
+  // A PIN asked for one kind of number means nothing for the other.
+  function chooseMode(next: NumberMode) {
+    setMode(next);
+    setAskPin(false);
+    setPinApplies(false);
+  }
+
   async function connect(code: string, signup: SignupIds) {
     setPhase({ kind: "connecting" });
+    setPinApplies(!signup.coexistence);
     try {
       const res = await fetch(`/api/bot/${botId}/whatsapp-cloud/connect`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         cache: "no-store",
-        body: JSON.stringify({ code, ...signup, ...(PIN_PATTERN.test(pin) ? { pin } : {}) }),
+        body: JSON.stringify({
+          code,
+          wabaId: signup.wabaId,
+          ...(signup.phoneNumberId ? { phoneNumberId: signup.phoneNumberId } : {}),
+          ...(signup.businessId ? { businessId: signup.businessId } : {}),
+          ...(signup.coexistence ? { coexistence: true } : PIN_PATTERN.test(pin) ? { pin } : {}),
+        }),
       });
       const data: unknown = await res.json().catch(() => null);
       if (!res.ok) {
@@ -153,6 +170,10 @@ export function WhatsappBusinessConnectFlow({ botId, meta }: { botId: string; me
       }
       if (!isView(data)) {
         setPhase({ kind: "error", message: UNEXPECTED_ERROR_HE });
+        return;
+      }
+      if (data.syncPending === true) {
+        setPhase({ kind: "error", message: SYNC_PENDING_HE });
         return;
       }
       setPhase({ kind: "connected", displayPhoneNumber: data.displayPhoneNumber, verifiedName: data.verifiedName });
@@ -203,7 +224,7 @@ export function WhatsappBusinessConnectFlow({ botId, meta }: { botId: string; me
         config_id: meta.configId,
         response_type: "code",
         override_default_response_type: true,
-        extras: { setup: {}, sessionInfoVersion: "3" },
+        extras: { setup: {}, sessionInfoVersion: "3", ...(mode === "coexistence" ? { featureType: COEXISTENCE_FEATURE_TYPE } : {}) },
       },
     );
   }
@@ -238,12 +259,42 @@ export function WhatsappBusinessConnectFlow({ botId, meta }: { botId: string; me
         </p>
       ) : (
         <div className="space-y-5">
+          <fieldset className="space-y-3" disabled={phase.kind === "popup" || phase.kind === "connecting"}>
+            <legend className="text-sm font-medium text-espresso mb-2">איזה מספר מחברים?</legend>
+            <label className="flex gap-3 items-start text-sm text-espresso-light leading-relaxed cursor-pointer">
+              <input
+                type="radio"
+                name="number-mode"
+                className="mt-1"
+                checked={mode === "coexistence"}
+                onChange={() => chooseMode("coexistence")}
+              />
+              <span>
+                <span className="text-espresso font-medium">המספר שכבר עובד באפליקציית WhatsApp Business</span>
+                <br />
+                האפליקציה נשארת אצלכם בטלפון והסוכן עונה לצידכם. כשאתם עונים ללקוח מהאפליקציה, הסוכן מפסיק לענות לו
+                ל-24 שעות מההודעה האחרונה שלכם אליו, או עד שתבקשו ממנו בטלגרם לחזור. כבו באפליקציה את הודעת הפתיחה
+                וההודעה בהיעדרות: הסוכן כבר עונה ללקוחות, והודעה אוטומטית עלולה להשתיק אותו.
+              </span>
+            </label>
+            <label className="flex gap-3 items-start text-sm text-espresso-light leading-relaxed cursor-pointer">
+              <input
+                type="radio"
+                name="number-mode"
+                className="mt-1"
+                checked={mode === "new_number"}
+                onChange={() => chooseMode("new_number")}
+              />
+              <span>
+                <span className="text-espresso font-medium">מספר חדש שלא מחובר לאפליקציה</span>
+                <br />
+                המספר חייב להיות פנוי: לא מחובר לאפליקציית WhatsApp או WhatsApp Business בטלפון.
+              </span>
+            </label>
+          </fieldset>
+
           <ul className="text-sm text-espresso-light leading-relaxed space-y-2 list-disc pr-5">
             <li>מתחברים עם חשבון הפייסבוק של העסק. אם אין לעסק חשבון Meta Business, יוצרים אחד בתוך החלון.</li>
-            <li>
-              המספר חייב להיות פנוי: לא מחובר לאפליקציית WhatsApp או WhatsApp Business בטלפון. אם הוא מחובר —
-              מוחקים את החשבון באפליקציה קודם, או משתמשים במספר חדש.
-            </li>
             <li>תשובות ללקוחות שכתבו לכם — בחינם. Meta מחייבת רק על הודעות שהעסק יוזם.</li>
           </ul>
 
@@ -251,7 +302,7 @@ export function WhatsappBusinessConnectFlow({ botId, meta }: { botId: string; me
             <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">{phase.message}</p>
           ) : null}
 
-          {askPin ? (
+          {askPin && pinApplies ? (
             <label className="block text-sm text-espresso-light">
               קוד אימות דו-שלבי של המספר
               <input
@@ -275,7 +326,7 @@ export function WhatsappBusinessConnectFlow({ botId, meta }: { botId: string; me
               phase.kind === "loading" ||
               phase.kind === "popup" ||
               phase.kind === "connecting" ||
-              (askPin && !PIN_PATTERN.test(pin))
+              (askPin && pinApplies && !PIN_PATTERN.test(pin))
             }
             aria-busy={phase.kind === "popup" || phase.kind === "connecting"}
             className="inline-flex items-center justify-center rounded-full bg-espresso text-cream px-6 py-3 text-sm font-medium transition hover:bg-espresso/90 disabled:opacity-50"
@@ -315,25 +366,8 @@ function ConnectedPanel({ displayPhoneNumber, verifiedName }: { displayPhoneNumb
 
 function isView(
   value: unknown,
-): value is { status: string; displayPhoneNumber: string | null; verifiedName: string | null; health: string | null } {
+): value is { status: string; displayPhoneNumber: string | null; verifiedName: string | null; health: string | null; syncPending?: boolean } {
   return typeof value === "object" && value !== null && typeof (value as { status?: unknown }).status === "string";
-}
-
-interface SignupMessage {
-  type: typeof SIGNUP_EVENT;
-  event: string;
-  data: { phone_number_id: string; waba_id: string; business_id: string };
-}
-
-function isSignupMessage(value: unknown): value is SignupMessage {
-  if (typeof value !== "object" || value === null) return false;
-  const v = value as { type?: unknown; event?: unknown; data?: unknown };
-  if (v.type !== SIGNUP_EVENT || typeof v.event !== "string") return false;
-  if (v.event === "CANCEL" || v.event === "FINISH_ONLY_WABA") return true;
-  const d = v.data as { phone_number_id?: unknown; waba_id?: unknown; business_id?: unknown } | undefined;
-  return (
-    typeof d?.phone_number_id === "string" && typeof d.waba_id === "string" && typeof d.business_id === "string"
-  );
 }
 
 function errorCode(data: unknown): string | null {
@@ -346,6 +380,7 @@ function errorMessage(status: number, data: unknown): string {
   if (code === "signup_code_rejected") return CODE_REJECTED_HE;
   if (code === "meta_unavailable") return META_DOWN_HE;
   if (code === "bot_not_ready") return BOT_NOT_READY_HE;
+  if (code === "number_mode_mismatch") return MODE_MISMATCH_HE;
   if (status === 409) return "המספר הזה כבר מחובר לסוכן אחר, או שלסוכן הזה כבר יש מספר עסקי.";
   if (status === 402) return "חיבור מספר עסקי זמין במנוי פעיל.";
   if (status === 503) return "חיבור WhatsApp Business אינו זמין כרגע. נסו שוב מאוחר יותר.";

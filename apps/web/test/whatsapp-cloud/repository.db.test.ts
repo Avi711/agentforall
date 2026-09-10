@@ -60,6 +60,7 @@ after(async () => {
 
 function row(wamid: string, waId: string, profileName: string | null, receivedAt = RECEIVED) {
   return {
+    kind: "message" as const,
     wamid,
     instanceId: A,
     waId,
@@ -113,4 +114,24 @@ test("a human-mode conversation keeps its mode through new inbound messages", { 
   const guy = await db.select().from(whatsappCloudConversations).where(eq(whatsappCloudConversations.waId, "972509999999"));
   assert.equal(guy[0]?.mode, "human");
   assert.equal(guy[0]?.profileName, "Guy");
+});
+
+test("an owner echo is queued for its bot but never touches the conversation ledger", { skip }, async () => {
+  const echo = (wamid: string, to: string) => ({
+    ...row(wamid, to, null),
+    kind: "owner_echo" as const,
+    payload: { kind: "owner_echo", to },
+  });
+  const ledger = () => db.select().from(whatsappCloudConversations).where(eq(whatsappCloudConversations.instanceId, A));
+  const before = await ledger();
+
+  assert.equal(await repo.enqueue([echo("wamid.echo.1", "972501234567"), echo("wamid.echo.2", "972500000077")]), 2);
+  assert.equal(await repo.enqueue([echo("wamid.echo.1", "972501234567")]), 0);
+
+  assert.deepEqual(await ledger(), before);
+});
+
+test("a business account points at its live bots only", { skip }, async () => {
+  assert.deepEqual(await repo.findInstanceIdsByWabaId("1000"), [A]);
+  assert.deepEqual(await repo.findInstanceIdsByWabaId("9999"), []);
 });

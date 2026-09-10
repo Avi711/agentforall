@@ -97,6 +97,7 @@ test("delivery failures are retryable unless the relay rejected the message for 
   assert.equal(isRetryableDelivery(new RelayError(0, null)), true);
   assert.equal(isRetryableDelivery(new RelayError(409, "CHANNEL_CREDENTIAL_INVALID")), true);
   assert.equal(isRetryableDelivery(new RelayError(409, "CUSTOMER_WINDOW_CLOSED")), false);
+  assert.equal(isRetryableDelivery(new RelayError(409, "CONVERSATION_HELD_BY_OWNER")), false);
   assert.equal(isRetryableDelivery(new RelayError(400, "VALIDATION_ERROR")), false);
   assert.equal(isRetryableDelivery(new Error("network")), true);
 });

@@ -1,6 +1,6 @@
 import { TransformStream as WebTransformStream, type ReadableStream as WebReadableStream } from "node:stream/web";
 import { z } from "zod";
-import type { MediaLocation, PhoneNumberFacts } from "../../domain/whatsapp-cloud.js";
+import type { AppDataSyncType, ListedPhoneNumber, MediaLocation, PhoneNumberFacts } from "../../domain/whatsapp-cloud.js";
 import { MEDIA_MAX_BYTES } from "../../domain/whatsapp-cloud.js";
 
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -13,6 +13,7 @@ const RETRY_BASE_MS = 300;
 export const META_CREDENTIAL_CODES: ReadonlySet<number> = new Set([190, 10, 102, ...Array.from({ length: 100 }, (_, i) => 200 + i)]);
 export const META_ERROR_REENGAGEMENT = 131047;
 export const META_ERROR_PIN_MISMATCH = 133005;
+export const META_ERROR_INVALID_PARAMETER = 100;
 // 130429 rate limit, 131056 pair rate, 80007 throughput, 131048 spam rate, 4/17/32/613 app and user limits: "later", not "no".
 export const META_THROTTLE_CODES: ReadonlySet<number> = new Set([130429, 131056, 80007, 131048, 4, 17, 32, 613]);
 // Media URLs Meta hands out live on its own CDN; the bearer goes nowhere else.
@@ -30,7 +31,19 @@ const SendResponse = z.object({ messages: z.array(z.object({ id: z.string().min(
 const PhoneNumber = z.object({
   display_phone_number: z.string(),
   verified_name: z.string().default(""),
+  is_on_biz_app: z.boolean().optional(),
 });
+const PhoneNumberList = z.object({
+  data: z.array(
+    z.object({
+      id: z.string().min(1),
+      display_phone_number: z.string(),
+      verified_name: z.string().default(""),
+      is_on_biz_app: z.boolean().optional(),
+    }),
+  ),
+});
+const SyncStarted = z.object({ request_id: z.string().min(1) });
 const Media = z.object({
   url: z.string().url(),
   mime_type: z.string(),
@@ -86,9 +99,23 @@ export class MetaGraphClient {
   }
 
   async getPhoneNumber(phoneNumberId: string, token: string): Promise<PhoneNumberFacts> {
-    const params = new URLSearchParams({ fields: "display_phone_number,verified_name" });
-    const parsed = PhoneNumber.parse(await this.request("GET", `${phoneNumberId}?${params}`, token, undefined, { retry: true }));
-    return { displayPhoneNumber: normalizeDisplayNumber(parsed.display_phone_number), verifiedName: parsed.verified_name };
+    const read = (fields: string) =>
+      this.request("GET", `${phoneNumberId}?${new URLSearchParams({ fields })}`, token, undefined, { retry: true });
+    return toFacts(PhoneNumber.parse(await withBizAppField(read, "display_phone_number,verified_name")));
+  }
+
+  async listPhoneNumbers(wabaId: string, token: string): Promise<ListedPhoneNumber[]> {
+    const read = (fields: string) =>
+      this.request("GET", `${wabaId}/phone_numbers?${new URLSearchParams({ fields })}`, token, undefined, { retry: true });
+    const parsed = PhoneNumberList.parse(await withBizAppField(read, "id,display_phone_number,verified_name"));
+    return parsed.data.map((n) => ({ id: n.id, ...toFacts(n) }));
+  }
+
+  // Not retried: Meta runs each sync once per onboarding, so an ambiguous failure must not become a second request.
+  async startAppDataSync(phoneNumberId: string, token: string, syncType: AppDataSyncType): Promise<void> {
+    SyncStarted.parse(
+      await this.request("POST", `${phoneNumberId}/smb_app_data`, token, { messaging_product: "whatsapp", sync_type: syncType }),
+    );
   }
 
   // Not retried: a second attempt after an ambiguous failure would be a second message.
@@ -257,6 +284,24 @@ function hostOf(url: string): string {
   } catch {
     return "invalid-url";
   }
+}
+
+// Meta documents is_on_biz_app only for coexistence partners; an app it does not tell it to gets #100, so read without it.
+async function withBizAppField(read: (fields: string) => Promise<unknown>, fields: string): Promise<unknown> {
+  try {
+    return await read(`${fields},is_on_biz_app`);
+  } catch (err) {
+    if (err instanceof MetaGraphError && err.code === META_ERROR_INVALID_PARAMETER) return read(fields);
+    throw err;
+  }
+}
+
+function toFacts(number: z.infer<typeof PhoneNumber>): PhoneNumberFacts {
+  return {
+    displayPhoneNumber: normalizeDisplayNumber(number.display_phone_number),
+    verifiedName: number.verified_name,
+    isOnBizApp: number.is_on_biz_app ?? null,
+  };
 }
 
 function normalizeDisplayNumber(raw: string): string {

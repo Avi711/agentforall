@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MetaGraphOAuth, MetaOAuthError } from "../../src/lib/whatsapp-cloud/meta-oauth";
 import { WhatsappCloudConnectBodySchema } from "../../src/lib/whatsapp-cloud/schemas";
+import { WhatsappCloudService, type WhatsappCloudConnectInput } from "../../src/lib/whatsapp-cloud/service";
 
 function fakeFetch(responses: Array<{ status: number; body: string }>) {
   const urls: string[] = [];
@@ -74,4 +75,39 @@ test("a 2xx Meta cannot be read is reported as Meta's fault, and the single-use 
     return true;
   });
   assert.equal(urls.length, 1);
+});
+
+test("the connect body needs the number and the business unless the number stays in the WhatsApp Business app, which never takes a PIN", () => {
+  const base = { code: "c", wabaId: "1000" };
+  assert.equal(WhatsappCloudConnectBodySchema.safeParse({ ...base, phoneNumberId: "2000", businessId: "3000" }).success, true);
+  assert.equal(WhatsappCloudConnectBodySchema.safeParse(base).success, false);
+  assert.equal(WhatsappCloudConnectBodySchema.safeParse({ ...base, phoneNumberId: "2000" }).success, false);
+  assert.equal(WhatsappCloudConnectBodySchema.safeParse({ ...base, coexistence: true }).success, true);
+  assert.equal(WhatsappCloudConnectBodySchema.safeParse({ ...base, coexistence: true, phoneNumberId: "2000", businessId: "3000" }).success, true);
+  assert.equal(WhatsappCloudConnectBodySchema.safeParse({ ...base, coexistence: true, pin: "123456" }).success, false);
+});
+
+test("the service hands the WhatsApp Business app flag and whatever ids Meta gave straight to the orchestrator", async () => {
+  const calls: WhatsappCloudConnectInput[] = [];
+  const view = { status: "connected" as const, phoneNumberId: "2000", wabaId: "1000", displayPhoneNumber: "+972501112233", verifiedName: "Shop", health: "ok" as const, syncPending: false };
+  const port = {
+    connectWhatsappCloud: async (_userId: string, _botId: string, input: WhatsappCloudConnectInput) => {
+      calls.push(input);
+      return view;
+    },
+    getWhatsappCloudStatus: async () => view,
+    disconnectWhatsappCloud: async () => {},
+  };
+  const service = new WhatsappCloudService(port, { exchangeCode: async () => "biz-token" }, () => true);
+
+  await service.connect("user-1", "bot-1", { code: "c", wabaId: "1000", coexistence: true });
+
+  assert.deepEqual(calls, [{ accessToken: "biz-token", wabaId: "1000", coexistence: true }]);
+});
+
+test("a status from an orchestrator that predates the sync field reads as nothing pending", async () => {
+  const { WhatsappCloudViewSchema } = await import("../../src/lib/orchestrator/types");
+  const view = WhatsappCloudViewSchema.parse({ status: "connected", phoneNumberId: "2000", wabaId: "1000", displayPhoneNumber: "+972501112233", verifiedName: "Shop", health: "ok" });
+
+  assert.equal(view.syncPending, false);
 });

@@ -1,0 +1,631 @@
+<title>WhatsApp Business Channel Map</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --ground: #f4f6f3;
+    --surface: #ffffff;
+    --ink: #1a201c;
+    --muted: #5d6862;
+    --line: #c8d2cb;
+    --path: #0f7a5c;      /* the customer's message and its reply */
+    --path-soft: #dcefe6;
+    --trust: #b46f14;     /* secrets and the boundaries that hold them */
+    --trust-soft: #f6e8d2;
+    --deny: #9a3b2f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #111613;
+      --surface: #191f1b;
+      --ink: #e6ebe7;
+      --muted: #9aa69e;
+      --line: #2f3a34;
+      --path: #43c496;
+      --path-soft: #17332a;
+      --trust: #e2a24f;
+      --trust-soft: #3a2c15;
+      --deny: #e07a6a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #111613;
+    --surface: #191f1b;
+    --ink: #e6ebe7;
+    --muted: #9aa69e;
+    --line: #2f3a34;
+    --path: #43c496;
+    --path-soft: #17332a;
+    --trust: #e2a24f;
+    --trust-soft: #3a2c15;
+    --deny: #e07a6a;
+  }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.55;
+  }
+  main { max-width: 980px; margin: 0 auto; padding: 40px 24px 72px; }
+  header { margin-bottom: 36px; }
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+  }
+  h1 {
+    font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", sans-serif;
+    font-weight: 600; font-size: 34px; line-height: 1.1; margin: 6px 0 12px; text-wrap: balance;
+  }
+  h2 {
+    font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", sans-serif;
+    font-weight: 600; font-size: 22px; margin: 0 0 6px; text-wrap: balance;
+  }
+  p { max-width: 68ch; margin: 0 0 12px; }
+  .lede { color: var(--muted); font-size: 16px; }
+  section { margin-top: 44px; }
+  figure { margin: 18px 0 0; background: var(--surface); border: 1px solid var(--line); padding: 18px 18px 12px; overflow-x: auto; }
+  svg { display: block; width: 100%; height: auto; max-width: 100%; color: var(--ink); font-family: "IBM Plex Sans", sans-serif; }
+  figcaption { font-size: 13px; color: var(--muted); margin-top: 10px; max-width: 80ch; }
+  .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px 28px; margin: 16px 0 0; padding: 0; list-style: none; }
+  .notes li { font-size: 14px; padding-left: 14px; position: relative; }
+  .notes li::before { content: ""; position: absolute; left: 0; top: 9px; width: 6px; height: 6px; background: var(--path); }
+  .notes li.trust::before { background: var(--trust); }
+  code { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.92em; }
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; font-size: 13px; color: var(--muted); margin-top: 14px; }
+  .legend span { display: inline-flex; align-items: center; gap: 8px; }
+  .swatch { width: 26px; height: 0; border-top: 3px solid var(--path); }
+  .swatch.trust { border-top: 2px dashed var(--trust); }
+  .swatch.plain { border-top: 2px solid currentColor; }
+  .ways-wrap { margin-top: 18px; overflow-x: auto; background: var(--surface); border: 1px solid var(--line); padding: 4px 18px; }
+  .ways { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 14px; }
+  .ways th {
+    text-align: left; font-family: "IBM Plex Mono", ui-monospace, monospace; font-weight: 500;
+    font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
+    padding: 12px 16px 8px 0; border-bottom: 1px solid var(--line);
+  }
+  .ways td { padding: 10px 16px 10px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .ways tr:last-child td { border-bottom: 0; }
+  .ways td code { white-space: nowrap; }
+  .ways .yes { color: var(--path); font-weight: 500; }
+  .ways .no { color: var(--deny); font-weight: 500; }
+  .qa-group { margin-top: 24px; }
+  .qa-group h3 {
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-weight: 500;
+    font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px;
+  }
+  .qa { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr)); gap: 16px 32px; margin: 0; }
+  .qa div { border-top: 1px solid var(--line); padding-top: 10px; }
+  .qa dt {
+    font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", sans-serif; font-weight: 600;
+    font-size: 16px; line-height: 1.3; text-wrap: balance;
+  }
+  .qa dd { margin: 4px 0 0; font-size: 14px; }
+</style>
+
+<main>
+  <header>
+    <div class="eyebrow">agent-forall · whatsapp_cloud channel</div>
+    <h1>How a customer's WhatsApp message reaches the bot, and how the reply gets back</h1>
+    <p class="lede">Four pictures and the questions asked along the way: the live message path, the one-time connect, who is allowed to do what inside one agent, and how the orchestrator talks to the database. Green is the customer's message and its reply; amber dashed lines are trust boundaries that a secret never crosses.</p>
+    <div class="legend">
+      <span><i class="swatch"></i>message path</span>
+      <span><i class="swatch trust"></i>trust boundary</span>
+      <span><i class="swatch plain"></i>control, config, credentials</span>
+    </div>
+  </header>
+
+  <section>
+    <h2>1 · The live path: inbound is pulled, never pushed into a container</h2>
+    <p>Meta posts every message to one public URL. That URL only writes to the database. The bot's own container asks its orchestrator for work, so nothing on the internet ever has a route into a tenant.</p>
+    <figure>
+      <svg viewBox="0 0 960 470" role="img" aria-label="A customer message travels from WhatsApp through Meta to the Vercel webhook, is stored in the Supabase inbox, is leased by the orchestrator on the tenant's VM, pulled by the channel plugin inside the tenant container, answered by the OpenClaw agent, and the reply is sent back through the orchestrator relay to Meta and the customer.">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+          <marker id="arg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--path)"/>
+          </marker>
+        </defs>
+
+        <!-- zones -->
+        <rect x="16" y="20" width="230" height="430" fill="none" stroke="var(--trust)" stroke-dasharray="6 5" stroke-width="1.5"/>
+        <text x="28" y="40" font-size="11" fill="var(--trust)" letter-spacing="1.5">INTERNET</text>
+        <rect x="262" y="20" width="200" height="430" fill="none" stroke="var(--trust)" stroke-dasharray="6 5" stroke-width="1.5"/>
+        <text x="274" y="40" font-size="11" fill="var(--trust)" letter-spacing="1.5">VERCEL + SUPABASE</text>
+        <rect x="478" y="20" width="466" height="430" fill="none" stroke="var(--trust)" stroke-dasharray="6 5" stroke-width="1.5"/>
+        <text x="490" y="40" font-size="11" fill="var(--trust)" letter-spacing="1.5">VM · tenant-net (private)</text>
+        <rect x="700" y="60" width="228" height="376" fill="var(--path-soft)" stroke="var(--line)"/>
+        <text x="712" y="80" font-size="11" fill="var(--muted)" letter-spacing="1.5">TENANT CONTAINER</text>
+
+        <!-- boxes -->
+        <g font-size="13" text-anchor="middle">
+          <rect x="40" y="110" width="180" height="46" rx="4" fill="var(--surface)" stroke="currentColor"/>
+          <text x="130" y="130">Customer's phone</text>
+          <text x="130" y="147" font-size="11" fill="var(--muted)">writes to the business number</text>
+
+          <rect x="40" y="290" width="180" height="46" rx="4" fill="var(--surface)" stroke="currentColor"/>
+          <text x="130" y="310">Meta Cloud API</text>
+          <text x="130" y="327" font-size="11" fill="var(--muted)">graph.facebook.com</text>
+
+          <rect x="282" y="110" width="160" height="58" rx="4" fill="var(--surface)" stroke="currentColor"/>
+          <text x="362" y="131">Webhook ingress</text>
+          <text x="362" y="147" font-size="11" fill="var(--muted)">/api/webhooks/whatsapp-cloud</text>
+          <text x="362" y="160" font-size="11" fill="var(--muted)">verify HMAC · only writes</text>
+
+          <rect x="282" y="250" width="160" height="58" rx="4" fill="var(--surface)" stroke="currentColor"/>
+          <text x="362" y="271">Inbox table</text>
+          <text x="362" y="287" font-size="11" fill="var(--muted)">whatsapp_cloud_inbox</text>
+          <text x="362" y="300" font-size="11" fill="var(--muted)">wamid unique · lease · ack</text>
+
+          <rect x="500" y="110" width="176" height="58" rx="4" fill="var(--surface)" stroke="currentColor"/>
+          <text x="588" y="131">Orchestrator</text>
+          <text x="588" y="147" font-size="11" fill="var(--muted)">inbox dispatcher</text>
+          <text x="588" y="160" font-size="11" fill="var(--muted)">LISTEN/NOTIFY wake · 500 ms fallback</text>
+
+          <rect x="500" y="290" width="176" height="58" rx="4" fill="var(--surface)" stroke="currentColor"/>
+          <text x="588" y="311">Orchestrator relay</text>
+          <text x="588" y="327" font-size="11" fill="var(--muted)">holds the client's Meta token</text>
+          <text x="588" y="340" font-size="11" fill="var(--muted)">24h window · rate limit · audit</text>
+
+          <rect x="722" y="110" width="184" height="58" rx="4" fill="var(--surface)" stroke="currentColor"/>
+          <text x="814" y="131">Channel plugin</text>
+          <text x="814" y="147" font-size="11" fill="var(--muted)">agentforall-whatsapp-cloud</text>
+          <text x="814" y="160" font-size="11" fill="var(--muted)">has only a relay token</text>
+
+          <rect x="722" y="290" width="184" height="58" rx="4" fill="var(--surface)" stroke="currentColor"/>
+          <text x="814" y="311">OpenClaw agent</text>
+          <text x="814" y="327" font-size="11" fill="var(--muted)">one session per customer</text>
+          <text x="814" y="340" font-size="11" fill="var(--muted)">same brain as the owner's</text>
+        </g>
+
+        <!-- inbound path (green) -->
+        <g stroke="var(--path)" stroke-width="2.5" fill="none" marker-end="url(#arg)">
+          <path d="M152,156 L152,290"/>
+          <path d="M220,313 L262,313 L262,139 L282,139"/>
+          <path d="M362,168 L362,250"/>
+          <path d="M442,279 L470,279 L470,139 L500,139"/>
+          <path d="M676,139 L722,139"/>
+          <path d="M814,168 L814,290"/>
+        </g>
+        <!-- reply path (green, back) -->
+        <g stroke="var(--path)" stroke-width="2.5" fill="none" marker-end="url(#arg)">
+          <path d="M722,319 L676,319"/>
+          <path d="M500,319 L470,319 L470,413 L130,413 L130,336"/>
+          <path d="M108,290 L108,156"/>
+        </g>
+
+        <!-- labels on arrows -->
+        <g font-size="11" fill="var(--path)">
+          <text x="160" y="230">1 · message</text>
+          <text x="226" y="210" transform="rotate(-90 226 210)" text-anchor="middle">2 · signed webhook</text>
+          <text x="370" y="212">3 · INSERT, dup = no-op</text>
+          <text x="452" y="210" transform="rotate(-90 452 210)" text-anchor="middle">4 · lease</text>
+          <text x="699" y="128" text-anchor="middle">5</text>
+          <text x="822" y="230">6 · agent turn</text>
+          <text x="699" y="308" text-anchor="middle">7</text>
+          <text x="300" y="404">8 · POST /messages with the client's token</text>
+          <text x="96" y="230" transform="rotate(-90 96 230)" text-anchor="middle">9 · reply</text>
+        </g>
+        <text x="712" y="226" font-size="11" fill="var(--muted)">5 · GET /inbox?wait=25s, then ack</text>
+        <text x="712" y="380" font-size="11" fill="var(--muted)">7 · POST /send (bearer)</text>
+      </svg>
+      <figcaption>Steps 1–9 of one customer message. The plugin polls the orchestrator the way Telegram bots poll Telegram; if the orchestrator is down the ingress still stores, and if the container is down nothing is leased on its behalf.</figcaption>
+    </figure>
+    <ul class="notes">
+      <li>Meta retries a webhook for up to 7 days and can deliver twice; the <code>wamid</code> unique index makes every repeat a no-op, and the marker is kept for 8 days.</li>
+      <li>The ack happens after the agent turn finished, so a crash mid-turn redelivers instead of losing the message. A reply that was already written is resent from the plugin's queue, not asked of the model again.</li>
+      <li>Each customer has their own lane: their messages stay in order, and up to eight customers are answered at the same time. One slow conversation never blocks the others.</li>
+      <li>The orchestrator leases at most 50 messages per bot per tick, so one flooded number cannot starve the other bots on the VM.</li>
+      <li class="trust">The container never holds a Meta credential. It holds one relay bearer that identifies the bot; the orchestrator decides which number that bot may send from.</li>
+      <li class="trust">The relay refuses a send to anyone whose last inbound is older than 24 hours — Meta's rule, enforced by us, not trusted to the model.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>2 · Connect once: the client's number, our app, their token</h2>
+    <p>The client never sees Meta's developer tools. Our one app asks Meta for permission to act on their number; Meta hands back a token scoped to that number only.</p>
+    <figure>
+      <svg viewBox="0 0 960 330" role="img" aria-label="The owner clicks connect in the dashboard, Meta's Embedded Signup popup returns a short-lived code and the number ids, the web app exchanges the code with the app secret for a business token, forwards it to the orchestrator, which subscribes the webhook and registers the number at Meta, stores the token encrypted, and hot-applies the channel config into the tenant container.">
+        <g font-size="13" text-anchor="middle">
+          <rect x="24" y="90" width="150" height="54" rx="4" fill="var(--surface)" stroke="currentColor"/>
+          <text x="99" y="112">Dashboard</text>
+          <text x="99" y="128" font-size="11" fill="var(--muted)">"חבר WhatsApp Business"</text>
+
+          <rect x="220" y="90" width="150" height="54" rx="4" fill="var(--surface)" stroke="currentColor"/>
+          <text x="295" y="112">Meta popup</text>
+          <text x="295" y="128" font-size="11" fill="var(--muted)">Embedded Signup v4</text>
+
+          <rect x="416" y="90" width="150" height="54" rx="4" fill="var(--surface)" stroke="currentColor"/>
+          <text x="491" y="112">Web (Vercel)</text>
+          <text x="491" y="128" font-size="11" fill="var(--trust)">holds the app secret</text>
+
+          <rect x="612" y="90" width="150" height="54" rx="4" fill="var(--surface)" stroke="currentColor"/>
+          <text x="687" y="112">Orchestrator</text>
+          <text x="687" y="128" font-size="11" fill="var(--trust)">stores the token, encrypted</text>
+
+          <rect x="808" y="90" width="130" height="54" rx="4" fill="var(--path-soft)" stroke="var(--line)"/>
+          <text x="873" y="112">Tenant container</text>
+          <text x="873" y="128" font-size="11" fill="var(--muted)">config hot-applies</text>
+
+          <rect x="416" y="230" width="346" height="54" rx="4" fill="var(--surface)" stroke="currentColor"/>
+          <text x="589" y="252">Meta Graph API</text>
+          <text x="589" y="268" font-size="11" fill="var(--muted)">oauth/access_token · conflict check · subscribed_apps · register(pin) · phone facts</text>
+        </g>
+        <g stroke="currentColor" stroke-width="1.6" fill="none" marker-end="url(#ar)">
+          <path d="M174,117 L220,117"/>
+          <path d="M370,117 L416,117"/>
+          <path d="M566,117 L612,117"/>
+          <path d="M762,117 L808,117"/>
+          <path d="M491,144 L491,230"/>
+          <path d="M687,144 L687,230"/>
+        </g>
+        <g font-size="11" fill="var(--muted)" text-anchor="middle">
+          <text x="197" y="105">click</text>
+          <text x="393" y="98">code (30 s)</text>
+          <text x="393" y="111">+ number ids</text>
+          <text x="589" y="105">business token</text>
+          <text x="785" y="105">channel block</text>
+          <text x="785" y="118">+ relay token</text>
+        </g>
+        <text x="497" y="190" font-size="11" fill="var(--muted)">code + app secret → token</text>
+        <text x="693" y="190" font-size="11" fill="var(--muted)">subscribe webhook, register number</text>
+        <text x="24" y="40" font-size="12" fill="var(--muted)">Owner: Facebook login → pick or create their business → verify the number by SMS. About five minutes; nothing on the phone.</text>
+        <text x="24" y="310" font-size="12" fill="var(--muted)">Every Meta step is idempotent, so a half-finished connect is simply run again. Nothing here restarts the container.</text>
+      </svg>
+      <figcaption>Connect is one click for the owner. The app secret lives only on the web side, the client's token only on the orchestrator, and the container receives a relay token that can address exactly one bot. A number already live on another bot is refused before Meta is touched; the number's two-step PIN is kept encrypted so a reconnect works, and if Meta knows a different PIN the dashboard asks the owner for it.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>3 · One agent, two doors: privilege follows who is talking</h2>
+    <p>Not two bots. The same persona and memory answer on both numbers; what differs is which tools exist in the session, decided by the sender's identity before the model sees a word.</p>
+    <figure>
+      <svg viewBox="0 0 960 400" role="img" aria-label="The owner reaches the agent over Telegram or their own phone with every tool available; a customer reaches the same agent over the business number in a per-phone session with all tools denied except escalation. Escalation is a plain Telegram message the orchestrator sends the owner through the tenant's own bot, with no agent turn on the owner's side. A handoff flag stored by the orchestrator switches a conversation between bot and human.">
+        <rect x="330" y="30" width="300" height="340" fill="var(--path-soft)" stroke="var(--line)"/>
+        <text x="342" y="50" font-size="11" fill="var(--muted)" letter-spacing="1.5">TENANT CONTAINER · ONE AGENT</text>
+
+        <g font-size="13" text-anchor="middle">
+          <rect x="40" y="90" width="200" height="72" rx="4" fill="var(--surface)" stroke="currentColor"/>
+          <text x="140" y="112">Owner</text>
+          <text x="140" y="128" font-size="11" fill="var(--muted)">Telegram, or their own phone</text>
+          <text x="140" y="144" font-size="11" fill="var(--muted)">identity: telegram:&lt;id&gt;, e164</text>
+
+          <rect x="40" y="260" width="200" height="72" rx="4" fill="var(--surface)" stroke="currentColor"/>
+          <text x="140" y="282">Customer</text>
+          <text x="140" y="298" font-size="11" fill="var(--muted)">the business number</text>
+          <text x="140" y="314" font-size="11" fill="var(--muted)">identity: anyone else ("*")</text>
+
+          <rect x="360" y="90" width="240" height="72" rx="4" fill="var(--surface)" stroke="var(--path)" stroke-width="2"/>
+          <text x="480" y="112">Owner session</text>
+          <text x="480" y="128" font-size="11" fill="var(--muted)">all tools · integrations · memory</text>
+          <text x="480" y="144" font-size="11" fill="var(--muted)">+ whatsapp_cloud_reply, _handoff</text>
+
+          <rect x="360" y="260" width="240" height="72" rx="4" fill="var(--surface)" stroke="var(--deny)" stroke-width="2"/>
+          <text x="480" y="282">Customer session (per phone)</text>
+          <text x="480" y="298" font-size="11" fill="var(--deny)">no exec · fs · sessions · messaging · browser</text>
+          <text x="480" y="314" font-size="11" fill="var(--deny)">no media generation · integrations · memory</text>
+
+          <rect x="700" y="90" width="230" height="72" rx="4" fill="var(--surface)" stroke="currentColor"/>
+          <text x="815" y="112">Orchestrator ledger</text>
+          <text x="815" y="128" font-size="11" fill="var(--muted)">per conversation: mode = bot | human</text>
+          <text x="815" y="144" font-size="11" fill="var(--muted)">last inbound (24h window)</text>
+
+          <rect x="700" y="260" width="230" height="72" rx="4" fill="var(--surface)" stroke="currentColor"/>
+          <text x="815" y="282">Telegram Bot API (orchestrator)</text>
+          <text x="815" y="298" font-size="11" fill="var(--muted)">deliver to: owner, channel: telegram</text>
+          <text x="815" y="314" font-size="11" fill="var(--muted)">target set by config, not by the model</text>
+        </g>
+
+        <g stroke="currentColor" stroke-width="1.6" fill="none" marker-end="url(#ar)">
+          <path d="M240,126 L360,126"/>
+          <path d="M240,296 L360,296"/>
+          <path d="M600,126 L700,126"/>
+          <path d="M600,296 L700,296"/>
+          <path d="M815,260 L815,220 L480,220 L480,162" stroke-dasharray="5 4"/>
+        </g>
+        <g font-size="11" fill="var(--muted)" text-anchor="middle">
+          <text x="300" y="118">toolsBySender: {}</text>
+          <text x="300" y="288">toolsBySender: "*"</text>
+          <text x="650" y="118">handoff: "אני לוקח את 052…"</text>
+          <text x="650" y="288">only allowed tool:</text>
+          <text x="650" y="301">whatsapp_cloud_escalate</text>
+          <text x="640" y="212">owner notified on Telegram</text>
+        </g>
+        <rect x="360" y="180" width="240" height="1" fill="var(--line)"/>
+        <text x="480" y="200" font-size="11" fill="var(--muted)" text-anchor="middle">same SOUL, same memory, same model</text>
+      </svg>
+      <figcaption>A jailbreak in a customer session can produce a bad answer, not a bad action: the tools that would act are not there, including the browser and media generation. Escalation is about the session's own customer only, at most once per two minutes, and the owner receives it fenced as text to read, not as instructions. A handoff flag in the orchestrator silences the bot for one customer until the owner says "תמשיך".</figcaption>
+    </figure>
+    <ul class="notes">
+      <li>OpenClaw's sandbox was rejected: it needs a Docker socket inside the tenant container. Denying tools is the stronger control anyway.</li>
+      <li>The deny list names every tool group OpenClaw 2026.8.2 defines, and a test pins the exact list, so a group added by a future release is a deliberate edit, not a silent hole.</li>
+      <li class="trust">The relay's rate limit is per calling container, keyed by its network address, so one container cannot use up another's budget, and forged headers or invented bot ids do not buy it new ones.</li>
+      <li class="trust">The global cross-channel send flag stays off. The owner's reply into a customer chat is an owner-only tool; the escalation to the owner is a plain Telegram message sent by the orchestrator with the tenant's bot token. No model reads it on the owner's side, so customer text can never become an instruction there.</li>
+      <li class="trust">The gateway's webhook endpoint (<code>/hooks/agent</code>) is not opened: a hook-triggered turn skips the per-sender tool policy and would have run with every tool.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>4 · Database connections: borrowed or held</h2>
+    <p>Every arrow into Postgres ends at a real server process with its own memory, and a database has only a limited number of them. The pooler lets many callers share those processes; its mode decides whether a caller keeps a connection or only borrows one for a moment.</p>
+    <figure>
+      <svg viewBox="0 0 960 350" role="img" aria-label="Three callers reach Postgres through Supabase. Orchestrator queries and the inbox listener go through the pooler's session mode on port 5432, where a connection stays with its caller; the listener cannot use the transaction mode on port 6543, which lends a connection for one transaction only and suits many short-lived callers such as Vercel functions. A direct connection bypasses the pooler. On the right, Postgres is drawn as a limited set of process slots.">
+        <!-- the pooler -->
+        <rect x="330" y="24" width="260" height="222" fill="none" stroke="var(--line)" stroke-width="1.5"/>
+        <text x="342" y="42" font-size="11" fill="var(--muted)" letter-spacing="1.5">SUPABASE POOLER · pooler host</text>
+
+        <g font-size="13" text-anchor="middle">
+          <!-- callers -->
+          <rect x="24" y="56" width="220" height="58" rx="4" fill="var(--surface)" stroke="currentColor"/>
+          <text x="134" y="79">Orchestrator queries</text>
+          <text x="134" y="97" font-size="11" fill="var(--muted)">borrow a connection, hand it back</text>
+
+          <rect x="24" y="146" width="220" height="64" rx="4" fill="var(--surface)" stroke="var(--path)" stroke-width="2"/>
+          <text x="134" y="168">Inbox listener</text>
+          <text x="134" y="185" font-size="11" fill="var(--muted)">holds one connection open</text>
+          <text x="134" y="200" font-size="11" fill="var(--muted)">LISTEN whatsapp_cloud_inbox</text>
+
+          <rect x="24" y="246" width="220" height="58" rx="4" fill="var(--surface)" stroke="currentColor"/>
+          <text x="134" y="269">Vercel functions</text>
+          <text x="134" y="287" font-size="11" fill="var(--muted)">many short-lived instances</text>
+
+          <!-- doors -->
+          <rect x="350" y="56" width="220" height="64" rx="4" fill="var(--surface)" stroke="currentColor"/>
+          <text x="460" y="78">port 5432 · session mode</text>
+          <text x="460" y="95" font-size="11" fill="var(--muted)">connection stays yours while connected</text>
+          <text x="460" y="110" font-size="11" fill="var(--path)">LISTEN works</text>
+
+          <rect x="350" y="156" width="220" height="64" rx="4" fill="var(--surface)" stroke="currentColor"/>
+          <text x="460" y="178">port 6543 · transaction mode</text>
+          <text x="460" y="195" font-size="11" fill="var(--muted)">connection lent for one transaction</text>
+          <text x="460" y="210" font-size="11" fill="var(--deny)">no LISTEN, no session state</text>
+
+          <rect x="350" y="270" width="220" height="64" rx="4" fill="var(--surface)" stroke="currentColor"/>
+          <text x="460" y="292">direct · db.&lt;project&gt;.supabase.co</text>
+          <text x="460" y="309" font-size="11" fill="var(--muted)">port 5432, no pooler in between</text>
+          <text x="460" y="324" font-size="11" fill="var(--muted)">IPv6 only unless the IPv4 add-on</text>
+
+          <!-- the database -->
+          <rect x="680" y="24" width="256" height="310" rx="4" fill="var(--surface)" stroke="currentColor"/>
+          <text x="808" y="48">Postgres (Supabase)</text>
+          <text x="808" y="65" font-size="11" fill="var(--muted)">one server process per real connection</text>
+        </g>
+
+        <!-- process slots: 6 × 4, illustrative -->
+        <g stroke="var(--path)" fill="var(--path-soft)">
+          <rect x="705" y="84" width="26" height="26"/>
+          <rect x="741" y="84" width="26" height="26"/>
+          <rect x="777" y="84" width="26" height="26"/>
+          <rect x="813" y="84" width="26" height="26"/>
+        </g>
+        <rect x="849" y="84" width="26" height="26" fill="var(--path)" stroke="var(--path)"/>
+        <g fill="var(--line)" stroke="var(--line)">
+          <rect x="705" y="120" width="26" height="26"/>
+          <rect x="741" y="120" width="26" height="26"/>
+          <rect x="777" y="120" width="26" height="26"/>
+        </g>
+        <g fill="var(--ground)" stroke="var(--line)">
+          <rect x="885" y="84" width="26" height="26"/>
+          <rect x="813" y="120" width="26" height="26"/>
+          <rect x="849" y="120" width="26" height="26"/>
+          <rect x="885" y="120" width="26" height="26"/>
+          <rect x="705" y="156" width="26" height="26"/>
+          <rect x="741" y="156" width="26" height="26"/>
+          <rect x="777" y="156" width="26" height="26"/>
+          <rect x="813" y="156" width="26" height="26"/>
+          <rect x="849" y="156" width="26" height="26"/>
+          <rect x="885" y="156" width="26" height="26"/>
+          <rect x="705" y="192" width="26" height="26"/>
+          <rect x="741" y="192" width="26" height="26"/>
+          <rect x="777" y="192" width="26" height="26"/>
+          <rect x="813" y="192" width="26" height="26"/>
+          <rect x="849" y="192" width="26" height="26"/>
+          <rect x="885" y="192" width="26" height="26"/>
+        </g>
+
+        <!-- slot key -->
+        <g font-size="11" fill="var(--muted)">
+          <rect x="705" y="238" width="12" height="12" fill="var(--path-soft)" stroke="var(--path)"/>
+          <text x="725" y="248">kept by the orchestrator's queries</text>
+          <rect x="705" y="260" width="12" height="12" fill="var(--path)" stroke="var(--path)"/>
+          <text x="725" y="270">held open by the listener</text>
+          <rect x="705" y="282" width="12" height="12" fill="var(--line)" stroke="var(--line)"/>
+          <text x="725" y="292">lent for one transaction at a time</text>
+          <rect x="705" y="304" width="12" height="12" fill="var(--ground)" stroke="var(--line)"/>
+          <text x="725" y="314">free — each one costs memory</text>
+        </g>
+
+        <!-- callers to doors -->
+        <g stroke="currentColor" stroke-width="1.6" fill="none" marker-end="url(#ar)">
+          <path d="M244,85 L350,85"/>
+          <path d="M244,275 L318,275 L318,210 L350,210"/>
+        </g>
+        <path d="M244,166 L300,166 L300,104 L350,104" stroke="var(--path)" stroke-width="2.5" fill="none" marker-end="url(#arg)"/>
+        <path d="M244,194 L350,194" stroke="var(--deny)" stroke-width="1.6" stroke-dasharray="5 4" fill="none"/>
+        <text x="330" y="199" font-size="13" fill="var(--deny)" text-anchor="middle">✕</text>
+
+        <!-- doors to the database -->
+        <g stroke="currentColor" stroke-width="1.6" fill="none" marker-end="url(#ar)">
+          <path d="M570,88 L680,88"/>
+          <path d="M570,188 L680,188"/>
+          <path d="M570,302 L680,302"/>
+        </g>
+
+        <g font-size="11" text-anchor="middle">
+          <text x="297" y="78" fill="var(--muted)">queries</text>
+          <text x="272" y="159" fill="var(--path)">wake-ups</text>
+          <text x="292" y="187" fill="var(--deny)">would lose LISTEN</text>
+          <text x="281" y="268" fill="var(--muted)">short calls</text>
+          <text x="625" y="82" fill="var(--muted)">held</text>
+          <text x="625" y="182" fill="var(--muted)">lent</text>
+          <text x="625" y="296" fill="var(--muted)">held</text>
+        </g>
+      </svg>
+      <figcaption>The pooler multiplies callers, not database capacity: every slot on the right is a real Postgres process, so small plans allow a few dozen to about a hundred at once. The slots are illustrative. The listener needs a slot of its own for as long as it runs, which is why only session mode or a direct connection can carry it.</figcaption>
+    </figure>
+
+    <div class="ways-wrap">
+      <table class="ways">
+        <thead>
+          <tr><th>Way in</th><th>Mode</th><th>The connection is yours for</th><th>Listening</th><th>Built for</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>pooler host :6543</code></td>
+            <td>Transaction</td>
+            <td>one transaction</td>
+            <td class="no">No</td>
+            <td>many short-lived callers, such as serverless functions</td>
+          </tr>
+          <tr>
+            <td><code>pooler host :5432</code></td>
+            <td>Session</td>
+            <td>as long as you stay connected</td>
+            <td class="yes">Yes</td>
+            <td>long-running servers, such as the orchestrator</td>
+          </tr>
+          <tr>
+            <td><code>db.&lt;project&gt;.supabase.co:5432</code></td>
+            <td>Direct</td>
+            <td>as long as you stay connected</td>
+            <td class="yes">Yes</td>
+            <td>tools that need the database itself; no pooler limits, no pooler protection</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <ul class="notes">
+      <li>A connection is a conversation that keeps state: a transaction in progress, locks being held, a LISTEN subscription. Opening one costs a network handshake, encryption, a password check and a new server process, so programs open connections once and reuse them.</li>
+      <li>Races are settled by Postgres, not by the pooler, and the same way in every mode: the lease locks the rows it takes with <code>FOR UPDATE SKIP LOCKED</code>, a duplicate webhook hits the <code>wamid</code> unique index, and a number can be bound to one bot only. Each is one statement or one transaction.</li>
+      <li>The listener reconnects on its own after a drop, waiting 1 s and doubling up to 30 s. While it is down the 500 ms poll carries every message, so a lost connection costs speed, never a message.</li>
+      <li class="trust">Production today: the orchestrator connects through the session pooler on port 5432, and the listener shares that one connection string; there is no second secret. Measured: through the session pooler a notification crossed between two connections in 67 ms, through the transaction pooler nothing arrived. The orchestrator refuses exactly that one host and port, and falls back to the poll.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>5 · The Meta app: what we set up</h2>
+    <p>The Meta app is our registration with Meta, the company behind WhatsApp. It is what lets our site connect a business's number and carry its messages. Set up on 2026-09-10.</p>
+    <ul class="notes">
+      <li><strong>Profile.</strong> Privacy, terms and data-deletion pages, the domain <code>agentforall.co.il</code>, a category and the logo. Meta requires these before it will publish the app.</li>
+      <li><strong>Connect button.</strong> Facebook's login script is allowed on our domain, so the “Connect WhatsApp” popup can open there.</li>
+      <li><strong>Connection settings.</strong> A signup configuration (ID <code>1111278448072808</code>) that asks the business for its WhatsApp account and permission to send and receive messages. Built from Meta's WhatsApp template; its tokens last 60 days.</li>
+      <li><strong>Webhook.</strong> Meta delivers incoming messages to <code>agentforall.co.il/api/webhooks/whatsapp-cloud</code>, checked with a shared verify token, subscribed to <code>messages</code>, <code>smb_message_echoes</code> and <code>account_update</code>, shown below.</li>
+      <li><strong>Coexistence.</strong> The Connect choice a client sees first: keep the number in the WhatsApp Business app and let the bot answer alongside. Meta registers nothing new, sends at 20 messages a second, and tells us each time the owner answers from the app, so the bot stops for that customer.</li>
+      <li><strong>Vercel.</strong> Holds the four values the site needs: app ID and configuration ID (public), app secret and verify token (secret).</li>
+      <li class="trust">Checked: Meta's test message and a real reply from a tester's phone both reached our server and passed the signature check, then stopped as an unknown number because no bot holds the test number yet. Meta's own test account had to be linked to our app by hand (<code>subscribed_apps</code>); a client's account is linked by the connect flow.</li>
+    </ul>
+
+    <figure>
+      <svg viewBox="0 0 960 250" role="img" aria-label="Meta calls our webhook with three kinds of events: messages when a customer writes, smb_message_echoes when the owner answers from the WhatsApp Business app, and account_update when the business removes our app. Each leads to one action.">
+        <defs>
+          <marker id="ar5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+        </defs>
+        <rect x="16" y="16" width="140" height="218" fill="var(--surface)" stroke="var(--line)"/>
+        <text x="86" y="118" text-anchor="middle" font-size="15" font-weight="600" fill="var(--ink)">Meta</text>
+        <text x="86" y="138" text-anchor="middle" font-size="11" fill="var(--muted)">calls our webhook</text>
+
+        <g font-size="13" fill="var(--ink)">
+          <line x1="156" y1="56" x2="232" y2="56" stroke="var(--path)" stroke-width="2" marker-end="url(#ar5)" color="var(--path)"/>
+          <rect x="236" y="30" width="262" height="52" fill="var(--path-soft)" stroke="var(--path)"/>
+          <text x="250" y="52" font-family="IBM Plex Mono, ui-monospace, monospace" font-size="12" fill="var(--ink)">messages</text>
+          <text x="250" y="71" font-size="12" fill="var(--muted)">a customer wrote</text>
+          <line x1="498" y1="56" x2="566" y2="56" stroke="var(--path)" stroke-width="2" marker-end="url(#ar5)" color="var(--path)"/>
+          <text x="576" y="52">The bot answers, or the owner</text>
+          <text x="576" y="70" fill="var(--muted)" font-size="12">if that customer is handed over</text>
+
+          <line x1="156" y1="126" x2="232" y2="126" stroke="var(--path)" stroke-width="2" marker-end="url(#ar5)" color="var(--path)"/>
+          <rect x="236" y="100" width="262" height="52" fill="var(--path-soft)" stroke="var(--path)"/>
+          <text x="250" y="122" font-family="IBM Plex Mono, ui-monospace, monospace" font-size="12" fill="var(--ink)">smb_message_echoes</text>
+          <text x="250" y="141" font-size="12" fill="var(--muted)">the owner answered in the app</text>
+          <line x1="498" y1="126" x2="566" y2="126" stroke="var(--path)" stroke-width="2" marker-end="url(#ar5)" color="var(--path)"/>
+          <text x="576" y="122">The bot steps back from that customer</text>
+          <text x="576" y="140" fill="var(--muted)" font-size="12">for 24 hours after the owner's last message</text>
+
+          <line x1="156" y1="196" x2="232" y2="196" stroke="var(--trust)" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#ar5)" color="var(--trust)"/>
+          <rect x="236" y="170" width="262" height="52" fill="var(--trust-soft)" stroke="var(--trust)"/>
+          <text x="250" y="192" font-family="IBM Plex Mono, ui-monospace, monospace" font-size="12" fill="var(--ink)">account_update</text>
+          <text x="250" y="211" font-size="12" fill="var(--muted)">the business removed our app</text>
+          <line x1="498" y1="196" x2="566" y2="196" stroke="var(--trust)" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#ar5)" color="var(--trust)"/>
+          <text x="576" y="192">We take the number off the bot</text>
+          <text x="576" y="210" fill="var(--muted)" font-size="12">and tell the owner on Telegram</text>
+        </g>
+      </svg>
+      <figcaption>The three events we subscribe to in Meta. All arrive at the same address, signed with our app secret; everything else Meta can send is switched off.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>6 · Questions asked along the way</h2>
+    <p>The questions that came up while this was designed and reviewed, each answered in a line or two.</p>
+    <div class="qa-group">
+      <h3>How it works</h3>
+      <dl class="qa">
+        <div><dt>Is the Postgres queue a hack instead of a message broker?</dt><dd>No. A table with <code>SKIP LOCKED</code> leases is the standard pattern (Solid Queue, pg-boss, Graphile Worker). A broker would add a component and a second failure mode, and we would still need the table for Meta's dedupe.</dd></div>
+        <div><dt>Is there a library for it?</dt><dd>pg-boss and Graphile Worker exist, but neither can hand a message out only while that bot's plugin is waiting on this VM. Ours is about 200 tested lines.</dd></div>
+        <div><dt>Is the plugin busy-waiting?</dt><dd>No. It holds one request open for up to 25 s and sleeps until an answer comes. That is long polling, the way Telegram bots fetch updates.</dd></div>
+        <div><dt>Does the orchestrator poll every 500 ms?</dt><dd>Only as a safety net: one indexed query, and only while a plugin is waiting. With the listener on, a NOTIFY wakes it at once.</dd></div>
+        <div><dt>Who sends the NOTIFY?</dt><dd>Postgres itself, when the webhook's insert commits. Every listening orchestrator hears it and acts only for bots waiting on it.</dd></div>
+        <div><dt>What is the inbox listener?</dt><dd>One database connection per orchestrator that only listens for those NOTIFYs. It reconnects on its own, and the poll covers any gap.</dd></div>
+        <div><dt>What is the token bucket?</dt><dd>A counter per number that refills at Meta's limit of 80 messages a second. When it is empty we answer 429 before Meta has to.</dd></div>
+        <div><dt>Does it cost more on Supabase?</dt><dd>No. Supabase bills by compute size, not by query. The polling is tiny index lookups, and none at all while no number is connected.</dd></div>
+        <div><dt>Does it work with several VMs?</dt><dd>Yes, as built. The webhook writes to the shared database, each orchestrator leases only for bots polling it, and <code>SKIP LOCKED</code> settles two racing.</dd></div>
+        <div><dt>Won't Vercel get expensive? Can it move to Cloud Run?</dt><dd>It is one signature check and one insert per webhook, roughly a dollar or two per million messages. The route is a thin shell over the ingress code, so moving it is easy.</dd></div>
+      </dl>
+    </div>
+    <div class="qa-group">
+      <h3>Customers and the owner</h3>
+      <dl class="qa">
+        <div><dt>What is an escalation?</dt><dd>The bot hands a customer to the owner: the orchestrator sends the owner a plain Telegram message. No AI runs on the owner's side.</dd></div>
+        <div><dt>How does the bot stop and resume for one customer?</dt><dd>A bot or human flag per customer. In human mode the plugin forwards each message to the owner and the bot stays silent until the owner flips it back.</dd></div>
+        <div><dt>Could a customer make the bot open a browser or read files?</dt><dd>No. A customer's session has every tool removed except escalation, decided by who is writing before the model sees a word.</dd></div>
+      </dl>
+    </div>
+    <div class="qa-group">
+      <h3>Connecting a number</h3>
+      <dl class="qa">
+        <div><dt>Do we have an OAuth flow with Meta?</dt><dd>Yes, Embedded Signup. The popup returns a 30-second code, our server trades it with the app secret for a token scoped to that client's number, and the orchestrator stores the token encrypted.</dd></div>
+        <div><dt>Which webhook?</dt><dd>The address Meta calls for every customer message: <code>agentforall.co.il/api/webhooks/whatsapp-cloud</code>. It is set once in the Meta app, subscribed to messages only.</dd></div>
+      </dl>
+    </div>
+    <div class="qa-group">
+      <h3>The database</h3>
+      <dl class="qa">
+        <div><dt>What changed in the database?</dt><dd>Four new tables (numbers, inbox, conversations, sends) and their indexes. Nothing that existed was touched.</dd></div>
+        <div><dt>What are conversations and sends?</dt><dd>Conversations: one row per customer, with the last message time for the 24-hour rule and who answers, bot or owner. Sends: an audit row per outgoing message, deleted after 90 days.</dd></div>
+        <div><dt>What are autovacuum and churn?</dt><dd>Churn is rows being inserted, updated and deleted all the time, which leaves old versions behind. Autovacuum cleans them up; on the inbox we made it run sooner.</dd></div>
+        <div><dt>Why does a database need connections at all?</dt><dd>A connection keeps state between queries, such as a transaction, locks or a subscription, and each one is a process on the server. So programs open a few and reuse them.</dd></div>
+        <div><dt>What is a pooler?</dt><dd>A middleman that lets many callers share a few real connections. Section 4 shows the three ways in.</dd></div>
+        <div><dt>Why did you first ask for a second secret?</dt><dd>I assumed production used transaction mode and did not check. It uses session mode on port 5432, so the existing connection string is enough.</dd></div>
+        <div><dt>Who handles races between two connections?</dt><dd>Postgres, with row locks, unique indexes and transactions. It works the same in every connection mode.</dd></div>
+      </dl>
+    </div>
+    <div class="qa-group">
+      <h3>Deploying</h3>
+      <dl class="qa">
+        <div><dt>What is the Caddy rule?</dt><dd>Caddy is the server's front door to the internet. The rule answers “not found” to anyone outside asking for the new internal addresses; our bots reach them from inside.</dd></div>
+        <div><dt>Can we deploy to a test environment?</dt><dd>There is none, so it went to production dark: the flag is off and nobody sees the channel until the rehearsal passes.</dd></div>
+      </dl>
+    </div>
+
+    <div class="qa-group">
+      <h3>The Meta app</h3>
+      <dl class="qa">
+        <div><dt>What is the Meta app?</dt><dd>Our registration with Meta. It lets our site connect a business's WhatsApp number and send and receive its messages.</dd></div>
+        <div><dt>What is “Connect WhatsApp”?</dt><dd>A button on the bot's page. The client logs in with Facebook in a Meta popup, picks their business number and approves; from then on the bot answers that number.</dd></div>
+        <div><dt>What does subscribing the webhook to messages mean?</dt><dd>Meta offers about 30 event types. We switched on only <code>messages</code>: customer messages and delivery receipts. Everything else stays off.</dd></div>
+        <div><dt>Is the verify token the same as the app secret?</dt><dd>No. The app secret is Meta's, shown in the app's settings. The verify token is a password we made up, entered in both Vercel and Meta's webhook form.</dd></div>
+        <div><dt>Why do tokens expire after 60 days?</dt><dd>Meta's WhatsApp signup template sets it and it cannot be changed. Tokens can be renewed before day 60, so a renewal job comes before any client connects.</dd></div>
+        <div><dt>Can a client keep the WhatsApp Business app?</dt><dd>Yes, and it is the default. The app stays on the phone and the bot answers alongside. When the owner answers a customer from the app, the bot steps back for that customer.</dd></div>
+        <div><dt>When does the bot answer that customer again?</dt><dd>24 hours after the owner's last message to them; every owner message restarts the clock. The owner can bring the bot back at once from Telegram. Chosen from what Meta's own Messenger handover, ManyChat and Zendesk do.</dd></div>
+        <div><dt>Who decides whether the bot or the owner answers?</dt><dd>One switch per customer, written only by our server. The owner flips it from Telegram (no timer), or by answering in the app (24 hours); right before sending, the bot checks it again.</dd></div>
+        <div><dt>Can a number that moved fully to the bot go back to the app?</dt><dd>Yes, after disconnecting. The app may ask for the two-step PIN we set; showing it to the owner is a follow-up.</dd></div>
+        <div><dt>Why subscribe to account_update?</dt><dd>A business can disconnect us from inside the WhatsApp Business app. This event tells us at once, so we take the number off the bot and tell the owner, instead of the dashboard showing “connected” until a later message fails.</dd></div>
+        <div><dt>Why didn't the first real message arrive?</dt><dd>Meta's test account was not linked to our app, only to Meta's own dashboard app. One API call linked it and the next message arrived. Clients' accounts are linked automatically when they connect.</dd></div>
+      </dl>
+    </div>
+  </section>
+</main>

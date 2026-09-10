@@ -7,13 +7,26 @@ import {
   whatsappCloudInbox,
   whatsappCloudNumbers,
   whatsappCloudSends,
+  WHATSAPP_CLOUD_OWNER_ECHO_KIND,
+  WHATSAPP_CLOUD_PARTNER_REMOVED_KIND,
 } from "@agent-forall/db";
 import { ConflictError } from "../domain/errors.js";
-import type { Conversation, ConversationMode, InboundMessage, SendKind } from "../domain/whatsapp-cloud.js";
+import {
+  APP_DATA_SYNC_TYPES,
+  PHONE_NUMBER_ID_PATTERN,
+  WA_ID_PATTERN,
+  isHeldByOwner,
+  type AppDataSyncType,
+  type Conversation,
+  type ConversationMode,
+  type InboxItem,
+  type SendKind,
+} from "../domain/whatsapp-cloud.js";
 import { decrypt, encrypt } from "../services/crypto.js";
 import { isUniqueViolation } from "./pg-errors.js";
 
 type DB = NodePgDatabase<Record<string, never>>;
+type Tx = Parameters<Parameters<DB["transaction"]>[0]>[0];
 type ConversationRow = typeof whatsappCloudConversations.$inferSelect;
 
 // A bot in either state never polls again; its number binding is dead weight for the webhook and a block for others.
@@ -21,12 +34,12 @@ const GONE_STATUSES = ["destroying", "destroyed"] as const;
 
 export interface LeasedMessage {
   instanceId: string;
-  message: InboundMessage;
+  item: InboxItem;
 }
 
 export interface LeaseResult {
   leased: LeasedMessage[];
-  // Rows whose payload is not a message; they are dropped here so the plugin never sees them.
+  // Rows whose payload is none of the known kinds; they are dropped here so the plugin never sees them.
   malformed: number;
 }
 
@@ -61,14 +74,21 @@ export interface NumberRecord {
   phoneNumberId: string;
   instanceId: string | null;
   wabaId: string;
-  pin: string;
+  pin: string | null;
+  appDataSynced: AppDataSyncType[];
+}
+
+export interface OwnerEchoHold {
+  id: bigint;
+  to: string;
+  at: Date;
 }
 
 export interface NumberBinding {
   phoneNumberId: string;
   instanceId: string;
   wabaId: string;
-  pin: string;
+  pin: string | null;
 }
 
 // Drizzle's raw execute leaves timestamps (and int8) as the wire text; the driver's own parser turns them back.
@@ -112,14 +132,15 @@ export class WhatsappCloudRepository {
       phoneNumberId: row.number.phoneNumberId,
       instanceId: bound ? row.number.instanceId : null,
       wabaId: row.number.wabaId,
-      pin: decrypt(row.number.pinEncrypted, this.encryptionKey),
+      pin: row.number.pinEncrypted === null ? null : decrypt(row.number.pinEncrypted, this.encryptionKey),
+      appDataSynced: APP_DATA_SYNC_TYPES.filter((syncType) => syncedAt(row.number, syncType) !== null),
     };
   }
 
   // Claims a free number or re-claims our own; a number live on another bot is a conflict, not a crash.
   async bindNumber(binding: NumberBinding): Promise<void> {
     const now = new Date();
-    const pinEncrypted = encrypt(binding.pin, this.encryptionKey);
+    const pinEncrypted = binding.pin === null ? null : encrypt(binding.pin, this.encryptionKey);
     let claimed: { phoneNumberId: string }[];
     try {
       claimed = await this.db
@@ -140,6 +161,21 @@ export class WhatsappCloudRepository {
       throw err;
     }
     if (claimed.length === 0) throw new ConflictError("this WhatsApp number is already connected to a bot");
+  }
+
+  async markAppDataSynced(phoneNumberId: string, syncType: AppDataSyncType, at: Date): Promise<void> {
+    await this.db
+      .update(whatsappCloudNumbers)
+      .set(syncType === "history" ? { historySyncedAt: at, updatedAt: at } : { contactsSyncedAt: at, updatedAt: at })
+      .where(eq(whatsappCloudNumbers.phoneNumberId, phoneNumberId));
+  }
+
+  // A new Meta signup needs its own syncs.
+  async clearAppDataSync(phoneNumberId: string): Promise<void> {
+    await this.db
+      .update(whatsappCloudNumbers)
+      .set({ contactsSyncedAt: null, historySyncedAt: null, updatedAt: new Date() })
+      .where(eq(whatsappCloudNumbers.phoneNumberId, phoneNumberId));
   }
 
   // Keeps the row (and its PIN) so the number can come back to any bot later.
@@ -180,8 +216,8 @@ export class WhatsappCloudRepository {
     const malformedIds: bigint[] = [];
     for (const raw of result.rows) {
       const row = LeasedRow.parse(raw);
-      const message = row ? toInbound(row) : null;
-      if (row && message) leased.push({ instanceId: row.instanceId, message });
+      const item = row ? toInboxItem(row) : null;
+      if (row && item) leased.push({ instanceId: row.instanceId, item });
       else if (typeof raw.id === "string" || typeof raw.id === "number") malformedIds.push(BigInt(raw.id));
     }
     if (malformedIds.length > 0) await this.drop(malformedIds);
@@ -233,7 +269,7 @@ export class WhatsappCloudRepository {
       );
     await this.db
       .delete(whatsappCloudConversations)
-      .where(and(lt(whatsappCloudConversations.updatedAt, input.deleteConversationsIdleBefore), eq(whatsappCloudConversations.mode, "bot")));
+      .where(lt(whatsappCloudConversations.updatedAt, input.deleteConversationsIdleBefore));
     await this.db.delete(whatsappCloudSends).where(lt(whatsappCloudSends.createdAt, input.deleteSendsBefore));
     const released = await this.db
       .update(whatsappCloudNumbers)
@@ -274,11 +310,44 @@ export class WhatsappCloudRepository {
       });
   }
 
+  // The owner answered from the WhatsApp Business app, or a customer asked for them on a bot with no Telegram.
+  async holdForOwner(instanceId: string, waId: string, at: Date, holdMs: number): Promise<boolean> {
+    return this.db.transaction((tx) => holdIn(tx, instanceId, waId, at, holdMs, new Date()));
+  }
+
+  // One transaction: a reply is never acked without its hold, nor held and then handed out again.
+  async applyOwnerEchoes(instanceId: string, echoes: OwnerEchoHold[], holdMs: number): Promise<string[]> {
+    if (echoes.length === 0) return [];
+    return this.db.transaction(async (tx) => {
+      const now = new Date();
+      const held: string[] = [];
+      // One lock order for every writer of these rows (the webhook sorts the same way), so no two wait on each other.
+      for (const echo of [...echoes].sort((a, b) => (a.to < b.to ? -1 : a.to > b.to ? 1 : 0))) {
+        if (await holdIn(tx, instanceId, echo.to, echo.at, holdMs, now)) held.push(echo.to);
+      }
+      await tx
+        .update(whatsappCloudInbox)
+        .set({ ackedAt: now, payload: null, leasedUntil: null })
+        .where(
+          and(
+            eq(whatsappCloudInbox.instanceId, instanceId),
+            inArray(
+              whatsappCloudInbox.id,
+              echoes.map((echo) => echo.id),
+            ),
+            isNull(whatsappCloudInbox.ackedAt),
+          ),
+        );
+      return held;
+    });
+  }
+
+  // The owner's own choice: open-ended, and it outranks any app reply written before it.
   async setMode(instanceId: string, waId: string, mode: ConversationMode): Promise<Conversation | null> {
     const now = new Date();
     const rows = await this.db
       .update(whatsappCloudConversations)
-      .set({ mode, updatedAt: now })
+      .set({ mode, heldUntil: null, modeChangedAt: now, updatedAt: now })
       .where(and(eq(whatsappCloudConversations.instanceId, instanceId), eq(whatsappCloudConversations.waId, waId)))
       .returning();
     const row = rows[0];
@@ -311,15 +380,26 @@ export class WhatsappCloudRepository {
 }
 
 function byDelivery(a: LeasedMessage, b: LeasedMessage): number {
-  const dt = a.message.timestamp.getTime() - b.message.timestamp.getTime();
+  const dt = a.item.timestamp.getTime() - b.item.timestamp.getTime();
   if (dt !== 0) return dt;
-  const ai = BigInt(a.message.id);
-  const bi = BigInt(b.message.id);
+  const ai = BigInt(a.item.id);
+  const bi = BigInt(b.item.id);
   return ai < bi ? -1 : ai > bi ? 1 : 0;
 }
 
-function toInbound(row: { id: string; wamid: string; waTimestamp: Date; payload: unknown }): InboundMessage | null {
-  if (!isRecord(row.payload) || typeof row.payload.from !== "string" || !isRecord(row.payload.message)) return null;
+function toInboxItem(row: { id: string; wamid: string; waTimestamp: Date; payload: unknown }): InboxItem | null {
+  if (!isRecord(row.payload)) return null;
+  if (row.payload.kind === WHATSAPP_CLOUD_OWNER_ECHO_KIND) {
+    const to = row.payload.to;
+    if (typeof to !== "string" || !WA_ID_PATTERN.test(to)) return null;
+    return { kind: WHATSAPP_CLOUD_OWNER_ECHO_KIND, id: row.id, wamid: row.wamid, to, timestamp: row.waTimestamp };
+  }
+  if (row.payload.kind === WHATSAPP_CLOUD_PARTNER_REMOVED_KIND) {
+    const wabaId = row.payload.wabaId;
+    if (typeof wabaId !== "string" || !PHONE_NUMBER_ID_PATTERN.test(wabaId)) return null;
+    return { kind: WHATSAPP_CLOUD_PARTNER_REMOVED_KIND, id: row.id, wamid: row.wamid, wabaId, timestamp: row.waTimestamp };
+  }
+  if (typeof row.payload.from !== "string" || !isRecord(row.payload.message)) return null;
   return {
     id: row.id,
     wamid: row.wamid,
@@ -338,10 +418,50 @@ function toConversation(row: ConversationRow): Conversation {
     lastInboundAt: row.lastInboundAt,
     lastOutboundAt: row.lastOutboundAt,
     mode: row.mode,
+    heldUntil: row.heldUntil,
+    modeChangedAt: row.modeChangedAt,
     updatedAt: row.updatedAt,
   };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// True when this changed who answers. A reply older than the owner's own last choice, or older than a hold, holds nothing.
+async function holdIn(tx: Tx, instanceId: string, waId: string, at: Date, holdMs: number, now: Date): Promise<boolean> {
+  const until = at.getTime() + holdMs;
+  if (until <= now.getTime()) return false;
+  const [row] = await tx
+    .select()
+    .from(whatsappCloudConversations)
+    .where(and(eq(whatsappCloudConversations.instanceId, instanceId), eq(whatsappCloudConversations.waId, waId)))
+    .for("update");
+  const current = row ? toConversation(row) : null;
+  if (current?.modeChangedAt && current.modeChangedAt.getTime() > at.getTime()) return false;
+  const wasHeld = current !== null && isHeldByOwner(current, now);
+  // A hold the owner chose has no end, and an app reply never gives it one.
+  const heldUntil = current?.mode === "human" && current.heldUntil === null ? null : new Date(Math.max(until, current?.heldUntil?.getTime() ?? 0));
+  const modeChangedAt = wasHeld && current ? current.modeChangedAt : at;
+  const updatedAt = sql`greatest(${whatsappCloudConversations.updatedAt}, excluded.updated_at)`;
+  await tx
+    .insert(whatsappCloudConversations)
+    .values({ instanceId, waId, mode: "human", heldUntil, modeChangedAt, updatedAt: now })
+    .onConflictDoUpdate({
+      target: [whatsappCloudConversations.instanceId, whatsappCloudConversations.waId],
+      // A row read under the lock takes the values worked out above; one created since the read is merged, never shortened.
+      set: current
+        ? { mode: "human", heldUntil, modeChangedAt, updatedAt }
+        : {
+            mode: "human",
+            heldUntil: sql`greatest(${whatsappCloudConversations.heldUntil}, excluded.held_until)`,
+            modeChangedAt: sql`coalesce(${whatsappCloudConversations.modeChangedAt}, excluded.mode_changed_at)`,
+            updatedAt,
+          },
+    });
+  return !wasHeld;
+}
+
+function syncedAt(number: typeof whatsappCloudNumbers.$inferSelect, syncType: AppDataSyncType): Date | null {
+  return syncType === "history" ? number.historySyncedAt : number.contactsSyncedAt;
 }

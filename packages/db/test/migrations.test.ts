@@ -2,14 +2,14 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const migration0002 = readFileSync(new URL("../drizzle/0002_light_grey_gargoyle.sql", import.meta.url), "utf8");
-const migration0006 = readFileSync(new URL("../drizzle/0006_host_scoped_ports.sql", import.meta.url), "utf8");
-const migration0007 = readFileSync(new URL("../drizzle/0007_backup_import_state.sql", import.meta.url), "utf8");
-const migration0008 = readFileSync(new URL("../drizzle/0008_agent_runtime_kind.sql", import.meta.url), "utf8");
-const migration0009 = readFileSync(new URL("../drizzle/0009_litellm_key_metadata.sql", import.meta.url), "utf8");
-const migration0011 = readFileSync(new URL("../drizzle/0011_integration_sessions.sql", import.meta.url), "utf8");
-const migration0012 = readFileSync(new URL("../drizzle/0012_whatsapp_cloud.sql", import.meta.url), "utf8");
-const journal = readFileSync(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8");
+const migration0002 = readFileSync(new URL("../drizzle/0002_light_grey_gargoyle.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const migration0006 = readFileSync(new URL("../drizzle/0006_host_scoped_ports.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const migration0007 = readFileSync(new URL("../drizzle/0007_backup_import_state.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const migration0008 = readFileSync(new URL("../drizzle/0008_agent_runtime_kind.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const migration0009 = readFileSync(new URL("../drizzle/0009_litellm_key_metadata.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const migration0011 = readFileSync(new URL("../drizzle/0011_integration_sessions.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const migration0012 = readFileSync(new URL("../drizzle/0012_whatsapp_cloud.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const journal = readFileSync(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 
 test("duplicate bootstrap migration is idempotent for clean databases", () => {
   assert.match(migration0002, /CREATE TABLE IF NOT EXISTS "instances"/);
@@ -74,4 +74,13 @@ test("whatsapp cloud migration creates the number map, inbox, ledger and audit t
   assert.match(migration0012, /CREATE TABLE "whatsapp_cloud_sends"/);
   assert.equal((migration0012.match(/ON DELETE cascade/g) ?? []).length, 3);
   assert.match(journal, /"tag": "0012_whatsapp_cloud"/);
+});
+
+test("0013 adds coexistence: no PIN for a number kept in the app, and timed owner holds", () => {
+  const migration0013 = readFileSync(new URL("../drizzle/0013_whatsapp_cloud_coexistence.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  assert.match(migration0013, /ALTER TABLE "whatsapp_cloud_numbers" ALTER COLUMN "pin_encrypted" DROP NOT NULL/);
+  assert.match(migration0013, /"whatsapp_cloud_conversations" ADD COLUMN "held_until" timestamp with time zone;/);
+  assert.match(migration0013, /"whatsapp_cloud_conversations" ADD COLUMN "mode_changed_at" timestamp with time zone;/);
+  assert.match(migration0013, /"whatsapp_cloud_numbers" ADD COLUMN "contacts_synced_at" timestamp with time zone;/);
+  assert.match(migration0013, /"whatsapp_cloud_numbers" ADD COLUMN "history_synced_at" timestamp with time zone;/);
 });

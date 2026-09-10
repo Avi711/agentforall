@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { decryptConfig, encryptConfig } from "../src/services/crypto.js";
 import { sanitizeInstance } from "../src/routes/instances.js";
+import { InstanceConfigSchema } from "../src/domain/types.js";
 import { configWith, makeInstance, makeWhatsappCloudChannel } from "./helpers/fixtures.js";
 
 const key = randomBytes(32);
@@ -18,7 +19,7 @@ test("every business-number secret is encrypted at rest and round-trips", () => 
   assert.equal(channel?.type, "whatsapp_cloud");
   if (channel?.type !== "whatsapp_cloud") return;
   assert.match(channel.accessToken, /^v1:/);
-  assert.match(channel.pin, /^v1:/);
+  assert.match(channel.pin ?? "", /^v1:/);
   assert.match(channel.relayToken, /^v1:/);
   assert.equal(channel.displayPhoneNumber, "+972501112233");
   assert.equal(channel.relayUrl, config.channels[0]?.type === "whatsapp_cloud" ? config.channels[0].relayUrl : "");
@@ -32,4 +33,22 @@ test("sanitized instances mask every business-number secret and keep the number 
   for (const secret of SECRETS) assert.equal(serialized.includes(secret), false, secret);
   assert.ok(serialized.includes("+972501112233"));
   assert.ok(serialized.includes("\"phoneNumberId\":\"2000\""));
+});
+
+test("a number kept in the WhatsApp Business app has no PIN, and that survives encryption both ways", () => {
+  const config = configWith([makeWhatsappCloudChannel({ coexistence: true, pin: null })]);
+  const stored = encryptConfig(config, key);
+
+  const channel = stored.channels[0];
+  assert.equal(channel?.type === "whatsapp_cloud" ? channel.pin : "missing", null);
+  assert.deepEqual(decryptConfig(stored, key), config);
+});
+
+test("a business number saved before coexistence existed still loads, as a plain API number", () => {
+  const { coexistence: _added, ...saved } = makeWhatsappCloudChannel();
+  const parsed = InstanceConfigSchema.safeParse({ ...configWith([]), channels: [saved] });
+
+  assert.equal(parsed.success, true);
+  const channel = parsed.success ? parsed.data.channels[0] : undefined;
+  assert.equal(channel?.type === "whatsapp_cloud" ? channel.coexistence : "missing", false);
 });

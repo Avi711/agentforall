@@ -9,10 +9,11 @@ const VERIFY = "verify-me";
 const BOT = "11111111-1111-4111-8111-111111111111";
 const silent = { warn() {} };
 
-function fakeStore(numbers: Record<string, string>) {
+function fakeStore(numbers: Record<string, string>, wabas: Record<string, string[]> = {}) {
   const enqueued: InboundRow[][] = [];
   const store: WhatsappCloudIngressStore = {
     findInstanceIdByPhoneNumberId: async (id) => numbers[id] ?? null,
+    findInstanceIdsByWabaId: async (wabaId) => wabas[wabaId] ?? [],
     enqueue: async (rows) => {
       enqueued.push(rows);
       return rows.length;
@@ -81,6 +82,7 @@ test("a signed message is routed by phone_number_id and stored with Meta's objec
   assert.deepEqual(outcome, { received: 1, enqueued: 1, unknownNumbers: 0, rejected: 0 });
   assert.deepEqual(enqueued[0], [
     {
+      kind: "message",
       wamid: "wamid.1",
       instanceId: BOT,
       waId: "972501234567",
@@ -185,4 +187,115 @@ test("a NUL in one message is stripped so the batch can still be stored; a liter
   assert.equal(outcome.enqueued, 2);
   const bodies = enqueued[0]?.map((row) => (row.payload.message as { text: { body: string } }).text.body);
   assert.deepEqual(bodies, ["hithere", "a\\u0000b"]);
+});
+
+function echoEnvelope(echoes: unknown[], phoneNumberId = "2000"): string {
+  return JSON.stringify({
+    object: "whatsapp_business_account",
+    entry: [
+      {
+        id: "1000",
+        changes: [
+          {
+            field: "smb_message_echoes",
+            value: {
+              messaging_product: "whatsapp",
+              metadata: { display_phone_number: "972501112233", phone_number_id: phoneNumberId },
+              message_echoes: echoes,
+            },
+          },
+        ],
+      },
+    ],
+  });
+}
+
+const ECHO = { from: "972501112233", to: "972501234567", id: "wamid.echo.1", timestamp: "1749416400", type: "text", text: { body: "on my way" } };
+
+test("the owner's reply from the WhatsApp Business app is queued as an owner echo for that customer, without its text", async () => {
+  const { store, enqueued } = fakeStore({ "2000": BOT });
+  const ingress = new WhatsappCloudIngress(store, SECRET, VERIFY, silent, clock);
+  const body = echoEnvelope([ECHO]);
+
+  const outcome = await ingress.handle({ rawBody: body, signature: sign(body) });
+
+  assert.deepEqual(outcome, { received: 1, enqueued: 1, unknownNumbers: 0, rejected: 0 });
+  assert.deepEqual(enqueued[0], [
+    {
+      kind: "owner_echo",
+      wamid: "wamid.echo.1",
+      instanceId: BOT,
+      waId: "972501234567",
+      profileName: null,
+      waTimestamp: new Date(1749416400 * 1000),
+      receivedAt: RECEIVED_AT,
+      payload: { kind: "owner_echo", to: "972501234567" },
+    },
+  ]);
+});
+
+test("an echo to something that is not a customer number is rejected alone; an echo for an unknown number is acknowledged and skipped", async () => {
+  const { store, enqueued } = fakeStore({ "2000": BOT });
+  const ingress = new WhatsappCloudIngress(store, SECRET, VERIFY, silent, clock);
+  const mixed = echoEnvelope([{ ...ECHO, id: "wamid.echo.2", to: "status@broadcast" }, ECHO]);
+
+  assert.deepEqual(await ingress.handle({ rawBody: mixed, signature: sign(mixed) }), { received: 1, enqueued: 1, unknownNumbers: 0, rejected: 1 });
+  assert.deepEqual(enqueued[0]?.map((row) => row.wamid), ["wamid.echo.1"]);
+
+  const stranger = echoEnvelope([ECHO], "9999");
+  assert.deepEqual(await ingress.handle({ rawBody: stranger, signature: sign(stranger) }), { received: 1, enqueued: 0, unknownNumbers: 1, rejected: 0 });
+});
+
+const partnerRemovedBody = (wabaId: string, time = 1757500000) =>
+  JSON.stringify({
+    object: "whatsapp_business_account",
+    entry: [
+      {
+        id: wabaId,
+        time,
+        changes: [
+          {
+            field: "account_update",
+            value: {
+              event: "PARTNER_REMOVED",
+              waba_info: { waba_id: wabaId, owner_business_id: "3000" },
+              disconnection_info: { reason: "ACCOUNT_DISCONNECTED", initiated_by: "USER" },
+            },
+          },
+        ],
+      },
+    ],
+  });
+
+test("a business removing our app queues a disconnect for every bot on that account, the same one however often Meta resends it", async () => {
+  const OTHER_BOT = "22222222-2222-4222-8222-222222222222";
+  const { store, enqueued } = fakeStore({}, { "1000": [BOT, OTHER_BOT] });
+  const ingress = new WhatsappCloudIngress(store, SECRET, VERIFY, silent, clock);
+  const body = partnerRemovedBody("1000");
+
+  assert.deepEqual(await ingress.handle({ rawBody: body, signature: sign(body) }), { received: 0, enqueued: 2, unknownNumbers: 0, rejected: 0 });
+  const rows = enqueued[0] ?? [];
+  assert.deepEqual(
+    rows.map((row) => [row.kind, row.instanceId, row.waId, row.payload]),
+    [
+      ["partner_removed", BOT, null, { kind: "partner_removed", wabaId: "1000" }],
+      ["partner_removed", OTHER_BOT, null, { kind: "partner_removed", wabaId: "1000" }],
+    ],
+  );
+  assert.notEqual(rows[0]?.wamid, rows[1]?.wamid);
+
+  await ingress.handle({ rawBody: body, signature: sign(body) });
+  assert.deepEqual(enqueued[1]?.map((row) => row.wamid), rows.map((row) => row.wamid));
+});
+
+test("a removal for an account no bot uses is logged with its id and queues nothing", async () => {
+  const { store, enqueued } = fakeStore({});
+  const warnings: string[] = [];
+  const ingress = new WhatsappCloudIngress(store, SECRET, VERIFY, { warn: (m: string) => warnings.push(m) }, clock);
+  const body = partnerRemovedBody("9999");
+
+  assert.deepEqual(await ingress.handle({ rawBody: body, signature: sign(body) }), { received: 0, enqueued: 0, unknownNumbers: 0, rejected: 0 });
+  assert.deepEqual(enqueued, [[]]);
+  assert.match(warnings.join("\n"), /PARTNER_REMOVED/);
+  assert.match(warnings.join("\n"), /9999/);
 });

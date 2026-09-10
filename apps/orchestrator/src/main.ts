@@ -1,4 +1,5 @@
 import { fileURLToPath } from "node:url";
+import { InstanceOperationLock } from "./services/instance-operation-lock.js";
 import { dirname, resolve } from "node:path";
 import { Pool } from "pg";
 import Docker from "dockerode";
@@ -216,6 +217,8 @@ async function main(): Promise<void> {
     : null;
   // Destroy-time cleanups, each best effort; the WhatsApp one joins once its manager exists.
   const destroyCleanups: IntegrationCleanup[] = integrationSessions ? [integrationSessions] : [];
+  // One lock order per bot: WhatsApp Business channel work and destroy take this before the instance lock.
+  const channelLock = new InstanceOperationLock();
   const manager = new InstanceManager(
     repo,
     runtime,
@@ -238,6 +241,7 @@ async function main(): Promise<void> {
         }
       },
     },
+    channelLock,
   );
   const integrations =
     integrationProvider && integrationSessions
@@ -345,6 +349,9 @@ async function main(): Promise<void> {
     eventLog,
     { orchestratorInternalUrl: config.orchestratorInternalUrl },
     log,
+    undefined,
+    undefined,
+    channelLock,
   );
   destroyCleanups.push({ revokeAll: (inst) => whatsappCloud.cleanupForDestroy(inst) });
   await app.register(whatsappCloudRoutes, { prefix: "/api/v1/instances", manager: whatsappCloud });

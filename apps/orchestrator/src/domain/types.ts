@@ -68,11 +68,14 @@ export interface WhatsappCloudChannel {
   type: "whatsapp_cloud";
   wabaId: string;
   phoneNumberId: string;
-  businessId: string;
+  // Null when Meta's coexistence popup did not say.
+  businessId: string | null;
   displayPhoneNumber: string;
   verifiedName: string;
   accessToken: string;
-  pin: string;
+  // Null for a coexistence number: it stays registered by the WhatsApp Business app, so we never set a PIN.
+  pin: string | null;
+  coexistence: boolean;
   relayToken: string;
   relayUrl: string;
 }
@@ -116,7 +119,8 @@ export interface InstanceConfig {
   integrations?: IntegrationsBinding;
 }
 
-export const InstanceConfigSchema: z.ZodType<InstanceConfig> = z.object({
+// Input is what the database holds, which may predate a field that now has a default.
+export const InstanceConfigSchema: z.ZodType<InstanceConfig, z.ZodTypeDef, unknown> = z.object({
   integrations: z
     .object({ relayToken: z.string().min(1), relayUrl: z.string().url() })
     .optional(),
@@ -152,11 +156,12 @@ export const InstanceConfigSchema: z.ZodType<InstanceConfig> = z.object({
         type: z.literal("whatsapp_cloud"),
         wabaId: z.string().min(1),
         phoneNumberId: z.string().min(1),
-        businessId: z.string().min(1),
+        businessId: z.string().min(1).nullable(),
         displayPhoneNumber: z.string().min(1),
         verifiedName: z.string(),
         accessToken: z.string().min(1),
-        pin: z.string().regex(/^\d{6}$/),
+        pin: z.string().regex(/^\d{6}$/).nullable(),
+        coexistence: z.boolean().default(false),
         relayToken: z.string().min(1),
         relayUrl: z.string().url(),
       }),

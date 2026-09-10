@@ -8,6 +8,7 @@ import { OrchestratorError } from "@/lib/orchestrator/client";
 
 const PIN_REQUIRED_CODE = "CHANNEL_PIN_REQUIRED";
 const BOT_NOT_READY_CODE = "INVALID_STATE";
+const NUMBER_MODE_MISMATCH_CODE = "NUMBER_MODE_MISMATCH";
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const parsed = BotIdParamsSchema.safeParse(await ctx.params);
@@ -26,6 +27,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         if (err instanceof MetaOAuthError) return errorJson("signup_code_rejected", 409, { metaCode: err.code });
         if (err instanceof OrchestratorError && orchestratorCode(err.body) === PIN_REQUIRED_CODE) return errorJson("pin_required", 409);
         if (err instanceof OrchestratorError && orchestratorCode(err.body) === BOT_NOT_READY_CODE) return errorJson("bot_not_ready", 409);
+        if (err instanceof OrchestratorError && orchestratorCode(err.body) === NUMBER_MODE_MISMATCH_CODE) return errorJson("number_mode_mismatch", 409);
         throw err;
       }
     },

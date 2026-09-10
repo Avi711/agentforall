@@ -102,7 +102,7 @@ test("the phone number lookup normalises the display number to E.164", async () 
 
   const facts = await client.getPhoneNumber("2000", "tok");
 
-  assert.deepEqual(facts, { displayPhoneNumber: "+972501112233", verifiedName: "Shop" });
+  assert.deepEqual(facts, { displayPhoneNumber: "+972501112233", verifiedName: "Shop", isOnBizApp: null });
   assert.match(seen[0]?.url ?? "", /\/v24\.0\/2000\?fields=/);
 });
 
@@ -173,4 +173,59 @@ test("a redirect or an oversized declaration is refused before any body is read"
     assert.equal(err.status, 413);
     return true;
   });
+});
+
+test("a business account's numbers are listed with their ids, normalised display numbers and names", async () => {
+  const { seen, fetchImpl } = fakeFetch(() => json(200, { data: [{ id: "2000", display_phone_number: "+972 50-111-2233", verified_name: "Shop" }] }));
+  const client = new MetaGraphClient("https://graph.facebook.com", "v24.0", fetchImpl);
+
+  assert.deepEqual(await client.listPhoneNumbers("waba-1", "tok"), [
+    { id: "2000", displayPhoneNumber: "+972501112233", verifiedName: "Shop", isOnBizApp: null },
+  ]);
+  assert.equal(
+    seen[0]?.url,
+    "https://graph.facebook.com/v24.0/waba-1/phone_numbers?fields=id%2Cdisplay_phone_number%2Cverified_name%2Cis_on_biz_app",
+  );
+});
+
+test("the WhatsApp Business app sync is started per kind and never retried, because Meta allows each only once", async () => {
+  let calls = 0;
+  const { seen, fetchImpl } = fakeFetch(() => {
+    calls += 1;
+    return calls === 1 ? json(200, { messaging_product: "whatsapp", request_id: "r1" }) : json(503, metaError(2, "temporarily unavailable"));
+  });
+  const client = new MetaGraphClient("https://graph.facebook.com", "v24.0", fetchImpl);
+
+  await client.startAppDataSync("2000", "tok", "smb_app_state_sync");
+  assert.equal(seen[0]?.url, "https://graph.facebook.com/v24.0/2000/smb_app_data");
+  assert.equal(seen[0]?.method, "POST");
+  assert.deepEqual(seen[0]?.body, { messaging_product: "whatsapp", sync_type: "smb_app_state_sync" });
+
+  await assert.rejects(client.startAppDataSync("2000", "tok", "history"), MetaGraphError);
+  assert.equal(calls, 2);
+});
+
+test("Meta's own word on whether a number is still in the WhatsApp Business app is read with the number", async () => {
+  const { seen, fetchImpl } = fakeFetch(() => json(200, { display_phone_number: "+972 50-111-2233", verified_name: "Shop", is_on_biz_app: true }));
+  const client = new MetaGraphClient("https://graph.facebook.com", "v24.0", fetchImpl);
+
+  assert.equal((await client.getPhoneNumber("2000", "tok")).isOnBizApp, true);
+  assert.match(seen[0]?.url ?? "", /fields=display_phone_number%2Cverified_name%2Cis_on_biz_app$/);
+});
+
+test("an app Meta does not tell is_on_biz_app to still reads the number, with that answer unknown", async () => {
+  let calls = 0;
+  const { seen, fetchImpl } = fakeFetch(() => {
+    calls += 1;
+    if (calls % 2 === 1) return json(400, metaError(100, "(#100) Tried accessing nonexisting field (is_on_biz_app)"));
+    return calls === 2
+      ? json(200, { display_phone_number: "+972501112233", verified_name: "Shop" })
+      : json(200, { data: [{ id: "2000", display_phone_number: "+972501112233", verified_name: "Shop" }] });
+  });
+  const client = new MetaGraphClient("https://graph.facebook.com", "v24.0", fetchImpl);
+
+  assert.deepEqual(await client.getPhoneNumber("2000", "tok"), { displayPhoneNumber: "+972501112233", verifiedName: "Shop", isOnBizApp: null });
+  assert.match(seen[1]?.url ?? "", /fields=display_phone_number%2Cverified_name$/);
+  assert.deepEqual(await client.listPhoneNumbers("waba-1", "tok"), [{ id: "2000", displayPhoneNumber: "+972501112233", verifiedName: "Shop", isOnBizApp: null }]);
+  assert.match(seen[3]?.url ?? "", /fields=id%2Cdisplay_phone_number%2Cverified_name$/);
 });

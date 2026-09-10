@@ -30,7 +30,7 @@ function harness(pending: Record<string, InboundMessage[]>, opts: HarnessOptions
       leaseCalls.push(instanceIds);
       const out: LeasedMessage[] = [];
       for (const id of instanceIds) {
-        for (const msg of pending[id] ?? []) out.push({ instanceId: id, message: msg });
+        for (const msg of pending[id] ?? []) out.push({ instanceId: id, item: msg });
         pending[id] = [];
       }
       await opts.leaseGate?.();

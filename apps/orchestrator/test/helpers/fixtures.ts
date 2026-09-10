@@ -46,6 +46,7 @@ export function makeWhatsappCloudChannel(
     verifiedName: "Shop",
     accessToken: "meta-token",
     pin: "246810",
+    coexistence: false,
     relayToken: "cloud-relay-token",
     relayUrl: "http://orchestrator:3000/api/v1/whatsapp-cloud/11111111-1111-4111-8111-111111111111",
     ...overrides,
