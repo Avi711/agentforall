@@ -112,7 +112,7 @@ dashboard ──FB.login popup──▶ Meta ──code + ids──▶ web (exch
 | Connect (orchestrator) | `routes/whatsapp-cloud.ts` → `services/whatsapp-cloud/manager.ts` → `services/whatsapp-cloud/graph-client.ts` + `storage/whatsapp-cloud-repository.ts` | Conflict check first, then `subscribed_apps`, `register` (PIN), number facts, bind, channel, event |
 | Delivery relay | `routes/whatsapp-cloud-relay.ts` (prefix `/api/v1/whatsapp-cloud`, `skipGlobalAuth`, bearer per instance, `rateLimit` keyed by the socket peer via `routes/relay-rate-limit.ts`) | `inbox` long-poll, `inbox/ack`, `send`, `read`, `media/:id`, `escalate`, `conversations/:waId[/mode]` |
 | Inbox dispatcher | `services/whatsapp-cloud/inbox-dispatcher.ts` | Lease for bots that are waiting on a NOTIFY wake or the 500 ms fallback tick, per-instance waiters, sweeper |
-| Inbox listener | `storage/whatsapp-cloud-listener.ts` | One direct-connection `LISTEN whatsapp_cloud_inbox` (`DATABASE_LISTEN_URL`); wakes the dispatcher for the bot in the payload; reconnects with 1–30 s backoff |
+| Inbox listener | `storage/whatsapp-cloud-listener.ts` | One `LISTEN whatsapp_cloud_inbox` connection on the orchestrator's own `DATABASE_URL` (session pooler or direct; refused on Supabase's transaction pooler); wakes the dispatcher for the bot in the payload; 10 s connect timeout, reconnects with 1–30 s backoff |
 | Send rate | `services/whatsapp-cloud/token-bucket.ts` | 80 msg/s token bucket per phone number, answered 429 before Meta's `130429` |
 | Channel plugin | `packages/openclaw-channel-whatsapp-cloud/` (`agentforall-whatsapp-cloud`) | Poll loop with per-customer lanes, `dispatchInboundDirectDmWithRuntime`, outbound adapter → relay, `status.probeAccount`, `whatsapp_cloud_escalate` / `whatsapp_cloud_handoff` / `whatsapp_cloud_reply` tools |
 | Config rendering | `agent-runtime/openclaw/config.ts` | `channels.whatsapp_cloud`, `plugins.entries.agentforall-whatsapp-cloud`, `tools.toolsBySender`, `.env` `WHATSAPP_CLOUD_RELAY_TOKEN` |
@@ -418,7 +418,7 @@ tenants via `infra/ops/rollout-plugin.sh --plugin agentforall-whatsapp-cloud --s
 |---|---|
 | Orchestrator down / deploying | Ingress still inserts (Vercel + Supabase); plugin poll fails → `connected:false` → bot `degraded`; polling resumes, rows are delivered in order. Nothing lost. |
 | Vercel or Supabase down | Ingress 5xx → Meta retries for up to 7 days. |
-| Listener connection lost (`DATABASE_LISTEN_URL` down, pooler restart) | Wake-ups pause, the 500 ms poll carries delivery, the listener reconnects with 1–30 s backoff; `DATABASE_LISTEN_URL` unset → warn at boot, poll only. |
+| Listener connection lost (pooler restart, network) | Wake-ups pause, the 500 ms poll carries delivery, the listener reconnects with 1–30 s backoff. `DATABASE_URL` on Supabase's transaction pooler (port 6543) → warn at boot, no listener, poll only. |
 | Container restarting | Leases expire (60s); rows redelivered. A turn that finished but never acked repeats once — at-least-once by choice (§3 decision 2). |
 | Agent turn hangs | The plugin gives up after 10 minutes, leaves the row unacked and holds that customer's lane; the loop keeps serving other customers. |
 | One message of a customer fails | The rest of that customer's lane waits unprocessed; after the lease expires the whole run comes back in order. |
@@ -440,8 +440,8 @@ tenants via `infra/ops/rollout-plugin.sh --plugin agentforall-whatsapp-cloud --s
 | Plugin missing on an old tenant | `plugins.entries` for an absent plugin is inert ("stale config entry ignored") and the gateway still starts; the rollout order is image build → `rollout-plugin.sh --plugin agentforall-whatsapp-cloud` for that tenant → connect. |
 
 Runbook additions: GSM secrets `meta-app-secret`, `meta-webhook-verify-token` (+ Vercel env);
-orchestrator `DATABASE_LISTEN_URL` (Supabase direct or session-mode string, never the transaction pooler on
-6543 — it cannot hold a `LISTEN`; optional, `startup.sh` tolerates a missing secret); web `WHATSAPP_CLOUD_ENABLED=true`
+orchestrator `DATABASE_URL` in session mode or direct (on Supabase's transaction pooler, port 6543, the
+listener stays off and the poll carries delivery); web `WHATSAPP_CLOUD_ENABLED=true`
 once the rehearsal passed; `rollout-plugin.sh` without `--require-gateway` (this plugin needs no LiteLLM);
 `NEXT_PUBLIC_META_APP_ID`, `NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID`; Caddy 404 block in
 `infra/startup.sh`; migration 0012 applied before the orchestrator that renders the channel; Vercel
@@ -660,6 +660,13 @@ run of the repositories; every fix below was made test-first — the failing tes
 - Accepted as is: the listener reconnect test uses real one-second timers; the 6-digit PIN redaction can
   also redact an unrelated 6-digit run in gateway prose (harmless, PII-safe).
 
+Sixth change 2026-09-10 (simplification after checking production): the separate `DATABASE_LISTEN_URL` and its GSM
+secret are gone. The listener uses the orchestrator's own `DATABASE_URL`, which in production is Supabase's session
+pooler on 5432 (checked on the live VM). A probe through that pooler delivered a NOTIFY between two connections in
+67 ms; the same probe through the transaction pooler (6543) delivered nothing, so `canListenOn` refuses exactly that
+host and port. The listener's connect times out after 10 s and a client that cannot be created is retried like any
+failed connect, so neither can hang start-up; start-up no longer waits for the listener at all.
+
 ## 15. Rehearsal checklist (before any tenant sees it)
 
 Run on the built `openclaw-browser` image with Meta's test number, in this order; each line is a thing
@@ -733,8 +740,8 @@ Answers given to the founder while reviewing; kept here so the reasoning is not 
   query, only while a plugin is waiting) stays as the safety net for a dropped listener connection.
   Postgres delivers a notification only to connections listening at that instant, which is why every
   library keeps both.
-- **What is the inbox listener?** One extra Postgres connection per orchestrator, opened with
-  `DATABASE_LISTEN_URL`, that does nothing but `LISTEN whatsapp_cloud_inbox`. When a notification
+- **What is the inbox listener?** One extra Postgres connection per orchestrator, on the
+  orchestrator's own `DATABASE_URL`, that does nothing but `LISTEN whatsapp_cloud_inbox`. When a notification
   arrives with a bot id, it wakes that bot's tick if its plugin is waiting and ignores it otherwise. If the
   connection drops it reconnects with 1–30 s backoff; while it is down the poll carries delivery. Nothing is
   ever lost because the rows are in the table either way.
@@ -753,9 +760,11 @@ Answers given to the founder while reviewing; kept here so the reasoning is not 
   on lease and ack, deleted later; Postgres leaves old versions behind, and the default cleaner waits for
   20% of the table to be dead — 2% here), and dedupe retention raised to 8 days because Meta retries for 7,
   not 36 h. Nothing manual in the Supabase dashboard; `drizzle-kit migrate` applies it.
-- **Pooler vs direct connection?** The orchestrator keeps using the pooler for everything. The listener
-  needs one direct (session) connection because the pooler swaps connections between transactions and
-  cannot hold a `LISTEN`. Deploy needs a second secret: the direct connection string.
+- **Pooler vs direct connection?** Supabase offers the pooler in transaction mode (port 6543, a connection
+  lent per transaction, no `LISTEN`), the pooler in session mode (port 5432, the connection stays yours) and a
+  direct connection. The orchestrator already uses session mode on 5432 (checked on the live VM 2026-09-10),
+  so the listener can reuse its connection string and no second secret is needed. Since 2026-09-10 that is the default:
+  the listener uses `DATABASE_URL` and refuses only the transaction pooler.
 - **What is an escalation?** The bot handing a customer to the human owner: the customer session's only
   tool posts to the relay, the orchestrator sends the owner a plain Telegram message from the tenant's own
   bot. No agent turn on the owner's side.
@@ -768,3 +777,23 @@ Answers given to the founder while reviewing; kept here so the reasoning is not 
 - **Vercel cost for the ingress?** Verify + one insert per POST, Meta batches; roughly $1–2 per million
   messages. Portable to Cloud Run: the route is an HTTP shell over `ingress.ts`/`repository.ts`, keep
   raw-body reading.
+- **Do we have an OAuth flow with Meta?** Yes, Embedded Signup: the popup returns a 30-second code, the web
+  server trades it with the app secret for a token scoped to the client's WABA, the orchestrator stores it
+  encrypted. No "log in with Facebook" for our users; business verification and app review come first.
+- **Which webhook?** The URL Meta calls for every customer message,
+  `https://agentforall.co.il/api/webhooks/whatsapp-cloud`, set once in the Meta app with a verify token that
+  matches Vercel's `META_WEBHOOK_VERIFY_TOKEN`, subscribed to `messages` only.
+- **What are conversations and sends?** Conversations: one row per customer (last inbound for the 24h rule,
+  bot or human mode, profile name), deleted after 30 idle days unless in human mode. Sends: an audit row per
+  outgoing message, deleted after 90 days.
+- **Why does a database need connections, and what is a pooler?** A connection keeps state (a transaction,
+  locks, a `LISTEN`) and costs a server process, so Postgres allows few and programs reuse them. A pooler lets
+  many callers share a few real connections; transaction mode lends one per transaction, session mode keeps it.
+- **Why was a second secret asked for?** It was assumed production used transaction mode; it was not checked.
+  It uses session mode, so the existing connection string is enough.
+- **Who handles races between two connections?** Postgres: row locks (`SKIP LOCKED`), unique indexes (`wamid`,
+  the number binding) and transactions, the same in every connection mode.
+- **What is the Caddy rule?** Caddy is the VM's front door. `@wacloud path /api/v1/whatsapp-cloud/*` +
+  `respond @wacloud 404` keeps the container-only relay unreachable from the internet (bearer auth still applies).
+- **Can we deploy to a test environment?** There is none (one VM, one Supabase, one Vercel project), so the
+  feature went to production dark on 2026-09-10 with `WHATSAPP_CLOUD_ENABLED` off until the rehearsal passes.

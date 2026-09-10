@@ -69,8 +69,6 @@ const AppConfigSchema = z.object({
   trustProxy: booleanEnv.default("true"),
 
   databaseUrl: z.string().url(),
-  // Session-mode (direct) connection for LISTEN; the pooler cannot hold one. Absent = poll only.
-  databaseListenUrl: z.preprocess(emptyToUndefined, z.string().url().optional()),
   encryptionKey: hex256,
 
   // Identifies this orchestrator process when several share a database
@@ -261,7 +259,6 @@ export function loadConfig(): AppConfig {
     nodeEnv: process.env.NODE_ENV,
     trustProxy: process.env.TRUST_PROXY,
     databaseUrl: process.env.DATABASE_URL,
-    databaseListenUrl: process.env.DATABASE_LISTEN_URL,
     encryptionKey: process.env.ENCRYPTION_KEY,
     orchestratorHostId: process.env.ORCHESTRATOR_HOST_ID,
     apiKeys: process.env.API_KEYS,

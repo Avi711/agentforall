@@ -330,11 +330,10 @@ Deployed 2026-09-10: migration 0012 applied to Supabase; VM Caddyfile got the `@
 (backup `Caddyfile.bak-20260910`, verified empty-body 404 from outside); orchestrator
 `orchestrator@sha256:f060d9db4ce26580b92f690a7b3f01f0552c65cee2adeebed25e2090b642e710` (commit `9156b21`),
 healthy, both networks, 16 tenants up, pinned in `infra/variables.tf` and the VM `.env`; web from `main`
-with `WHATSAPP_CLOUD_ENABLED` unset, so no tenant sees the channel. `DATABASE_LISTEN_URL` is not set yet, so
-the inbox runs on the 500 ms poll (one warn at boot). Built, not pinned: openclaw-browser with the plugin
+with `WHATSAPP_CLOUD_ENABLED` unset, so no tenant sees the channel. The inbox listener runs on the
+orchestrator's own `DATABASE_URL` (session pooler, 5432). Built, not pinned: openclaw-browser with the plugin
 `openclaw-browser@sha256:3a85792c67f1eb3c711bab51895aeb1e9f18be3ea70f23c68a7aa0ba2e65a068` (rehearsal only).
-Remaining: GSM `database-listen-url` then add it to `.env.runtime` and recreate the orchestrator (terraform apply
-fails until the secret exists); Meta setup (Vercel env, webhook URL, test number); rehearsal (doc §15) on one
+Remaining: Meta setup (Vercel env, webhook URL, test number); rehearsal (doc §15) on one
 test bot recreated onto `3a85792c`; then `WHATSAPP_CLOUD_ENABLED=true`.
 
 Reviewed and hardened 2026-09-09 (fresh reviewer against the code and the 2026.8.2 dist), all suites green:
@@ -352,21 +351,15 @@ drops by age only; ledger/audit retention sweep; media proxy host allowlist. All
 Third pass 2026-09-10 (two fresh reviewers) plus a sourced architecture check (Postgres `SKIP LOCKED`
 queue + long poll is the standard; keep it): owner-delivery fallback to the bot, escalation caps, chunked
 replies, ordered failure handling in the plugin, tolerant webhook parsing, receipt-time 24h window,
-dashboard `token_invalid`. Then `LISTEN/NOTIFY` wake (ingress `pg_notify`, orchestrator listener on a
-**second connection string** `DATABASE_LISTEN_URL` — Supabase direct/session-mode, not the transaction
-pooler on 6543; unset = poll only with a boot warning), retention 7 d drop / 8 d marker (Meta retries 7
+dashboard `token_invalid`. Then `LISTEN/NOTIFY` wake (ingress `pg_notify`, orchestrator listener on its own `DATABASE_URL`,
+refused only on Supabase's transaction pooler), retention 7 d drop / 8 d marker (Meta retries 7
 days), partial pending index + autovacuum 2% on the inbox (the `ALTER TABLE ... SET (autovacuum_*)` line
 in migration 0012 is hand-appended; a future `generate` will not re-emit it), 80 msg/s send bucket per
-number. All suites green (orchestrator 312, web 187, plugin 20, db 7). New GSM secret
-`database-listen-url` is fetched by `infra/startup.sh` on every boot (`set -e`) and listed in
-`infra/main.tf` `vm_secret_ids`: **create it before the next `terraform apply` or VM reboot**, else the
-boot script fails. Value: the Supabase direct or session-mode connection string (port 5432), not 6543.
+number. All suites green (orchestrator 312, web 187, plugin 20, db 7). (The separate listen URL and its GSM secret were removed the same day; nothing to create.)
 Fourth pass 2026-09-10 (three fresh reviewers; ~50 findings fixed, list in the doc §14): plugin reply
 queue (a redelivery never re-runs the model), shutdown order, destroyed-bot number bindings, set-based
 lease, listener lifecycle, escalation slot reservation, UTF-16 chunking, FB SDK `frame-src`, NUL-safe
-ingress, `WHATSAPP_CLOUD_ENABLED` gate. The secret fetch in `startup.sh` is now tolerant (`|| true`), so a
-reboot before the secret exists only costs the NOTIFY wake; `terraform apply` still needs it to exist.
-New Vercel env `WHATSAPP_CLOUD_ENABLED=true` — set it only after the rehearsal: until then the webhook
+ingress, `WHATSAPP_CLOUD_ENABLED` gate. New Vercel env `WHATSAPP_CLOUD_ENABLED=true` — set it only after the rehearsal: until then the webhook
 works but no tenant sees the row. `rollout-plugin.sh` gained `--require-gateway` (pass it for credit and
 media; not for this plugin). All suites green (orchestrator 331, web 189, plugin 32, db 7).
 Fifth pass 2026-09-10: a Postgres-backed test tier (`npm run test:db` in orchestrator and web, needs
@@ -391,12 +384,11 @@ but `whatsapp_cloud_escalate`); web ingress `app/api/webhooks/whatsapp-cloud` (H
 secret, writes the inbox only), connect page `/app/bot/whatsapp-business` (Meta JS SDK popup,
 Embedded Signup v4), third dashboard row; plugin `packages/openclaw-channel-whatsapp-cloud` baked
 into the image (bundles typebox). New env: orchestrator `META_GRAPH_BASE_URL`, `META_GRAPH_API_VERSION`,
-`WHATSAPP_CLOUD_INBOX_*`, `DATABASE_LISTEN_URL`; web `NEXT_PUBLIC_META_APP_ID`, `NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID`,
+`WHATSAPP_CLOUD_INBOX_*`; web `NEXT_PUBLIC_META_APP_ID`, `NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID`,
 `META_APP_SECRET`, `META_WEBHOOK_VERIFY_TOKEN`, `META_GRAPH_API_VERSION` (GSM: `meta-app-secret`,
 `meta-webhook-verify-token`). Meta side: app **Agent For All** `1116647830699409` on portfolio
 `agentforall_il`, Independent Tech Provider onboarding started; business verification pending
-submission (owner), access verification and app review after. Deploy order: GSM `database-listen-url` →
-migration → orchestrator → web (Vercel env, `WHATSAPP_CLOUD_ENABLED` unset) → register the webhook URL in
+submission (owner), access verification and app review after. Deploy order: migration → orchestrator → web (Vercel env, `WHATSAPP_CLOUD_ENABLED` unset) → register the webhook URL in
 the Meta app (`messages` field only) → rebuild the image → rehearse against the test number (§15 of the
 doc) → `WHATSAPP_CLOUD_ENABLED=true` on Vercel → `rollout-plugin.sh --plugin agentforall-whatsapp-cloud
 --sentinel channel.js` only for bots that connect a number.

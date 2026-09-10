@@ -50,7 +50,7 @@ import { mcpRelayRoutes } from "./routes/mcp-relay.js";
 import { WhatsappCloudRepository } from "./storage/whatsapp-cloud-repository.js";
 import { MetaGraphClient } from "./services/whatsapp-cloud/graph-client.js";
 import { InboxDispatcher } from "./services/whatsapp-cloud/inbox-dispatcher.js";
-import { WhatsappCloudInboxListener } from "./storage/whatsapp-cloud-listener.js";
+import { WhatsappCloudInboxListener, canListenOn } from "./storage/whatsapp-cloud-listener.js";
 import { WhatsappCloudManager } from "./services/whatsapp-cloud/manager.js";
 import { whatsappCloudRoutes } from "./routes/whatsapp-cloud.js";
 import { whatsappCloudRelayRoutes } from "./routes/whatsapp-cloud-relay.js";
@@ -350,11 +350,12 @@ async function main(): Promise<void> {
   await app.register(whatsappCloudRoutes, { prefix: "/api/v1/instances", manager: whatsappCloud });
   await app.register(whatsappCloudRelayRoutes, { prefix: "/api/v1/whatsapp-cloud", manager: whatsappCloud });
   inboxDispatcher.start();
-  const inboxListener = config.databaseListenUrl
-    ? WhatsappCloudInboxListener.forUrl(config.databaseListenUrl, (id) => inboxDispatcher.wake(id), log)
+  const inboxListener = canListenOn(config.databaseUrl)
+    ? WhatsappCloudInboxListener.forUrl(config.databaseUrl, (id) => inboxDispatcher.wake(id), log)
     : null;
-  if (inboxListener) await inboxListener.start();
-  else log.warn("DATABASE_LISTEN_URL not set: whatsapp cloud inbox runs on the poll alone");
+  // Not awaited: the listener only speeds delivery up, and start-up must not wait on it.
+  if (inboxListener) void inboxListener.start();
+  else log.warn("DATABASE_URL is Supabase's transaction pooler (port 6543), which cannot hold a LISTEN: whatsapp cloud inbox runs on the poll alone");
 
   const healthMonitor = new HealthMonitor(repo, runtime, runtimeAdapters, log, {
     pollIntervalMs: config.healthPollIntervalMs,

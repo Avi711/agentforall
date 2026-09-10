@@ -146,7 +146,6 @@ locals {
     "default-provider-api-key",
     "litellm-master-key",
     "composio-api-key",
-    "database-listen-url",
   ]
 }
 

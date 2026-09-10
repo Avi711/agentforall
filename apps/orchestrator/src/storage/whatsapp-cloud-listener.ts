@@ -7,6 +7,22 @@ const RECONNECT_MIN_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
 // A connection that held for this long earns the short backoff again; one that keeps dying does not.
 const STABLE_AFTER_MS = 30_000;
+// A server that accepts the socket and never answers must not hold a connect attempt forever.
+const LISTEN_CONNECT_TIMEOUT_MS = 10_000;
+
+// Supabase's transaction pooler lends a server connection per transaction, so a LISTEN there never hears a thing.
+const TRANSACTION_POOLER_HOST_SUFFIX = ".pooler.supabase.com";
+const TRANSACTION_POOLER_PORT = "6543";
+
+export function canListenOn(connectionString: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(connectionString);
+  } catch {
+    return false;
+  }
+  return !(url.hostname.endsWith(TRANSACTION_POOLER_HOST_SUFFIX) && url.port === TRANSACTION_POOLER_PORT);
+}
 
 export interface ListenClient {
   connect(): Promise<unknown>;
@@ -34,8 +50,17 @@ export class WhatsappCloudInboxListener {
     private readonly now: () => number = Date.now,
   ) {}
 
-  static forUrl(connectionString: string, onWake: (instanceId: string) => void, log: FastifyBaseLogger): WhatsappCloudInboxListener {
-    return new WhatsappCloudInboxListener(onWake, log, () => new Client({ connectionString, keepAlive: true }));
+  static forUrl(
+    connectionString: string,
+    onWake: (instanceId: string) => void,
+    log: FastifyBaseLogger,
+    connectTimeoutMs = LISTEN_CONNECT_TIMEOUT_MS,
+  ): WhatsappCloudInboxListener {
+    return new WhatsappCloudInboxListener(
+      onWake,
+      log,
+      () => new Client({ connectionString, keepAlive: true, connectionTimeoutMillis: connectTimeoutMs }),
+    );
   }
 
   async start(): Promise<void> {
@@ -60,20 +85,16 @@ export class WhatsappCloudInboxListener {
   private async connect(): Promise<void> {
     if (this.stopped || this.connecting) return;
     this.connecting = true;
-    const client = this.clientFactory();
-    client.on("notification", (msg) => {
-      if (msg.channel === WHATSAPP_CLOUD_INBOX_CHANNEL && msg.payload) this.onWake(msg.payload);
-    });
-    client.on("error", (err) => this.dropped(client, err));
-    client.on("end", () => this.dropped(client));
+    let client: ListenClient | null = null;
     try {
+      client = this.open();
       await client.connect();
       // Raw SQL by necessity: LISTEN has no builder form; the channel name is our own constant.
       await client.query(`LISTEN ${WHATSAPP_CLOUD_INBOX_CHANNEL}`);
     } catch (err) {
       this.connecting = false;
       this.log.warn({ err: errorMessage(err) }, "whatsapp cloud inbox listener connect failed");
-      await this.close(client);
+      if (client) await this.close(client);
       this.scheduleReconnect();
       return;
     }
@@ -85,6 +106,16 @@ export class WhatsappCloudInboxListener {
     this.client = client;
     this.connectedAt = this.now();
     this.log.info("whatsapp cloud inbox listener connected");
+  }
+
+  private open(): ListenClient {
+    const client = this.clientFactory();
+    client.on("notification", (msg) => {
+      if (msg.channel === WHATSAPP_CLOUD_INBOX_CHANNEL && msg.payload) this.onWake(msg.payload);
+    });
+    client.on("error", (err) => this.dropped(client, err));
+    client.on("end", () => this.dropped(client));
+    return client;
   }
 
   private dropped(client: ListenClient, err?: Error): void {

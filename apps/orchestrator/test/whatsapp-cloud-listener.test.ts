@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { FastifyBaseLogger } from "fastify";
-import { WhatsappCloudInboxListener, type ListenClient } from "../src/storage/whatsapp-cloud-listener.js";
+import { createServer, type Socket } from "node:net";
+import { WhatsappCloudInboxListener, canListenOn, type ListenClient } from "../src/storage/whatsapp-cloud-listener.js";
 
 const silentLog = { warn() {}, info() {}, error() {}, debug() {} } as unknown as FastifyBaseLogger;
 
@@ -137,4 +138,48 @@ test("a connection that dies young keeps the longer backoff; one that held reset
   await new Promise((r) => setTimeout(r, 1_200));
   assert.equal(clients.length, 3);
   await listener.stop();
+});
+
+test("a client that cannot even be created is handled like a failed connect: start resolves and it tries again", async () => {
+  let attempts = 0;
+  const listener = new WhatsappCloudInboxListener(() => {}, silentLog, () => {
+    attempts += 1;
+    if (attempts === 1) throw new Error("bad connection string");
+    return fakeClient().client;
+  });
+
+  await listener.start();
+  assert.equal(listener.connected, false);
+  await new Promise((r) => setTimeout(r, 1_100));
+  assert.equal(attempts, 2);
+  assert.equal(listener.connected, true);
+  await listener.stop();
+});
+
+test("a database that accepts the socket but never answers fails the connect in time instead of hanging start", async () => {
+  const sockets = new Set<Socket>();
+  const silent = createServer((socket) => {
+    sockets.add(socket);
+    socket.on("close", () => sockets.delete(socket));
+  });
+  await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", resolve));
+  const port = (silent.address() as { port: number }).port;
+  const listener = WhatsappCloudInboxListener.forUrl(`postgresql://u:p@127.0.0.1:${port}/db`, () => {}, silentLog, 200);
+  try {
+    const hung = new Promise((_, reject) => setTimeout(() => reject(new Error("start hung")), 3_000));
+    await Promise.race([listener.start(), hung]);
+    assert.equal(listener.connected, false);
+  } finally {
+    await listener.stop();
+    for (const socket of sockets) socket.destroy();
+    await new Promise((resolve) => silent.close(resolve));
+  }
+});
+
+test("only Supabase's transaction pooler is refused; the session pooler, a direct connection and any other host can listen", () => {
+  assert.equal(canListenOn("postgresql://u:p@aws-1-eu-central-1.pooler.supabase.com:6543/postgres"), false);
+  assert.equal(canListenOn("postgresql://u:p@aws-1-eu-central-1.pooler.supabase.com:5432/postgres"), true);
+  assert.equal(canListenOn("postgresql://u:p@db.abcdefgh.supabase.co:5432/postgres"), true);
+  assert.equal(canListenOn("postgresql://postgres:test@localhost:6543/postgres"), true);
+  assert.equal(canListenOn("not a url"), false);
 });
