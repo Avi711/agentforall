@@ -136,6 +136,13 @@ function encryptChannel(ch: ChannelConfig, key: Buffer): ChannelConfig {
       };
     case "whatsapp":
       return ch;
+    case "whatsapp_cloud":
+      return {
+        ...ch,
+        accessToken: encrypt(ch.accessToken, key),
+        pin: encrypt(ch.pin, key),
+        relayToken: encrypt(ch.relayToken, key),
+      };
   }
 }
 
@@ -153,5 +160,12 @@ function decryptChannel(ch: ChannelConfig, key: Buffer): ChannelConfig {
       };
     case "whatsapp":
       return ch;
+    case "whatsapp_cloud":
+      return {
+        ...ch,
+        accessToken: decrypt(ch.accessToken, key),
+        pin: decrypt(ch.pin, key),
+        relayToken: decrypt(ch.relayToken, key),
+      };
   }
 }

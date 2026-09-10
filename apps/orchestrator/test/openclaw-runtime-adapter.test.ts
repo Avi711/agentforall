@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { makeWhatsappCloudChannel } from "./helpers/fixtures.js";
 import tar from "tar-stream";
 import { OpenClawRuntimeAdapter } from "../src/services/agent-runtime/openclaw/adapter.js";
 import type { ContainerRuntime } from "../src/services/container-runtime.js";
@@ -287,7 +288,7 @@ test("no secret from the config reaches the error message", async () => {
       stage: "write",
       transport: false,
       code: "INVALID_REQUEST",
-      message: "invalid near new-token and telegram-secret and openai-key and relay-secret",
+      message: "invalid near new-token and telegram-secret and openai-key and relay-secret and meta-secret and 987654 and cloud-secret",
     }),
   });
   const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
@@ -300,6 +301,7 @@ test("no secret from the config reaches the error message", async () => {
       channels: [
         { type: "whatsapp" },
         { type: "telegram", botToken: "telegram-secret", dmPolicy: "allowlist", allowFrom: ["tg:1"] },
+        makeWhatsappCloudChannel({ accessToken: "meta-secret", pin: "987654", relayToken: "cloud-secret" }),
       ],
     },
   };
@@ -309,7 +311,7 @@ test("no secret from the config reaches the error message", async () => {
     (err: unknown) => err,
   );
   assert.ok(error instanceof Error);
-  for (const secret of ["new-token", "telegram-secret", "openai-key", "relay-secret"]) {
+  for (const secret of ["new-token", "telegram-secret", "openai-key", "relay-secret", "meta-secret", "987654", "cloud-secret"]) {
     assert.doesNotMatch(error.message, new RegExp(secret));
   }
 });

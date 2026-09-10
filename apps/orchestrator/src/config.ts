@@ -69,6 +69,8 @@ const AppConfigSchema = z.object({
   trustProxy: booleanEnv.default("true"),
 
   databaseUrl: z.string().url(),
+  // Session-mode (direct) connection for LISTEN; the pooler cannot hold one. Absent = poll only.
+  databaseListenUrl: z.preprocess(emptyToUndefined, z.string().url().optional()),
   encryptionKey: hex256,
 
   // Identifies this orchestrator process when several share a database
@@ -215,6 +217,12 @@ const AppConfigSchema = z.object({
     emptyToUndefined,
     z.string().url().default("https://agentforall.co.il"),
   ),
+
+  // Meta Cloud API; per-tenant tokens come from Embedded Signup, so no app secret lives here.
+  metaGraphBaseUrl: z.preprocess(emptyToUndefined, z.string().url().default("https://graph.facebook.com")),
+  metaGraphApiVersion: z.preprocess(emptyToUndefined, z.string().regex(/^v\d+\.\d+$/).default("v24.0")),
+  whatsappCloudInboxPollIntervalMs: z.coerce.number().int().min(100).default(500),
+  whatsappCloudInboxSweepIntervalMs: z.coerce.number().int().min(10_000).default(60_000),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;
@@ -253,6 +261,7 @@ export function loadConfig(): AppConfig {
     nodeEnv: process.env.NODE_ENV,
     trustProxy: process.env.TRUST_PROXY,
     databaseUrl: process.env.DATABASE_URL,
+    databaseListenUrl: process.env.DATABASE_LISTEN_URL,
     encryptionKey: process.env.ENCRYPTION_KEY,
     orchestratorHostId: process.env.ORCHESTRATOR_HOST_ID,
     apiKeys: process.env.API_KEYS,
@@ -309,6 +318,10 @@ export function loadConfig(): AppConfig {
     composioApiKey: process.env.COMPOSIO_API_KEY,
     composioBaseUrl: process.env.COMPOSIO_BASE_URL,
     dashboardOrigin: process.env.DASHBOARD_ORIGIN,
+    metaGraphBaseUrl: process.env.META_GRAPH_BASE_URL,
+    metaGraphApiVersion: process.env.META_GRAPH_API_VERSION,
+    whatsappCloudInboxPollIntervalMs: process.env.WHATSAPP_CLOUD_INBOX_POLL_INTERVAL_MS,
+    whatsappCloudInboxSweepIntervalMs: process.env.WHATSAPP_CLOUD_INBOX_SWEEP_INTERVAL_MS,
   });
 
   if (!result.success) {

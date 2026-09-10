@@ -25,3 +25,12 @@ export {
   BILLING_EVENT_STATUSES,
   CREDIT_GRANT_KINDS,
 } from "./billing.js";
+export {
+  whatsappCloudNumbers,
+  whatsappCloudInbox,
+  whatsappCloudConversations,
+  whatsappCloudSends,
+  WHATSAPP_CLOUD_CONVERSATION_MODES,
+  WHATSAPP_CLOUD_SEND_KINDS,
+  WHATSAPP_CLOUD_INBOX_CHANNEL,
+} from "./whatsapp-cloud.js";

@@ -1,0 +1,60 @@
+{
+  "name": "@agent-forall/openclaw-channel-whatsapp-cloud",
+  "version": "0.1.0",
+  "description": "OpenClaw channel plugin for a WhatsApp Business number on Meta's Cloud API, relayed through the agent-forall orchestrator.",
+  "type": "module",
+  "private": true,
+  "main": "index.js",
+  "files": [
+    "channel.js",
+    "inbound-turn.js",
+    "inbound.js",
+    "index.js",
+    "openclaw.plugin.json",
+    "outbound-text.js",
+    "poll-loop.js",
+    "relay-client.js",
+    "reply-queue.js",
+    "schema.js",
+    "session-peer.js",
+    "tools.js"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.8.2 <2026.9.0"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ],
+    "runtimeExtensions": [
+      "./index.js"
+    ],
+    "channel": {
+      "id": "whatsapp_cloud",
+      "label": "WhatsApp Business",
+      "selectionLabel": "WhatsApp Business (Meta Cloud API)",
+      "docsPath": "/channels/whatsapp",
+      "blurb": "the business number customers write to, through Meta's official API."
+    },
+    "compat": {
+      "pluginApi": ">=2026.8.2 <2026.9.0"
+    },
+    "build": {
+      "openclawVersion": "2026.8.2"
+    }
+  },
+  "dependencies": {
+    "typebox": "1.3.17"
+  },
+  "bundleDependencies": [
+    "typebox"
+  ]
+}

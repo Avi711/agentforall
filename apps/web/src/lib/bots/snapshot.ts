@@ -22,6 +22,21 @@ export interface OwnerSnapshot {
   whatsappNumber: string | null;
 }
 
+export type WhatsappCloudHealth = "ok" | "token_invalid" | "unknown";
+
+export interface WhatsappCloudSnapshot {
+  phoneNumberId: string;
+  displayPhoneNumber: string | null;
+  verifiedName: string | null;
+  // Probed by the orchestrator (cached a minute); null when the probe was not run or failed.
+  health: WhatsappCloudHealth | null;
+}
+
+export interface BotSnapshotExtras {
+  whatsappCloudHealth?: WhatsappCloudHealth | null;
+  whatsappCloudEnabled?: boolean;
+}
+
 export interface BotSnapshot {
   id: string;
   displayName: string;
@@ -35,12 +50,15 @@ export interface BotSnapshot {
   whatsappAccess: WhatsappAccessSnapshot | null;
   owner: OwnerSnapshot;
   telegram: TelegramSnapshot | null;
+  whatsappCloud: WhatsappCloudSnapshot | null;
+  // Off until the rehearsal is done; a number already connected always shows.
+  whatsappCloudEnabled: boolean;
   lastSeenAt: string | null;
 }
 
 type Channels = Instance["config"]["channels"];
 
-export function toBotSnapshot(bot: Instance): BotSnapshot {
+export function toBotSnapshot(bot: Instance, extras: BotSnapshotExtras = {}): BotSnapshot {
   return {
     id: bot.id,
     displayName: bot.displayName,
@@ -54,7 +72,21 @@ export function toBotSnapshot(bot: Instance): BotSnapshot {
     whatsappAccess: whatsappAccessSnapshot(bot.config.channels),
     owner: ownerSnapshot(bot.config.channels),
     telegram: telegramSnapshot(bot.config.channels),
+    whatsappCloud: whatsappCloudSnapshot(bot.config.channels, extras.whatsappCloudHealth ?? null),
+    whatsappCloudEnabled: extras.whatsappCloudEnabled ?? false,
     lastSeenAt: bot.lastSeenAt ?? null,
+  };
+}
+
+// Secrets are masked by the orchestrator; the number facts are what the card shows.
+function whatsappCloudSnapshot(channels: Channels, health: WhatsappCloudHealth | null): WhatsappCloudSnapshot | null {
+  const ch = channels.find((c) => c.type === "whatsapp_cloud");
+  if (!ch || typeof ch.phoneNumberId !== "string") return null;
+  return {
+    phoneNumberId: ch.phoneNumberId,
+    displayPhoneNumber: typeof ch.displayPhoneNumber === "string" ? ch.displayPhoneNumber : null,
+    verifiedName: typeof ch.verifiedName === "string" ? ch.verifiedName : null,
+    health,
   };
 }
 

@@ -6,6 +6,7 @@ import type { ContainerRuntime } from "../src/services/container-runtime.js";
 import type { AppConfig } from "../src/config.js";
 import type { AgentRuntimeRegistry } from "../src/services/agent-runtime/registry.js";
 import type { ChannelConfig, Instance, InstanceConfig } from "../src/domain/types.js";
+import { makeWhatsappCloudChannel } from "./helpers/fixtures.js";
 
 test("disconnectWhatsapp logs out, clears creds, keeps the channel and restarts", async () => {
   const h = harness({
@@ -385,4 +386,15 @@ test("channel patches keep the relay binding; an explicit null clears it", async
 
   await h.manager.updateConfig(id, userId, { integrations: null });
   assert.equal("integrations" in h.instance().config, false);
+});
+
+test("a config patch that lists channels keeps the WhatsApp Business channel the API cannot express", async () => {
+  const business = makeWhatsappCloudChannel();
+  const h = harness({ channels: [{ type: "telegram", botToken: "t" }, business] });
+
+  await h.manager.updateConfig(h.instance().id, h.instance().userId, {
+    channels: [{ type: "telegram", botToken: "t2" }],
+  });
+
+  assert.deepEqual(h.instance().config.channels, [{ type: "telegram", botToken: "t2" }, business]);
 });

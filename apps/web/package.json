@@ -8,6 +8,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "node --conditions=react-server --import tsx --test \"test/**/*.test.ts\"",
+    "test:db": "node --conditions=react-server --import tsx --test \"test/**/*.db.test.ts\"",
     "indexnow": "node scripts/indexnow.mjs",
     "test:integration": "node --conditions=react-server --import tsx --test \"test-integration/**/*.test.ts\""
   },

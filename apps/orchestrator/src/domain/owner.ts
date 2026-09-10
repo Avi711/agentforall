@@ -1,9 +1,11 @@
-import { findTelegramChannel, findWhatsappChannel } from "./channels.js";
+import { findTelegramChannel, findWhatsappChannel, findWhatsappCloudChannel } from "./channels.js";
 import type { ChannelConfig } from "./types.js";
 
 export interface OwnerIdentity {
   telegramUserId: string | null;
   whatsappNumber: string | null;
+  // The owner's own phone also identifies them on the business number, when the bot has one.
+  hasBusinessNumber: boolean;
 }
 
 // The Telegram allowlist is the owner; the linker writes it as "tg:<id>".
@@ -13,6 +15,7 @@ export function ownerIdentityOf(channels: ChannelConfig[]): OwnerIdentity {
   return {
     telegramUserId: telegram ? telegramOwnerId(telegram.allowFrom ?? []) : null,
     whatsappNumber: whatsapp?.ownerNumber ?? null,
+    hasBusinessNumber: findWhatsappCloudChannel(channels) !== undefined,
   };
 }
 
@@ -20,7 +23,10 @@ export function ownerIdentityOf(channels: ChannelConfig[]): OwnerIdentity {
 export function ownerPeerIds(identity: OwnerIdentity): string[] {
   const ids: string[] = [];
   if (identity.telegramUserId) ids.push(`telegram:${identity.telegramUserId}`);
-  if (identity.whatsappNumber) ids.push(`whatsapp:${identity.whatsappNumber}`);
+  if (identity.whatsappNumber) {
+    ids.push(`whatsapp:${identity.whatsappNumber}`);
+    if (identity.hasBusinessNumber) ids.push(`whatsapp_cloud:${identity.whatsappNumber}`);
+  }
   return ids;
 }
 

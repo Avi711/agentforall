@@ -380,6 +380,9 @@ function secretsOf(instance: Instance): (string | undefined)[] {
       case "whatsapp":
         secrets.push(channel.ownerNumber);
         break;
+      case "whatsapp_cloud":
+        secrets.push(channel.accessToken, channel.pin, channel.relayToken);
+        break;
     }
   }
   return secrets;

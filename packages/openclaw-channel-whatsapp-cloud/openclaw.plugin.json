@@ -1,0 +1,40 @@
+{
+  "id": "agentforall-whatsapp-cloud",
+  "name": "WhatsApp Business (agent-forall)",
+  "description": "Customers write to the business number; the bot answers through the orchestrator's Meta Cloud API relay.",
+  "activation": { "onStartup": true },
+  "channels": ["whatsapp_cloud"],
+  "contracts": {
+    "tools": ["whatsapp_cloud_escalate", "whatsapp_cloud_handoff", "whatsapp_cloud_reply"]
+  },
+  "configSchema": { "type": "object", "additionalProperties": false, "properties": {} },
+  "channelConfigs": {
+    "whatsapp_cloud": {
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "dmPolicy": { "type": "string", "enum": ["open"] },
+          "allowFrom": { "type": "array", "items": { "type": "string" } },
+          "defaultAccount": { "type": "string" },
+          "accounts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "phoneNumberId": { "type": "string" },
+                "displayPhoneNumber": { "type": "string" },
+                "relayUrl": { "type": "string" }
+              },
+              "required": ["phoneNumberId", "relayUrl"]
+            }
+          }
+        }
+      }
+    }
+  }
+}

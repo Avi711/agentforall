@@ -1,4 +1,9 @@
-import type { ChannelConfig, TelegramChannelConfig, WhatsappChannelConfig } from "./types.js";
+import type {
+  ChannelConfig,
+  TelegramChannelConfig,
+  WhatsappChannelConfig,
+  WhatsappCloudChannelConfig,
+} from "./types.js";
 
 // New WhatsApp channels start owner-only (claim mode); legacy rows keep dmAccess undefined.
 export function applyChannelDefaults(channels: ChannelConfig[]): ChannelConfig[] {
@@ -36,6 +41,12 @@ export function withWhatsappOwnerNumber(
   }
   if (!ownerNumber || current.ownerNumber === ownerNumber) return channels;
   return replaceWhatsappChannel(channels, { ...current, dmAccess: "owner", ownerNumber });
+}
+
+export function findWhatsappCloudChannel(
+  channels: ChannelConfig[],
+): WhatsappCloudChannelConfig | undefined {
+  return channels.find((ch): ch is WhatsappCloudChannelConfig => ch.type === "whatsapp_cloud");
 }
 
 export function findTelegramChannel(

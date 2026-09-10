@@ -36,7 +36,7 @@ export type ModelInputCapability = (typeof MODEL_INPUT_CAPABILITIES)[number];
 export const PROVIDER_MEDIA_CAPABILITIES = ["image", "audio", "video", "pdf"] as const;
 export type ProviderMediaCapability = (typeof PROVIDER_MEDIA_CAPABILITIES)[number];
 
-export const CHANNEL_TYPES = ["telegram", "discord", "slack", "whatsapp"] as const;
+export const CHANNEL_TYPES = ["telegram", "discord", "slack", "whatsapp", "whatsapp_cloud"] as const;
 export type ChannelType = (typeof CHANNEL_TYPES)[number];
 
 export const CONTAINER_UP_STATUSES = ["running", "degraded", "unhealthy"] as const;
@@ -60,9 +60,25 @@ export type ChannelConfig =
     }
   | { type: "discord"; token: string; guildId?: string }
   | { type: "slack"; botToken: string; appToken: string }
-  | { type: "whatsapp"; ownerNumber?: string; dmAccess?: WhatsappDmAccess };
+  | { type: "whatsapp"; ownerNumber?: string; dmAccess?: WhatsappDmAccess }
+  | WhatsappCloudChannel;
+
+// Meta Cloud API business number. The token is WABA-scoped; the relay token is minted here.
+export interface WhatsappCloudChannel {
+  type: "whatsapp_cloud";
+  wabaId: string;
+  phoneNumberId: string;
+  businessId: string;
+  displayPhoneNumber: string;
+  verifiedName: string;
+  accessToken: string;
+  pin: string;
+  relayToken: string;
+  relayUrl: string;
+}
 
 export type WhatsappChannelConfig = Extract<ChannelConfig, { type: "whatsapp" }>;
+export type WhatsappCloudChannelConfig = Extract<ChannelConfig, { type: "whatsapp_cloud" }>;
 export type TelegramChannelConfig = Extract<ChannelConfig, { type: "telegram" }>;
 
 export interface ProviderConfig {
@@ -131,6 +147,18 @@ export const InstanceConfigSchema: z.ZodType<InstanceConfig> = z.object({
         type: z.literal("whatsapp"),
         ownerNumber: z.string().optional(),
         dmAccess: z.enum(WHATSAPP_DM_ACCESS).optional(),
+      }),
+      z.object({
+        type: z.literal("whatsapp_cloud"),
+        wabaId: z.string().min(1),
+        phoneNumberId: z.string().min(1),
+        businessId: z.string().min(1),
+        displayPhoneNumber: z.string().min(1),
+        verifiedName: z.string(),
+        accessToken: z.string().min(1),
+        pin: z.string().regex(/^\d{6}$/),
+        relayToken: z.string().min(1),
+        relayUrl: z.string().url(),
       }),
     ]),
   ),

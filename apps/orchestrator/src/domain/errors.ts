@@ -113,3 +113,61 @@ export function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return String(err);
 }
+
+export class ConflictError extends DomainError {
+  readonly statusCode = 409;
+  readonly code = "CONFLICT";
+}
+
+// Meta only lets a business reply inside 24h of the customer's last message; anything else is a template.
+export class CustomerWindowClosedError extends DomainError {
+  readonly statusCode = 409;
+  readonly code = "CUSTOMER_WINDOW_CLOSED";
+
+  constructor() {
+    super("the customer's 24-hour service window is closed; they must write first");
+  }
+}
+
+export class ChannelCredentialError extends DomainError {
+  readonly statusCode = 409;
+  readonly code = "CHANNEL_CREDENTIAL_INVALID";
+
+  constructor(channel: string) {
+    super(`${channel} credentials were revoked or expired; reconnect the channel`);
+  }
+}
+
+export class UpstreamRateLimitedError extends DomainError {
+  readonly statusCode = 429;
+  readonly code = "UPSTREAM_RATE_LIMITED";
+
+  constructor(service: string) {
+    super(`${service} is rate limiting this bot; try again shortly`);
+  }
+}
+
+export class ChannelPinRequiredError extends DomainError {
+  readonly statusCode = 409;
+  readonly code = "CHANNEL_PIN_REQUIRED";
+  constructor() {
+    super("this number has a two-step verification PIN; enter it to connect");
+  }
+}
+
+export class MediaTooLargeError extends DomainError {
+  readonly statusCode = 413;
+  readonly code = "MEDIA_TOO_LARGE";
+
+  constructor() {
+    super("media is larger than the platform cap");
+  }
+}
+
+export class OwnerUnreachableError extends DomainError {
+  readonly statusCode = 409;
+  readonly code = "OWNER_UNREACHABLE";
+  constructor() {
+    super("the owner cannot be reached on Telegram; they must open a chat with their bot first");
+  }
+}

@@ -51,20 +51,31 @@ test("ownerIdentityOf reads telegram from the allowlist and whatsapp from ownerN
   assert.deepEqual(ownerIdentityOf([TELEGRAM, WHATSAPP_OWNED]), {
     telegramUserId: "123456",
     whatsappNumber: "+972501234567",
+    hasBusinessNumber: false,
   });
   assert.deepEqual(ownerIdentityOf([{ type: "whatsapp" }]), {
     telegramUserId: null,
     whatsappNumber: null,
+    hasBusinessNumber: false,
   });
   assert.deepEqual(ownerIdentityOf([{ type: "telegram" }]), {
     telegramUserId: null,
     whatsappNumber: null,
+    hasBusinessNumber: false,
   });
 });
 
 test("ownerPeerIds emits channel-prefixed ids and sameOwnerIds ignores order", () => {
-  const ids = ownerPeerIds({ telegramUserId: "123456", whatsappNumber: "+972501234567" });
+  const ids = ownerPeerIds({
+    telegramUserId: "123456",
+    whatsappNumber: "+972501234567",
+    hasBusinessNumber: false,
+  });
   assert.deepEqual(ids, OWNER_IDS);
+  assert.deepEqual(
+    ownerPeerIds({ telegramUserId: null, whatsappNumber: "+972501234567", hasBusinessNumber: true }),
+    ["whatsapp:+972501234567", "whatsapp_cloud:+972501234567"],
+  );
   assert.equal(sameOwnerIds(ids, [...ids].reverse()), true);
   assert.equal(sameOwnerIds(ids, ["telegram:123456"]), false);
   assert.equal(sameOwnerIds([], []), true);

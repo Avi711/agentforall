@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import type { InstanceManager } from "../services/instance-manager.js";
 import type { PairingManager } from "../services/pairing-manager.js";
+import { extractBearer } from "./bearer.js";
 
 const UuidParam = z.object({ id: z.string().uuid() });
 
@@ -148,14 +149,6 @@ export const internalPairRoutes: FastifyPluginAsync<InternalPairRoutesDeps> = as
     },
   );
 };
-
-function extractBearer(header: string | string[] | undefined): string | null {
-  if (typeof header !== "string") return null;
-  if (!header.startsWith("Bearer ")) return null;
-  const token = header.slice(7);
-  if (token.length === 0 || token.length > 256) return null;
-  return token;
-}
 
 function parseAccountIdHeader(raw: string | string[] | undefined): string | null {
   if (typeof raw !== "string") return null;

@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import type { Readable } from "node:stream";
 import type { FastifyBaseLogger } from "fastify";
 import type { InstanceRepository } from "../storage/instance-repository.js";
+import { isUniqueViolation } from "../storage/pg-errors.js";
 import type { ContainerRuntime } from "./container-runtime.js";
 import type { PortAllocator } from "./port-allocator.js";
 import type { EventRepository, ProvisioningEvent } from "../storage/event-repository.js";
@@ -448,14 +449,16 @@ export class InstanceManager {
     }
   }
 
+  // The public patch cannot express the WhatsApp Business channel, so a channel list in it keeps the existing one.
   async updateConfig(
     id: string,
     userId: string,
     patch: ConfigPatch,
   ): Promise<Instance> {
-    return this.operationLock.run(id, () =>
-      this.updateConfigLocked(id, userId, patch),
-    );
+    return this.operationLock.run(id, async () => {
+      const inst = await this.requireOwnedInstance(id, userId);
+      return this.updateConfigLocked(id, userId, keepOrchestratorChannels(inst.config.channels, patch));
+    });
   }
 
   // Read-modify-write under the instance lock so concurrent channel writers can't lose updates.
@@ -995,11 +998,8 @@ function integrationsAfterPatch(
   return patch.integrations ? { integrations: patch.integrations } : {};
 }
 
-function isUniqueViolation(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    "code" in err &&
-    (err as { code: string }).code === "23505"
-  );
+function keepOrchestratorChannels(current: ChannelConfig[], patch: ConfigPatch): ConfigPatch {
+  if (!patch.channels) return patch;
+  const owned = current.filter((ch) => ch.type === "whatsapp_cloud");
+  return { ...patch, channels: [...patch.channels.filter((ch) => ch.type !== "whatsapp_cloud"), ...owned] };
 }

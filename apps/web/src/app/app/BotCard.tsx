@@ -17,7 +17,7 @@ import type { ShowcaseApp } from "@/lib/integrations/catalog.he";
 import { WhatsappNumberConfirmDialog } from "./WhatsappNumberDialog";
 import type { CreditSummary } from "@/lib/billing/credits/service";
 
-type Channel = "whatsapp" | "telegram";
+type Channel = "whatsapp" | "telegram" | "whatsapp-cloud";
 
 export function BotCard({
   bot: initialBot,
@@ -86,7 +86,9 @@ export function BotCard({
           ? "הסוכן עסוק כרגע — נסו שוב בעוד רגע."
           : channel === "whatsapp"
             ? "ניתוק WhatsApp נכשל"
-            : "ניתוק טלגרם נכשל",
+            : channel === "whatsapp-cloud"
+              ? "ניתוק WhatsApp Business נכשל"
+              : "ניתוק טלגרם נכשל",
       );
     }
   }
@@ -358,9 +360,20 @@ export function BotCard({
 
       <ConfirmDialog
         open={disconnecting !== null}
-        title={disconnecting === "telegram" ? "ניתוק טלגרם" : "ניתוק WhatsApp"}
+        title={
+          disconnecting === "telegram"
+            ? "ניתוק טלגרם"
+            : disconnecting === "whatsapp-cloud"
+              ? "ניתוק WhatsApp Business"
+              : "ניתוק WhatsApp"
+        }
         description={
-          disconnecting === "telegram" ? (
+          disconnecting === "whatsapp-cloud" ? (
+            <p>
+              הסוכן יפסיק לענות ללקוחות במספר העסקי והחיבור ל-Meta יוסר. הזיכרון וההיסטוריה
+              נשמרים; אפשר לחבר מחדש בכל רגע דרך Meta.
+            </p>
+          ) : disconnecting === "telegram" ? (
             <p>
               הסוכן{" "}
               {bot.telegram?.botUsername ? (
@@ -486,6 +499,7 @@ function ChannelsSection({
   const health = channelHealth(bot);
   const whatsapp = whatsappRow(bot, health);
   const telegram = telegramRow(bot, health);
+  const business = whatsappCloudRow(bot, health);
   // Emphasis is earned: one filled button, and only while no channel can answer yet.
   const needsChannel = !whatsapp.connected && !telegram.connected;
   const fresh = !whatsapp.connected && !whatsapp.pending && !whatsapp.stale;
@@ -572,6 +586,27 @@ function ChannelsSection({
           menu={telegramMenu}
           menuLabel="הגדרות Telegram"
         />
+
+        {bot.whatsappCloudEnabled || bot.whatsappCloud ? (
+        <CardRow
+          glyph={<WhatsAppGlyph />}
+          name="WhatsApp Business"
+          status={business.status}
+          detail={
+            bot.whatsappCloud ? (
+              <span dir="ltr" className="font-mono text-sm text-espresso-light">
+                {bot.whatsappCloud.displayPhoneNumber ?? bot.whatsappCloud.phoneNumberId}
+                {bot.whatsappCloud.verifiedName ? ` · ${bot.whatsappCloud.verifiedName}` : ""}
+              </span>
+            ) : (
+              <span className="text-sm text-espresso-light">מספר עסקי ללקוחות שלכם, דרך Meta</span>
+            )
+          }
+          primary={business.primary}
+          menu={business.connected ? [{ label: "ניתוק", danger: true, onClick: () => onDisconnect("whatsapp-cloud") }] : []}
+          menuLabel="הגדרות WhatsApp Business"
+        />
+        ) : null}
       </ul>
 
       {(whatsapp.connected || telegram.connected) && bot.lastSeenAt === null ? (
@@ -740,6 +775,45 @@ function PlugGlyph() {
       <path d="M9 3v5M15 3v5M7 8h10v3a5 5 0 0 1-10 0V8zM12 16v5" />
     </svg>
   );
+}
+
+// The business number is opt-in and never the "first channel": its button stays quiet.
+function whatsappCloudRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
+  if (bot.whatsappCloud?.health === "token_invalid") {
+    return {
+      status: { tone: "err", label: "החיבור פג" },
+      connected: false,
+      pending: false,
+      stale: true,
+      primary: { kind: "link", label: "חיבור מחדש", href: "/app/bot/whatsapp-business", emphasis: "quiet" },
+    };
+  }
+  if (bot.whatsappCloud) {
+    const digits = bot.whatsappCloud.displayPhoneNumber?.replace(/\D/g, "") ?? "";
+    return {
+      status: health ?? { tone: "ok", label: "מחובר" },
+      connected: true,
+      pending: false,
+      stale: false,
+      primary: digits
+        ? {
+            kind: "link",
+            label: "פתיחה ב-WhatsApp",
+            icon: <OpenIcon />,
+            href: `https://wa.me/${digits}`,
+            external: true,
+            emphasis: "quiet",
+          }
+        : null,
+    };
+  }
+  return {
+    status: { tone: "info", label: "לא מחובר" },
+    connected: false,
+    pending: false,
+    stale: false,
+    primary: { kind: "link", label: "חיבור", href: "/app/bot/whatsapp-business", emphasis: "quiet" },
+  };
 }
 
 function telegramRow(bot: BotSnapshot, health: RowStatus | null): RowModel {

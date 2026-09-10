@@ -5,8 +5,10 @@
 # Safe to rerun; a tenant that already has everything just gets one more restart.
 # Usage: bash rollout-plugin.sh <image-ref> --plugin <name> --sentinel <file-in-plugin-dir>
 #          [--verify-env VAR] [--verify-hooks] [--only <container-id-or-name>] [--dry-run]
-# Credit: bash rollout-plugin.sh IMG --plugin agentforall-credit --sentinel budget.js --verify-env AGENTFORALL_CREDIT_API_KEY --verify-hooks --require-provider litellm
-# Media:  bash rollout-plugin.sh IMG --plugin agentforall-media --sentinel provider.js --verify-env AGENTFORALL_MEDIA_API_KEY
+# Credit: bash rollout-plugin.sh IMG --plugin agentforall-credit --sentinel budget.js --verify-env AGENTFORALL_CREDIT_API_KEY --verify-hooks --require-provider litellm --require-gateway
+# Media:  bash rollout-plugin.sh IMG --plugin agentforall-media --sentinel provider.js --verify-env AGENTFORALL_MEDIA_API_KEY --require-gateway
+# WhatsApp Business: bash rollout-plugin.sh IMG --plugin agentforall-whatsapp-cloud --sentinel channel.js
+#   (only bots that connected a business number render the entry + WHATSAPP_CLOUD_RELAY_TOKEN; others load nothing)
 set -euo pipefail
 
 IMG="$1"; shift
@@ -15,6 +17,7 @@ SENTINEL=""
 VERIFY_ENV=""
 VERIFY_HOOKS=0
 REQUIRE_PROVIDER=""
+REQUIRE_GATEWAY=0
 ONLY=""
 DRY_RUN=0
 while [ $# -gt 0 ]; do
@@ -24,6 +27,7 @@ while [ $# -gt 0 ]; do
     --verify-env) VERIFY_ENV="$2"; shift 2 ;;
     --verify-hooks) VERIFY_HOOKS=1; shift ;;
     --require-provider) REQUIRE_PROVIDER="$2"; shift 2 ;;
+    --require-gateway) REQUIRE_GATEWAY=1; shift ;;
     --only) ONLY="$2"; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
@@ -79,9 +83,8 @@ while IFS=$'\t' read -r ID USER_ID CONTAINER STATUS PROVIDER BASE_URL NAME_JSON;
   # The row id can lag a rebuild; the name is stable.
   CONTAINER="$(sudo docker ps -aq --filter "name=^/${CNAME}$" | head -1)"
   [ -n "$CONTAINER" ] || { echo "=== skipped $LABEL: no container ==="; skipped+=("$CNAME"); continue; }
-  # Our plugins talk to a gateway, which is exactly what the orchestrator keys on when it renders
-  # them: a provider with a baseUrl. Credit needs LiteLLM itself, hence --require-provider.
-  if [ "$BASE_URL" = "-" ]; then
+  # Credit and media talk to a gateway (a provider with a baseUrl); the WhatsApp channel plugin does not.
+  if [ "$REQUIRE_GATEWAY" = "1" ] && [ "$BASE_URL" = "-" ]; then
     echo "=== skipped $LABEL: direct provider $PROVIDER, no gateway ==="; skipped+=("${CNAME:-$CONTAINER}"); continue
   fi
   if [ -n "$REQUIRE_PROVIDER" ] && [ "$PROVIDER" != "$REQUIRE_PROVIDER" ]; then

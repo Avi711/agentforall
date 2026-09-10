@@ -7,7 +7,9 @@ import type {
   LlmProvider,
   ProviderConfig,
   WhatsappChannelConfig,
+  WhatsappCloudChannelConfig,
 } from "../../../domain/types.js";
+import { findWhatsappCloudChannel } from "../../../domain/channels.js";
 import { ownerIdentityOf, ownerPeerIds } from "../../../domain/owner.js";
 import type { RuntimeConfigFiles } from "../types.js";
 import {
@@ -23,7 +25,9 @@ import type {
   MediaModelEntry,
   MediaToolsConfig,
   OpenclawConfig,
+  SenderToolPolicy,
   SessionConfig,
+  ToolsConfig,
   WhatsAppChannelConfig,
 } from "./schema.js";
 
@@ -43,6 +47,37 @@ const MEDIA_PLUGIN_ID = "agentforall-media";
 const MEDIA_ENV_KEY = "AGENTFORALL_MEDIA_API_KEY";
 const MEMORY_PLUGIN_ID = "memory-core";
 const MAIN_AGENT_ID = "main";
+export const MCP_RELAY_SERVER_NAME = "agentforall";
+export const WHATSAPP_CLOUD_PLUGIN_ID = "agentforall-whatsapp-cloud";
+export const WHATSAPP_CLOUD_CHANNEL_ID = "whatsapp_cloud";
+export const WHATSAPP_CLOUD_RELAY_TOKEN_ENV = "WHATSAPP_CLOUD_RELAY_TOKEN";
+// Tools our plugin registers; the escalation is the one thing a customer session may do.
+export const WHATSAPP_CLOUD_ESCALATE_TOOL = "whatsapp_cloud_escalate";
+export const WHATSAPP_CLOUD_HANDOFF_TOOL = "whatsapp_cloud_handoff";
+export const WHATSAPP_CLOUD_REPLY_TOOL = "whatsapp_cloud_reply";
+// Every 2026.8.2 group, every MCP server ("bundle-mcp") and the plugin tools by name: "group:plugins" would deny the escalation too.
+export const STRANGER_TOOL_POLICY: SenderToolPolicy = {
+  deny: [
+    "group:runtime",
+    "group:fs",
+    "group:sessions",
+    "group:messaging",
+    "group:automation",
+    "group:web",
+    "group:ui",
+    "group:media",
+    "group:agents",
+    "group:nodes",
+    "group:memory",
+    "group:openclaw",
+    "bundle-mcp",
+    `${MCP_RELAY_SERVER_NAME}__*`,
+    "intent",
+    WHATSAPP_CLOUD_HANDOFF_TOOL,
+    WHATSAPP_CLOUD_REPLY_TOOL,
+  ],
+  alsoAllow: [WHATSAPP_CLOUD_ESCALATE_TOOL],
+};
 const TENANT_TIMEZONE = "Asia/Jerusalem";
 
 // The 2026.8 default is a full main-session turn every 30 minutes (~100K tokens each). A few
@@ -168,7 +203,8 @@ function generateOpenclawConfig(
   validateProvider(provider);
   const model = buildModelSelection(provider);
   const models = buildModelsConfig(provider);
-  const tools = buildToolsConfig(provider);
+  const business = findWhatsappCloudChannel(config.channels);
+  const tools = buildToolsConfig(provider, business ? buildToolsBySender(config) : null);
   const mcp = buildMcp(config);
   const media = new Set(provider.media ?? []);
   const owner = ownerPeerIds(ownerIdentityOf(config.channels));
@@ -241,6 +277,9 @@ function generateOpenclawEnv(
         break;
       case "whatsapp":
         break;
+      case "whatsapp_cloud":
+        addEnvLine(lines, WHATSAPP_CLOUD_RELAY_TOKEN_ENV, ch.relayToken);
+        break;
     }
   }
 
@@ -265,6 +304,9 @@ function buildPlugins(channels: InstanceConfig["channels"]): OpenclawConfig["plu
       // cannot change tenant spend unnoticed.
       [MEMORY_PLUGIN_ID]: { enabled: true, config: { dreaming: { enabled: true } } },
       ...(channels.some((ch) => ch.type === "whatsapp") ? { whatsapp: { enabled: true } } : {}),
+      ...(channels.some((ch) => ch.type === "whatsapp_cloud")
+        ? { [WHATSAPP_CLOUD_PLUGIN_ID]: { enabled: true } }
+        : {}),
     },
   };
 }
@@ -334,10 +376,31 @@ function buildChannels(channels: InstanceConfig["channels"]): ChannelsConfig {
           },
         };
         break;
+      case "whatsapp_cloud":
+        block.whatsapp_cloud = buildWhatsappCloudChannel(ch);
+        break;
     }
   }
 
   return block;
+}
+
+// Customers are always open; the owner's identity is what separates them, not the allowlist.
+function buildWhatsappCloudChannel(ch: WhatsappCloudChannelConfig): ChannelsConfig["whatsapp_cloud"] {
+  return {
+    enabled: true,
+    dmPolicy: "open",
+    allowFrom: ["*"],
+    defaultAccount: "default",
+    accounts: {
+      default: {
+        enabled: true,
+        phoneNumberId: ch.phoneNumberId,
+        displayPhoneNumber: ch.displayPhoneNumber,
+        relayUrl: ch.relayUrl,
+      },
+    },
+  };
 }
 
 // Undefined dmAccess = legacy open; "owner" without a number = claim mode (senders held for approval).
@@ -415,8 +478,6 @@ function buildModelsConfig(provider: ProviderConfig): OpenclawConfig["models"] {
   };
 }
 
-export const MCP_RELAY_SERVER_NAME = "agentforall";
-
 // The container talks only to the orchestrator's relay; the provider key never reaches it.
 function buildMcp(config: InstanceConfig): OpenclawConfig["mcp"] {
   if (!config.integrations) return undefined;
@@ -433,8 +494,25 @@ function buildMcp(config: InstanceConfig): OpenclawConfig["mcp"] {
   };
 }
 
+// Owner identities first (unrestricted), then the wildcard: OpenClaw stops at the first matching key.
+function buildToolsBySender(config: InstanceConfig): Record<string, SenderToolPolicy> {
+  const identity = ownerIdentityOf(config.channels);
+  const policy: Record<string, SenderToolPolicy> = {};
+  if (identity.telegramUserId) policy[`channel:telegram:${identity.telegramUserId}`] = {};
+  if (identity.whatsappNumber) {
+    policy[`e164:${identity.whatsappNumber}`] = {};
+    // Our plugin reports the sender as +E.164 and never a separate e164 field, so the channel key is the one that matches.
+    if (identity.hasBusinessNumber) policy[`channel:${WHATSAPP_CLOUD_CHANNEL_ID}:${identity.whatsappNumber}`] = {};
+  }
+  policy["*"] = STRANGER_TOOL_POLICY;
+  return policy;
+}
+
 // One capability-tagged model list; each capability names its preferred entry.
-function buildToolsConfig(provider: ProviderConfig): OpenclawConfig["tools"] {
+function buildToolsConfig(
+  provider: ProviderConfig,
+  toolsBySender: Record<string, SenderToolPolicy> | null,
+): OpenclawConfig["tools"] {
   const media = new Set(provider.media ?? []);
   const providerId = openclawProviderId(provider);
   const models: MediaModelEntry[] = [];
@@ -473,7 +551,12 @@ function buildToolsConfig(provider: ProviderConfig): OpenclawConfig["tools"] {
     };
   }
 
-  return models.length > 0 ? { media: mediaConfig } : undefined;
+  const tools: ToolsConfig = {
+    ...(models.length > 0 ? { media: mediaConfig } : {}),
+    // exec runs on the gateway host once there is no sandbox; a business bot never gets it.
+    ...(toolsBySender ? { exec: { security: "deny" }, toolsBySender } : {}),
+  };
+  return Object.keys(tools).length > 0 ? tools : undefined;
 }
 
 // A direct provider (anthropic, openai, google…) is one OpenClaw transcribes with itself.
@@ -572,6 +655,7 @@ const OWNED_PATHS: readonly (readonly string[])[] = [
   ["plugins", "entries", CREDIT_PLUGIN_ID],
   ["plugins", "entries", MEDIA_PLUGIN_ID],
   ["plugins", "entries", MEMORY_PLUGIN_ID],
+  ["plugins", "entries", WHATSAPP_CLOUD_PLUGIN_ID],
   ["mcp", "servers", MCP_RELAY_SERVER_NAME],
 ];
 
@@ -590,6 +674,8 @@ const CHANNEL_OWNED_PATHS: Record<ChannelType, readonly (readonly string[])[]> =
     ["accounts", "default", "enabled"],
     ["accounts", "default", "authDir"],
   ],
+  // Ours end to end: the plugin writes nothing back into its block.
+  whatsapp_cloud: [["enabled"], ["dmPolicy"], ["allowFrom"], ["defaultAccount"], ["accounts"]],
 };
 
 // Defaults delivered only while the tenant has said nothing about them. No dashboard control

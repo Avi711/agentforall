@@ -34,11 +34,15 @@ RUN openclaw plugins install "@openclaw/whatsapp@${OPENCLAW_VERSION}" --pin --ac
 # After the prewarm on purpose: these plugins have no dependencies, so editing them must not redo it.
 COPY --chown=node:node packages/openclaw-plugin-credit /opt/agentforall/src/agentforall-credit
 COPY --chown=node:node packages/openclaw-plugin-media /opt/agentforall/src/agentforall-media
+COPY --chown=node:node packages/openclaw-channel-whatsapp-cloud /opt/agentforall/src/agentforall-whatsapp-cloud
 # The sources stay for rollout-plugin.sh; the tarballs stay because the install records their path
 # as its source. --force confirms a non-registry source and overwrites an existing install; --accept-
 # capabilities is the non-interactive consent. One command per loop body, not an && chain: errexit
 # does not abort on a non-final member of a list.
-RUN set -e; mkdir -p /opt/agentforall/plugins; for p in agentforall-credit agentforall-media; do \
+# `npm install` first: a plugin that declares bundleDependencies (the WhatsApp Business channel
+# bundles typebox, like the official channels) needs them present for `npm pack` to fold them in.
+RUN set -e; mkdir -p /opt/agentforall/plugins; for p in agentforall-credit agentforall-media agentforall-whatsapp-cloud; do \
+      (cd "/opt/agentforall/src/$p" && npm install --omit=dev --ignore-scripts --no-audit --no-fund --silent); \
       TARBALL="$(npm pack "/opt/agentforall/src/$p" --pack-destination /opt/agentforall/plugins --silent)"; \
       openclaw plugins install "npm-pack:/opt/agentforall/plugins/$TARBALL" --force --accept-capabilities; \
     done

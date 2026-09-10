@@ -324,6 +324,72 @@ Verified against the live Composio API on 2026-08-27 with the project key: sessi
 
 Known follow-ups: connection-expiry webhook, relay-token rotation, own Google OAuth app (consent screen branding; CASA needed for Gmail read).
 
+## WhatsApp Business / Meta Cloud API (2026-09-09, BUILT, NOT DEPLOYED, uncommitted)
+
+Reviewed and hardened 2026-09-09 (fresh reviewer against the code and the 2026.8.2 dist), all suites green:
+customer sessions now also lose `group:ui`/`group:media`/`group:openclaw`; relay rate limit keyed by caller
+IP + bot (MCP relay too); `whatsapp_cloud_numbers` keeps an encrypted PIN and survives disconnect
+(`instance_id` nullable, FK set null) — migration 0012 was regenerated, still unapplied; Meta `133005` →
+`CHANNEL_PIN_REQUIRED` → dashboard PIN field; escalation throttled 2 min/customer and fenced; poll loop
+runs customers in parallel lanes; details in `docs/whatsapp-cloud-api.md` §14.
+Second pass (two more fresh reviewers, same day): the gateway `hooks` endpoint is gone — owner notices and
+escalations are plain Telegram Bot API messages from the orchestrator (a hook turn ran with every tool);
+`group:plugins` was silently denying the escalation tool; relay limiter keyed on the socket peer and run
+before auth; reconnect stores the fresh token; poll loop turn timeout and ordered failure handling; inbox
+drops by age only; ledger/audit retention sweep; media proxy host allowlist. All suites green (orchestrator
+304, web 186, plugin 16, db 7). Pre-existing, not touched: tenant-net ICC is on.
+Third pass 2026-09-10 (two fresh reviewers) plus a sourced architecture check (Postgres `SKIP LOCKED`
+queue + long poll is the standard; keep it): owner-delivery fallback to the bot, escalation caps, chunked
+replies, ordered failure handling in the plugin, tolerant webhook parsing, receipt-time 24h window,
+dashboard `token_invalid`. Then `LISTEN/NOTIFY` wake (ingress `pg_notify`, orchestrator listener on a
+**second connection string** `DATABASE_LISTEN_URL` — Supabase direct/session-mode, not the transaction
+pooler on 6543; unset = poll only with a boot warning), retention 7 d drop / 8 d marker (Meta retries 7
+days), partial pending index + autovacuum 2% on the inbox (the `ALTER TABLE ... SET (autovacuum_*)` line
+in migration 0012 is hand-appended; a future `generate` will not re-emit it), 80 msg/s send bucket per
+number. All suites green (orchestrator 312, web 187, plugin 20, db 7). New GSM secret
+`database-listen-url` is fetched by `infra/startup.sh` on every boot (`set -e`) and listed in
+`infra/main.tf` `vm_secret_ids`: **create it before the next `terraform apply` or VM reboot**, else the
+boot script fails. Value: the Supabase direct or session-mode connection string (port 5432), not 6543.
+Fourth pass 2026-09-10 (three fresh reviewers; ~50 findings fixed, list in the doc §14): plugin reply
+queue (a redelivery never re-runs the model), shutdown order, destroyed-bot number bindings, set-based
+lease, listener lifecycle, escalation slot reservation, UTF-16 chunking, FB SDK `frame-src`, NUL-safe
+ingress, `WHATSAPP_CLOUD_ENABLED` gate. The secret fetch in `startup.sh` is now tolerant (`|| true`), so a
+reboot before the secret exists only costs the NOTIFY wake; `terraform apply` still needs it to exist.
+New Vercel env `WHATSAPP_CLOUD_ENABLED=true` — set it only after the rehearsal: until then the webhook
+works but no tenant sees the row. `rollout-plugin.sh` gained `--require-gateway` (pass it for credit and
+media; not for this plugin). All suites green (orchestrator 331, web 189, plugin 32, db 7).
+Fifth pass 2026-09-10: a Postgres-backed test tier (`npm run test:db` in orchestrator and web, needs
+`TEST_DATABASE_URL` pointing at a throwaway `postgres:16-alpine`; recipe in the doc §11) ran the real
+SQL for the first time and found three defects no reading caught: Drizzle's raw `execute` hands timestamps
+back as text so the lease parser rejected every row (no message would ever have been delivered), the
+sweep's backlog aggregate was text too (it would have thrown every minute), and the ingress lookup still
+routed to a destroyed bot. All fixed; run `test:db` before touching the repositories or migration 0012. The scoped
+fifth reviewer added 13 more (escalation slot release under load, destroy vs connect lock, wait-after-stop,
+lease clock, media stream cleanup, reply quoting, plugin stop grace, popup relaunch race, `set_runtime_env`
+byte-safety via awk `ENVIRON` with `infra/ops/test-set-runtime-env.sh`), all fixed test-first; list in the
+doc §14. Final counts: orchestrator 335, web 189, plugin 38, db 7, db-backed 4 + 3, typechecks clean.
+
+Second WhatsApp channel `whatsapp_cloud` for business clients; design and rehearsal checklist in
+`docs/whatsapp-cloud-api.md`. Pieces: migration `0012_whatsapp_cloud` (number map, durable inbox,
+conversation ledger, send audit); orchestrator `services/whatsapp-cloud/*` (Graph client, manager,
+inbox dispatcher), `routes/whatsapp-cloud.ts` (connect/disconnect/status) and
+`routes/whatsapp-cloud-relay.ts` (tenant-net only, bearer per bot, Caddy 404 like `/api/v1/mcp/*`);
+config renders `channels.whatsapp_cloud`, `plugins.entries.agentforall-whatsapp-cloud`,
+`tools.exec.security: deny` + `tools.toolsBySender` (owner keys unrestricted, `*` denied everything
+but `whatsapp_cloud_escalate`); web ingress `app/api/webhooks/whatsapp-cloud` (HMAC with the app
+secret, writes the inbox only), connect page `/app/bot/whatsapp-business` (Meta JS SDK popup,
+Embedded Signup v4), third dashboard row; plugin `packages/openclaw-channel-whatsapp-cloud` baked
+into the image (bundles typebox). New env: orchestrator `META_GRAPH_BASE_URL`, `META_GRAPH_API_VERSION`,
+`WHATSAPP_CLOUD_INBOX_*`, `DATABASE_LISTEN_URL`; web `NEXT_PUBLIC_META_APP_ID`, `NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID`,
+`META_APP_SECRET`, `META_WEBHOOK_VERIFY_TOKEN`, `META_GRAPH_API_VERSION` (GSM: `meta-app-secret`,
+`meta-webhook-verify-token`). Meta side: app **Agent For All** `1116647830699409` on portfolio
+`agentforall_il`, Independent Tech Provider onboarding started; business verification pending
+submission (owner), access verification and app review after. Deploy order: GSM `database-listen-url` →
+migration → orchestrator → web (Vercel env, `WHATSAPP_CLOUD_ENABLED` unset) → register the webhook URL in
+the Meta app (`messages` field only) → rebuild the image → rehearse against the test number (§15 of the
+doc) → `WHATSAPP_CLOUD_ENABLED=true` on Vercel → `rollout-plugin.sh --plugin agentforall-whatsapp-cloud
+--sentinel channel.js` only for bots that connect a number.
+
 ## Billing (2026-08-26, deployed to Vercel in `0d2a8ab`; billing disabled until `PAYMENT_PROVIDER` is set)
 
 Provider-agnostic subscription billing landed in `apps/web/src/lib/billing/` with a **mock gateway only** — the Israeli provider (PayPlus / HYP / Grow) is still to be chosen. Design, data model, event semantics, and the adapter checklist are in `docs/billing.md`.

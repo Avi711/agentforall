@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { authenticatedHandler, errorJson } from "@/lib/auth/api";
 import { botService } from "@/lib/bots/service";
 import { BotIdParamsSchema } from "@/lib/bots/schemas";
+import { isWhatsappCloudEnabled } from "@/lib/whatsapp-cloud/config";
+import { whatsappCloudHealthOf } from "@/lib/whatsapp-cloud/health";
 
 export async function GET(
   req: Request,
@@ -12,7 +14,8 @@ export async function GET(
 
   return authenticatedHandler({}, async ({ userId }) => {
     const bot = await botService.getBot(userId, parsed.data.id);
-    return NextResponse.json({ bot });
+    const whatsappCloudHealth = await whatsappCloudHealthOf(userId, bot);
+    return NextResponse.json({ bot, whatsappCloudHealth, whatsappCloudEnabled: isWhatsappCloudEnabled() });
   })(req);
 }
 

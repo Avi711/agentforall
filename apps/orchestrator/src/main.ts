@@ -47,6 +47,14 @@ import { IntegrationsManager } from "./services/integrations/manager.js";
 import { createRelayFetch } from "./services/integrations/relay-fetch.js";
 import { integrationsRoutes } from "./routes/integrations.js";
 import { mcpRelayRoutes } from "./routes/mcp-relay.js";
+import { WhatsappCloudRepository } from "./storage/whatsapp-cloud-repository.js";
+import { MetaGraphClient } from "./services/whatsapp-cloud/graph-client.js";
+import { InboxDispatcher } from "./services/whatsapp-cloud/inbox-dispatcher.js";
+import { WhatsappCloudInboxListener } from "./storage/whatsapp-cloud-listener.js";
+import { WhatsappCloudManager } from "./services/whatsapp-cloud/manager.js";
+import { whatsappCloudRoutes } from "./routes/whatsapp-cloud.js";
+import { whatsappCloudRelayRoutes } from "./routes/whatsapp-cloud-relay.js";
+import type { IntegrationCleanup } from "./services/instance-manager.js";
 
 const MAX_STARTUP_RETRIES = 10;
 const STARTUP_BACKOFF_BASE_MS = 1000;
@@ -206,6 +214,8 @@ async function main(): Promise<void> {
         log,
       )
     : null;
+  // Destroy-time cleanups, each best effort; the WhatsApp one joins once its manager exists.
+  const destroyCleanups: IntegrationCleanup[] = integrationSessions ? [integrationSessions] : [];
   const manager = new InstanceManager(
     repo,
     runtime,
@@ -219,7 +229,15 @@ async function main(): Promise<void> {
     backupStorage,
     undefined,
     telegramApi,
-    integrationSessions,
+    {
+      revokeAll: async (inst) => {
+        for (const cleanup of destroyCleanups) {
+          await cleanup.revokeAll(inst).catch((err) =>
+            log.warn({ instanceId: inst.id, err }, "destroy cleanup step failed"),
+          );
+        }
+      },
+    },
   );
   const integrations =
     integrationProvider && integrationSessions
@@ -313,6 +331,31 @@ async function main(): Promise<void> {
     pairingManager,
   });
 
+  const whatsappCloudRepo = new WhatsappCloudRepository(db, encryptionKey);
+  const inboxDispatcher = new InboxDispatcher(whatsappCloudRepo, eventLog, log, {
+    pollIntervalMs: config.whatsappCloudInboxPollIntervalMs,
+    sweepIntervalMs: config.whatsappCloudInboxSweepIntervalMs,
+  });
+  const whatsappCloud = new WhatsappCloudManager(
+    manager,
+    repo,
+    whatsappCloudRepo,
+    new MetaGraphClient(config.metaGraphBaseUrl, config.metaGraphApiVersion),
+    inboxDispatcher,
+    eventLog,
+    { orchestratorInternalUrl: config.orchestratorInternalUrl },
+    log,
+  );
+  destroyCleanups.push({ revokeAll: (inst) => whatsappCloud.cleanupForDestroy(inst) });
+  await app.register(whatsappCloudRoutes, { prefix: "/api/v1/instances", manager: whatsappCloud });
+  await app.register(whatsappCloudRelayRoutes, { prefix: "/api/v1/whatsapp-cloud", manager: whatsappCloud });
+  inboxDispatcher.start();
+  const inboxListener = config.databaseListenUrl
+    ? WhatsappCloudInboxListener.forUrl(config.databaseListenUrl, (id) => inboxDispatcher.wake(id), log)
+    : null;
+  if (inboxListener) await inboxListener.start();
+  else log.warn("DATABASE_LISTEN_URL not set: whatsapp cloud inbox runs on the poll alone");
+
   const healthMonitor = new HealthMonitor(repo, runtime, runtimeAdapters, log, {
     pollIntervalMs: config.healthPollIntervalMs,
     degradedThreshold: config.healthDegradedThreshold,
@@ -354,6 +397,8 @@ async function main(): Promise<void> {
       process.exit(1);
     }, config.shutdownTimeoutMs).unref();
 
+    // Long-polls held open would keep app.close() waiting past the forced-exit timer; release them first.
+    inboxDispatcher.stop();
     try {
       await app.close();
     } catch (err) {
@@ -362,6 +407,7 @@ async function main(): Promise<void> {
 
     healthMonitor.stop();
     telegramLinker?.stop();
+    await inboxListener?.stop();
     clearInterval(reconcileInterval);
 
     try {

@@ -1,4 +1,9 @@
-import type { ChannelConfig, Instance, InstanceConfig } from "../../src/domain/types.js";
+import type {
+  ChannelConfig,
+  Instance,
+  InstanceConfig,
+  WhatsappCloudChannelConfig,
+} from "../../src/domain/types.js";
 import type { InstanceManager } from "../../src/services/instance-manager.js";
 
 // Stand-in for services that only read channels and rewrite them through updateChannels.
@@ -26,6 +31,24 @@ export function fakeChannelManager(initial: Instance) {
     reset: (next: Instance) => {
       inst = next;
     },
+  };
+}
+
+export function makeWhatsappCloudChannel(
+  overrides: Partial<WhatsappCloudChannelConfig> = {},
+): WhatsappCloudChannelConfig {
+  return {
+    type: "whatsapp_cloud",
+    wabaId: "1000",
+    phoneNumberId: "2000",
+    businessId: "3000",
+    displayPhoneNumber: "+972501112233",
+    verifiedName: "Shop",
+    accessToken: "meta-token",
+    pin: "246810",
+    relayToken: "cloud-relay-token",
+    relayUrl: "http://orchestrator:3000/api/v1/whatsapp-cloud/11111111-1111-4111-8111-111111111111",
+    ...overrides,
   };
 }
 

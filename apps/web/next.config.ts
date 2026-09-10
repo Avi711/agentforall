@@ -13,7 +13,7 @@ const csp = [
   "font-src 'self' data: https://fonts.gstatic.com",
   "img-src 'self' https: data:",
   `connect-src 'self' ${orchestratorOrigin} https://storage.googleapis.com https://*.supabase.co https://www.facebook.com https://connect.facebook.net`,
-  `frame-src 'self' ${orchestratorOrigin}`,
+  `frame-src 'self' ${orchestratorOrigin} https://www.facebook.com https://staticxx.facebook.com`,
   "frame-ancestors 'none'",
 ].join("; ");
 

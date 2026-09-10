@@ -98,6 +98,14 @@ export interface ModelDefinition {
 
 export interface ToolsConfig {
   media?: MediaToolsConfig;
+  exec?: { security: "deny" | "allowlist" | "full" };
+  // Per-sender policy; first matching key wins, "*" is everyone else. Cannot grant back global denials.
+  toolsBySender?: Record<string, SenderToolPolicy>;
+}
+
+export interface SenderToolPolicy {
+  alsoAllow?: string[];
+  deny?: string[];
 }
 
 export interface MediaToolsConfig {
@@ -133,6 +141,7 @@ export interface BrowserConfig {
 
 export interface ChannelsConfig {
   whatsapp?: WhatsAppChannelConfig;
+  whatsapp_cloud?: WhatsAppCloudChannelConfig;
   telegram?: {
     enabled: boolean;
     botToken: string;
@@ -165,4 +174,20 @@ export interface WhatsAppChannelConfig {
 export interface WhatsAppAccountConfig {
   enabled: boolean;
   authDir: string;
+}
+
+// Our channel plugin's block; secrets stay in .env, these are what it needs to name and route itself.
+export interface WhatsAppCloudChannelConfig {
+  enabled: boolean;
+  dmPolicy: "open";
+  allowFrom: string[];
+  defaultAccount: string;
+  accounts: Record<string, WhatsAppCloudAccountConfig>;
+}
+
+export interface WhatsAppCloudAccountConfig {
+  enabled: boolean;
+  phoneNumberId: string;
+  displayPhoneNumber: string;
+  relayUrl: string;
 }

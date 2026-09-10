@@ -4,6 +4,8 @@ import { z } from "zod";
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { AuthenticationError, UpstreamUnavailableError } from "../domain/errors.js";
 import type { RelayTarget } from "../services/integrations/manager.js";
+import { extractBearer } from "./bearer.js";
+import { relayRateLimitKey } from "./relay-rate-limit.js";
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const RATE_LIMIT_PER_MINUTE = 600;
@@ -53,14 +55,14 @@ export const mcpRelayRoutes: FastifyPluginAsync<McpRelayDeps> = async (app, deps
     bodyLimit: MAX_BODY_BYTES,
     config: {
       skipGlobalAuth: true,
-      // Keyed per bot; the global limiter has no user id here. Runs after the auth hook below.
       rateLimit: {
         max: RATE_LIMIT_PER_MINUTE,
         timeWindow: 60_000,
-        keyGenerator: (request: FastifyRequest) => instanceIdOf(request) ?? request.ip,
+        keyGenerator: relayRateLimitKey,
       },
     },
-    onRequest: async (request) => {
+    // preHandler, not onRequest: the route-level rate limit hook must run before the bearer lookup.
+    preHandler: async (request) => {
       const { instanceId } = Param.parse(request.params);
       const bearer = extractBearer(request.headers.authorization);
       if (!bearer) throw new AuthenticationError();
@@ -112,15 +114,3 @@ export const mcpRelayRoutes: FastifyPluginAsync<McpRelayDeps> = async (app, deps
   });
 };
 
-function instanceIdOf(request: FastifyRequest): string | null {
-  const params = request.params;
-  if (typeof params !== "object" || params === null) return null;
-  const id = (params as { instanceId?: unknown }).instanceId;
-  return typeof id === "string" ? id : null;
-}
-
-function extractBearer(header: string | string[] | undefined): string | null {
-  if (typeof header !== "string" || !header.startsWith("Bearer ")) return null;
-  const token = header.slice("Bearer ".length).trim();
-  return token.length > 0 ? token : null;
-}

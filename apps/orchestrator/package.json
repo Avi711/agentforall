@@ -11,7 +11,8 @@
     "start": "node dist/main.js",
     "dev": "tsx watch --env-file=.env src/main.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
-    "test": "node --import tsx --test \"test/**/*.test.ts\""
+    "test": "node --import tsx --test \"test/**/*.test.ts\"",
+    "test:db": "node --import tsx --test \"test/**/*.db.test.ts\""
   },
   "dependencies": {
     "@agent-forall/db": "*",

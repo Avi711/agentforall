@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Instance } from "@/lib/orchestrator/types";
-import { toBotSnapshot, type BotSnapshot } from "@/lib/bots/snapshot";
+import { toBotSnapshot, type BotSnapshot, type WhatsappCloudHealth } from "@/lib/bots/snapshot";
 
 export type { BotSnapshot, TelegramSnapshot } from "@/lib/bots/snapshot";
 
@@ -53,8 +53,10 @@ export function useBotStatus(initial: BotSnapshot): BotSnapshot {
           cache: "no-store",
         });
         if (!res.ok) throw new Error(`status ${res.status}`);
-        const data = (await res.json()) as { bot?: Instance };
-        if (!cancelled && data.bot) setBot(toBotSnapshot(data.bot));
+        const data = (await res.json()) as { bot?: Instance; whatsappCloudHealth?: WhatsappCloudHealth | null; whatsappCloudEnabled?: boolean };
+        if (!cancelled && data.bot) {
+          setBot(toBotSnapshot(data.bot, { whatsappCloudHealth: data.whatsappCloudHealth ?? null, whatsappCloudEnabled: data.whatsappCloudEnabled ?? false }));
+        }
         consecutiveErrors = 0;
       } catch {
         // Best-effort poll; failures drive the consecutiveErrors backoff below.

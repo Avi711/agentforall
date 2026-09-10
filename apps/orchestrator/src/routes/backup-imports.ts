@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { FastifyPluginAsync } from "fastify";
 import type { BackupImportManager } from "../services/backup-import-manager.js";
-import type { Instance } from "../domain/types.js";
+import { sanitizeInstance } from "./instances.js";
 
 const CreateUploadBody = z.object({
   displayName: z.string().min(1).max(255),
@@ -40,33 +40,6 @@ export const backupImportRoutes: FastifyPluginAsync<BackupImportRouteDeps> = asy
       request.authenticatedUserId,
       body.restoreToken,
     );
-    return reply.status(201).send(sanitize(instance));
+    return reply.status(201).send(sanitizeInstance(instance));
   });
 };
-
-function sanitize(inst: Instance): Record<string, unknown> {
-  const { gatewayToken: _token, config, ...safe } = inst;
-  return {
-    ...safe,
-    config: {
-      ...config,
-      provider: { ...config.provider, apiKey: "***" },
-      channels: config.channels.map(maskChannel),
-    },
-  };
-}
-
-function maskChannel(
-  ch: Instance["config"]["channels"][number],
-): Record<string, unknown> {
-  switch (ch.type) {
-    case "telegram":
-      return { ...ch, botToken: "***" };
-    case "discord":
-      return { ...ch, token: "***" };
-    case "slack":
-      return { ...ch, botToken: "***", appToken: "***" };
-    case "whatsapp":
-      return { ...ch };
-  }
-}

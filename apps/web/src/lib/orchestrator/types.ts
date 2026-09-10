@@ -144,6 +144,16 @@ export const TelegramLinkStatusSchema = z.object({
 });
 export type TelegramLinkStatus = z.infer<typeof TelegramLinkStatusSchema>;
 
+export const WhatsappCloudViewSchema = z.object({
+  status: z.enum(["none", "connected"]),
+  phoneNumberId: z.string().nullable(),
+  wabaId: z.string().nullable(),
+  displayPhoneNumber: z.string().nullable(),
+  verifiedName: z.string().nullable(),
+  health: z.enum(["ok", "token_invalid", "unknown"]).nullable(),
+});
+export type WhatsappCloudView = z.infer<typeof WhatsappCloudViewSchema>;
+
 export const WHATSAPP_DM_ACCESS = ["owner", "open"] as const;
 export type WhatsappDmAccess = (typeof WHATSAPP_DM_ACCESS)[number];
 

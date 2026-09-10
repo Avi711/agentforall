@@ -259,5 +259,7 @@ function maskChannel(
       return { ...ch, botToken: "***", appToken: "***" };
     case "whatsapp":
       return { ...ch };
+    case "whatsapp_cloud":
+      return { ...ch, accessToken: "***", pin: "***", relayToken: "***" };
   }
 }

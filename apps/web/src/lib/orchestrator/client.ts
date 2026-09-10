@@ -9,6 +9,8 @@ import {
   BotUsageSchema,
   TelegramLinkSchema,
   TelegramLinkStatusSchema,
+  WhatsappCloudViewSchema,
+  type WhatsappCloudView,
   WhatsappAccessSchema,
   type WhatsappAccess,
   type WhatsappAccessUpdate,
@@ -354,6 +356,42 @@ export class OrchestratorClient {
     await this.call({
       method: "POST",
       path: instancePath(id, "/whatsapp/disconnect"),
+      userId,
+      schema: z.unknown(),
+      allowEmptyBody: true,
+      timeoutMs: 60_000,
+    });
+  }
+
+  async connectWhatsappCloud(
+    userId: string,
+    id: string,
+    input: { accessToken: string; phoneNumberId: string; wabaId: string; businessId: string; pin?: string },
+  ): Promise<WhatsappCloudView> {
+    return this.call({
+      method: "POST",
+      path: instancePath(id, "/whatsapp-cloud/connect"),
+      userId,
+      body: input,
+      schema: WhatsappCloudViewSchema,
+      // Three Meta calls happen behind this one.
+      timeoutMs: 60_000,
+    });
+  }
+
+  async getWhatsappCloudStatus(userId: string, id: string): Promise<WhatsappCloudView> {
+    return this.call({
+      method: "GET",
+      path: instancePath(id, "/whatsapp-cloud/status"),
+      userId,
+      schema: WhatsappCloudViewSchema,
+    });
+  }
+
+  async disconnectWhatsappCloud(userId: string, id: string): Promise<void> {
+    await this.call({
+      method: "POST",
+      path: instancePath(id, "/whatsapp-cloud/disconnect"),
       userId,
       schema: z.unknown(),
       allowEmptyBody: true,

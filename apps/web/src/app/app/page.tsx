@@ -5,6 +5,8 @@ import { botService } from "@/lib/bots/service";
 import { CreateBotForm } from "./CreateBotForm";
 import { BotCard } from "./BotCard";
 import { toBotSnapshot } from "@/lib/bots/snapshot";
+import { isWhatsappCloudEnabled } from "@/lib/whatsapp-cloud/config";
+import { whatsappCloudHealthOf } from "@/lib/whatsapp-cloud/health";
 import { PairedToast } from "./PairedToast";
 import { SubscribeCard } from "./SubscribeCard";
 import { getBillingService } from "@/lib/billing";
@@ -53,7 +55,11 @@ async function HomeCard({ user }: { user: AuthenticatedUser }) {
     getBillingService().refreshStatus(toBillingUser(user)),
   ]);
 
-  if (bot) return <BotCard bot={toBotSnapshot(bot)} credits={billing.credits} apps={SHOWCASE_APPS} />;
+  if (bot) {
+    const whatsappCloudHealth = await whatsappCloudHealthOf(user.id, bot);
+    const snapshot = toBotSnapshot(bot, { whatsappCloudHealth, whatsappCloudEnabled: isWhatsappCloudEnabled() });
+    return <BotCard bot={snapshot} credits={billing.credits} apps={SHOWCASE_APPS} />;
+  }
   if (!billing.entitled) return <SubscribeCard status={billing} />;
   return (
     <>

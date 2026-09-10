@@ -100,6 +100,8 @@ DASHBOARD_SERVICE_TOKEN=$(gcloud secrets versions access latest --secret=dashboa
 DEFAULT_PROVIDER_API_KEY=$(gcloud secrets versions access latest --secret=default-provider-api-key --project=${project_id})
 LITELLM_MASTER_KEY=$(gcloud secrets versions access latest --secret=litellm-master-key --project=${project_id})
 COMPOSIO_API_KEY=$(gcloud secrets versions access latest --secret=composio-api-key --project=${project_id})
+# Optional: without it the orchestrator polls only (and warns); a missing secret must not take the VM down.
+DATABASE_LISTEN_URL=$(gcloud secrets versions access latest --secret=database-listen-url --project=${project_id} 2>/dev/null || true)
 LITELLM_GATEWAY_URL="${litellm_gateway_url}"
 DEFAULT_PROVIDER_BASE_URL="$LITELLM_GATEWAY_URL/v1"
 
@@ -114,6 +116,7 @@ HOST=0.0.0.0
 TRUST_PROXY=true
 ORCHESTRATOR_HOST_ID=agent-forall-vm
 DATABASE_URL=$DATABASE_URL
+DATABASE_LISTEN_URL=$DATABASE_LISTEN_URL
 ENCRYPTION_KEY=$ENCRYPTION_KEY
 API_KEYS={}
 SERVICE_TOKENS=$DASHBOARD_SERVICE_TOKEN
@@ -178,11 +181,13 @@ else
       .env.runtime > "$TMP_RUNTIME"
   mv "$TMP_RUNTIME" .env.runtime
 
+  # Values go through awk's ENVIRON, not a sed pattern or -v: a URL with &, | or \\ must land byte for byte.
   set_runtime_env() {
     local key="$1"
     local value="$2"
     if grep -q "^$key=" .env.runtime; then
-      sed -i "s|^$key=.*|$key=$value|" .env.runtime
+      RUNTIME_KEY="$key" RUNTIME_VALUE="$value" awk 'BEGIN { FS = "=" } $1 == ENVIRON["RUNTIME_KEY"] { print ENVIRON["RUNTIME_KEY"] "=" ENVIRON["RUNTIME_VALUE"]; next } { print }' .env.runtime > .env.runtime.tmp
+      mv .env.runtime.tmp .env.runtime
     else
       echo "$key=$value" >> .env.runtime
     fi
@@ -201,6 +206,8 @@ else
   set_runtime_env LITELLM_DEFAULT_BUDGET_DURATION ""
   set_runtime_env INTEGRATIONS_PROVIDER composio
   set_runtime_env COMPOSIO_API_KEY "$COMPOSIO_API_KEY"
+  # Empty means the secret fetch failed this boot; the last good value stays.
+  [ -n "$DATABASE_LISTEN_URL" ] && set_runtime_env DATABASE_LISTEN_URL "$DATABASE_LISTEN_URL"
   set_runtime_env DASHBOARD_ORIGIN https://agentforall.co.il
 
   # Self-heal: ensure host id is present on VMs bootstrapped before this var existed.
@@ -333,6 +340,8 @@ $DOMAIN {
   # The MCP relay is for tenant containers on tenant-net only; never expose it publicly.
   @mcp path /api/v1/mcp/*
   respond @mcp 404
+  @wacloud path /api/v1/whatsapp-cloud/*
+  respond @wacloud 404
 
   reverse_proxy orchestrator:3000
 
@@ -358,6 +367,8 @@ else
   # The MCP relay is for tenant containers on tenant-net only; never expose it publicly.
   @mcp path /api/v1/mcp/*
   respond @mcp 404
+  @wacloud path /api/v1/whatsapp-cloud/*
+  respond @wacloud 404
 
   reverse_proxy orchestrator:3000
 
