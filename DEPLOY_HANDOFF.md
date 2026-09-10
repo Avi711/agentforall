@@ -328,7 +328,7 @@ Known follow-ups: connection-expiry webhook, relay-token rotation, own Google OA
 
 Deployed 2026-09-10: migration 0012 applied to Supabase; VM Caddyfile got the `@wacloud` 404 rule by hand
 (backup `Caddyfile.bak-20260910`, verified empty-body 404 from outside); orchestrator
-`orchestrator@sha256:f060d9db4ce26580b92f690a7b3f01f0552c65cee2adeebed25e2090b642e710` (commit `9156b21`),
+`orchestrator@sha256:8eec5643335804091cfd2f8429f323f357f3906f376bc50eefdc46bdf0f9609a` (commits `9156b21`..`ba8e7cb`),
 healthy, both networks, 16 tenants up, pinned in `infra/variables.tf` and the VM `.env`; web from `main`
 with `WHATSAPP_CLOUD_ENABLED` unset, so no tenant sees the channel. The inbox listener runs on the
 orchestrator's own `DATABASE_URL` (session pooler, 5432). Built, not pinned: openclaw-browser with the plugin
