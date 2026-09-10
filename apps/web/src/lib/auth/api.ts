@@ -7,6 +7,7 @@ import { getConsentStatus } from "../consent/service";
 import { getBillingService } from "../billing";
 import { BillingError } from "../billing/errors";
 import { toBillingUser } from "../billing/user";
+import { readJsonBody } from "../http/json-body";
 
 export type Handler<Body> = (ctx: {
   userId: string;
@@ -50,15 +51,9 @@ export function authenticatedHandler<Body = undefined>(
 
     let body: Body = undefined as Body;
     if (opts.bodySchema) {
-      let raw: unknown = undefined;
-      if (req.method !== "GET" && req.method !== "HEAD") {
-        try {
-          raw = await req.json();
-        } catch {
-          return errorJson("invalid_json", 400);
-        }
-      }
-      const parsed = opts.bodySchema.safeParse(raw);
+      const raw = await readJsonBody(req);
+      if (!raw.ok) return errorJson("invalid_json", 400);
+      const parsed = opts.bodySchema.safeParse(raw.value);
       if (!parsed.success) {
         return errorJson("invalid_body", 400, parsed.error.flatten());
       }

@@ -8,13 +8,35 @@ const PAGE_SIZE = 100;
 const MAX_PAGES = 40;
 
 export class ComposioApiError extends Error {
+  readonly requestId: string | null;
+
   constructor(
     readonly status: number,
     readonly path: string,
     body: string,
   ) {
-    super(`Composio ${path} failed: ${status} ${body.slice(0, 200)}`);
+    const requestId = requestIdOf(body);
+    // The body can echo what we sent (an alias may be an email), so only Composio's request id is kept.
+    super(`Composio ${path} failed: ${status}${requestId ? ` (request ${requestId})` : ""}`);
     this.name = "ComposioApiError";
+    this.requestId = requestId;
+  }
+}
+
+const ErrorEnvelope = z
+  .object({
+    request_id: z.string().optional(),
+    error: z.object({ request_id: z.string().optional() }).passthrough().optional(),
+  })
+  .passthrough();
+
+function requestIdOf(body: string): string | null {
+  try {
+    const parsed = ErrorEnvelope.safeParse(JSON.parse(body));
+    return parsed.success ? (parsed.data.error?.request_id ?? parsed.data.request_id ?? null) : null;
+  } catch {
+    // Not JSON: nothing to report beyond the status.
+    return null;
   }
 }
 
@@ -39,6 +61,7 @@ const ConnectedAccount = z
   .object({
     id: z.string().min(1),
     status: z.string(),
+    alias: z.string().nullable().optional(),
     toolkit: z.object({ slug: z.string() }).passthrough().optional(),
     created_at: z.string().optional(),
   })
@@ -81,6 +104,14 @@ const ToolkitsPage = z
 export interface CreateSessionRequest {
   userId: string;
   callbackUrl: string;
+  maxAccountsPerToolkit: number;
+}
+
+export interface CreateLinkRequest {
+  sessionId: string;
+  toolkit: string;
+  callbackUrl: string;
+  alias?: string;
 }
 
 export class ComposioClient {
@@ -104,9 +135,19 @@ export class ComposioClient {
         // Removal stays a dashboard action; the agent must not be able to drop a connection.
         enable_connection_removal: false,
       },
+      multi_account: multiAccount(input.maxAccountsPerToolkit),
     };
     const json = await this.request("POST", "/api/v3.1/tool_router/session", body);
     return SessionResponse.parse(json);
+  }
+
+  async enableMultiAccount(sessionId: string, maxAccountsPerToolkit: number): Promise<void> {
+    await this.request(
+      "PATCH",
+      `/api/v3.1/tool_router/session/${encodeURIComponent(sessionId)}`,
+      { multi_account: multiAccount(maxAccountsPerToolkit) },
+      { retry: true },
+    );
   }
 
   async deleteSession(sessionId: string): Promise<void> {
@@ -116,11 +157,11 @@ export class ComposioClient {
     });
   }
 
-  async createLink(sessionId: string, toolkit: string, callbackUrl: string): Promise<ComposioLink> {
+  async createLink(input: CreateLinkRequest): Promise<ComposioLink> {
     const json = await this.request(
       "POST",
-      `/api/v3.1/tool_router/session/${encodeURIComponent(sessionId)}/link`,
-      { toolkit, callback_url: callbackUrl },
+      `/api/v3.1/tool_router/session/${encodeURIComponent(input.sessionId)}/link`,
+      { toolkit: input.toolkit, callback_url: input.callbackUrl, alias: input.alias },
     );
     return LinkResponse.parse(json);
   }
@@ -140,6 +181,10 @@ export class ComposioClient {
       if (!cursor) break;
     }
     return items;
+  }
+
+  async setConnectedAccountAlias(id: string, alias: string): Promise<void> {
+    await this.request("PATCH", `/api/v3.1/connected_accounts/${encodeURIComponent(id)}`, { alias }, { retry: true });
   }
 
   async deleteConnectedAccount(id: string): Promise<void> {
@@ -172,7 +217,7 @@ export class ComposioClient {
 
   // Retries only where the caller marked the call idempotent; session/link POSTs are not.
   private async request(
-    method: "GET" | "POST" | "DELETE",
+    method: "GET" | "POST" | "PATCH" | "DELETE",
     path: string,
     body?: unknown,
     opts: { tolerate404?: boolean; retry?: boolean } = {},
@@ -213,6 +258,11 @@ export class ComposioClient {
     if (!res.ok) throw new ComposioApiError(res.status, path, text);
     return text ? (JSON.parse(text) as unknown) : null;
   }
+}
+
+// With two live accounts the agent must name one: mail silently sent from the wrong account is worse than a question.
+function multiAccount(maxAccountsPerToolkit: number) {
+  return { enable: true, max_accounts_per_toolkit: maxAccountsPerToolkit, require_explicit_selection: true };
 }
 
 function isTransient(err: unknown): boolean {

@@ -138,6 +138,24 @@ export class ChannelCredentialError extends DomainError {
   }
 }
 
+export class AccountLimitReachedError extends DomainError {
+  readonly statusCode = 409;
+  readonly code = "ACCOUNT_LIMIT_REACHED";
+
+  constructor(app: string, limit: number) {
+    super(`${app} already has the maximum of ${limit} connected accounts`);
+  }
+}
+
+export class AccountLabelTakenError extends DomainError {
+  readonly statusCode = 409;
+  readonly code = "ACCOUNT_LABEL_TAKEN";
+
+  constructor(app: string) {
+    super(`another ${app} account already has that name`);
+  }
+}
+
 export class UpstreamRateLimitedError extends DomainError {
   readonly statusCode = 429;
   readonly code = "UPSTREAM_RATE_LIMITED";

@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { FastifyBaseLogger } from "fastify";
 import {
+  AccountLabelTakenError,
+  AccountLimitReachedError,
   AuthenticationError,
   FeatureUnavailableError,
   InvalidStateError,
@@ -9,10 +11,19 @@ import {
   UpstreamUnavailableError,
   ValidationError,
 } from "../src/domain/errors.js";
-import type { CatalogApp, IntegrationConnection, IntegrationSession } from "../src/domain/integrations.js";
+import {
+  INTEGRATION_MAX_ACCOUNTS_PER_APP,
+  type CatalogApp,
+  type IntegrationConnection,
+  type IntegrationSession,
+} from "../src/domain/integrations.js";
 import type { ConfigPatch, Instance } from "../src/domain/types.js";
 import { IntegrationsManager } from "../src/services/integrations/manager.js";
-import { SessionGoneError, type IntegrationProvider } from "../src/services/integrations/provider.js";
+import {
+  LabelConflictError,
+  SessionGoneError,
+  type IntegrationProvider,
+} from "../src/services/integrations/provider.js";
 import { IntegrationSessions } from "../src/services/integrations/sessions.js";
 import { relayBindingFor } from "../src/services/integrations/relay-binding.js";
 import { makeInstance } from "./helpers/fixtures.js";
@@ -24,6 +35,8 @@ interface Overrides {
   instance?: Partial<Instance>;
   unbound?: boolean;
   linkFailures?: number;
+  // Composio creates the account at link time; it stays pending until the owner finishes consent.
+  linkStatus?: IntegrationConnection["status"];
   catalog?: () => Promise<CatalogApp[]>;
 }
 
@@ -38,8 +51,10 @@ function harness(overrides: Overrides = {}) {
   const calls = {
     createSession: 0,
     deleteSession: [] as string[],
-    links: [] as { session: string; app: string; callbackUrl: string }[],
+    links: [] as { session: string; app: string; callbackUrl: string; label: string | undefined }[],
     revoked: [] as string[],
+    renamed: [] as [string, string][],
+    multiAccount: [] as string[],
     updateConfig: [] as ConfigPatch[],
     events: [] as string[],
     restarts: 0,
@@ -48,6 +63,7 @@ function harness(overrides: Overrides = {}) {
   let linkFailures = overrides.linkFailures ?? 0;
   let listError: Error | null = null;
   let revokeError: Error | null = null;
+  let aliasConflict = false;
 
   const provider: IntegrationProvider = {
     name: "mock",
@@ -64,9 +80,24 @@ function harness(overrides: Overrides = {}) {
         linkFailures -= 1;
         throw new SessionGoneError(input.providerSessionId);
       }
-      calls.links.push({ session: input.providerSessionId, app: input.app, callbackUrl: input.callbackUrl });
-      connections.push({ ref: `ref-${calls.links.length}`, app: input.app, status: "active", createdAt: null });
+      if (aliasConflict && input.label) throw new LabelConflictError();
+      calls.links.push({ session: input.providerSessionId, app: input.app, callbackUrl: input.callbackUrl, label: input.label });
+      connections.push({
+        ref: `ref-${calls.links.length}`,
+        app: input.app,
+        status: overrides.linkStatus ?? "active",
+        label: input.label ?? null,
+        createdAt: null,
+      });
       return { url: `https://connect/${input.app}`, ref: `ref-${calls.links.length}` };
+    },
+    allowMultipleAccounts: async (id) => {
+      calls.multiAccount.push(id);
+    },
+    renameConnection: async (ref, label) => {
+      if (aliasConflict) throw new LabelConflictError();
+      calls.renamed.push([ref, label]);
+      connections = connections.map((c) => (c.ref === ref ? { ...c, label } : c));
     },
     listConnections: async () => {
       if (listError) throw listError;
@@ -145,6 +176,9 @@ function harness(overrides: Overrides = {}) {
     failRevokeWith: (err: Error) => {
       revokeError = err;
     },
+    refuseAliases: () => {
+      aliasConflict = true;
+    },
     seed: (items: IntegrationConnection[]) => {
       connections = items;
     },
@@ -156,8 +190,8 @@ test("first connect creates one session and returns the hosted link", async () =
   const inst = h.instance();
 
   const [a, b] = await Promise.all([
-    h.integrations.connect(inst.id, inst.userId, "gmail", RETURN_URL),
-    h.integrations.connect(inst.id, inst.userId, "notion", RETURN_URL),
+    h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL }),
+    h.integrations.connect(inst.id, inst.userId, { app: "notion", returnUrl: RETURN_URL }),
   ]);
 
   assert.equal(a.url, "https://connect/gmail");
@@ -176,7 +210,7 @@ test("connect refuses a bot without a relay binding instead of binding it", asyn
   const inst = h.instance();
 
   await assert.rejects(
-    () => h.integrations.connect(inst.id, inst.userId, "gmail", RETURN_URL),
+    () => h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL }),
     FeatureUnavailableError,
   );
   assert.equal(h.calls.updateConfig.length, 0);
@@ -187,7 +221,7 @@ test("a vanished upstream session is recreated once and the link still comes bac
   const h = harness({ linkFailures: 1 });
   const inst = h.instance();
 
-  const link = await h.integrations.connect(inst.id, inst.userId, "gmail", RETURN_URL);
+  const link = await h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL });
 
   assert.equal(link.url, "https://connect/gmail");
   assert.equal(h.calls.createSession, 2);
@@ -199,13 +233,13 @@ test("connect refuses foreign return urls and non-openclaw runtimes", async () =
   const h = harness();
   const inst = h.instance();
   await assert.rejects(
-    h.integrations.connect(inst.id, inst.userId, "gmail", "https://evil.example/cb"),
+    h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: "https://evil.example/cb" }),
     ValidationError,
   );
 
   const hermes = harness({ instance: { runtimeKind: "hermes" } });
   await assert.rejects(
-    hermes.integrations.connect(hermes.instance().id, hermes.instance().userId, "gmail", RETURN_URL),
+    hermes.integrations.connect(hermes.instance().id, hermes.instance().userId, { app: "gmail", returnUrl: RETURN_URL }),
     FeatureUnavailableError,
   );
   assert.equal(h.calls.createSession + hermes.calls.createSession, 0);
@@ -214,14 +248,14 @@ test("connect refuses foreign return urls and non-openclaw runtimes", async () =
 test("connect refuses a bot that is being destroyed and creates nothing upstream", async () => {
   const h = harness({ instance: { status: "destroying" } });
   const inst = h.instance();
-  await assert.rejects(h.integrations.connect(inst.id, inst.userId, "gmail", RETURN_URL), InvalidStateError);
+  await assert.rejects(h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL }), InvalidStateError);
   assert.equal(h.calls.createSession, 0);
 });
 
 test("provider failures reach callers as a bare upstream error without vendor detail", async () => {
   const h = harness();
   const inst = h.instance();
-  await h.integrations.connect(inst.id, inst.userId, "gmail", RETURN_URL);
+  await h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL });
   h.failListWith(new Error("Composio /api/v3/connected_accounts failed: 500 secret-internal-detail"));
 
   await assert.rejects(h.integrations.list(inst.id, inst.userId), (err: unknown) => {
@@ -245,49 +279,228 @@ test("list is empty without a session and never calls the provider", async () =>
   assert.equal(listed, 1);
 });
 
-test("reconnecting prunes that app's expired and failed attempts, never a pending one", async () => {
+test("an unnamed reconnect replaces that app's unfinished unnamed attempts and leaves other apps alone", async () => {
   const h = harness();
   const inst = h.instance();
   h.seed([
-    { ref: "old-expired", app: "gmail", status: "expired", createdAt: "2026-08-01T00:00:00.000Z" },
-    { ref: "old-failed", app: "gmail", status: "failed", createdAt: "2026-08-02T00:00:00.000Z" },
-    { ref: "mid-consent", app: "gmail", status: "pending", createdAt: "2026-08-03T00:00:00.000Z" },
-    { ref: "other-app", app: "notion", status: "expired", createdAt: "2026-08-04T00:00:00.000Z" },
+    { ref: "old-expired", app: "gmail", status: "expired", label: null, createdAt: "2026-08-01T00:00:00.000Z" },
+    { ref: "old-failed", app: "gmail", status: "failed", label: null, createdAt: "2026-08-02T00:00:00.000Z" },
+    { ref: "abandoned", app: "gmail", status: "pending", label: null, createdAt: "2026-08-03T00:00:00.000Z" },
+    { ref: "other-app", app: "notion", status: "expired", label: null, createdAt: "2026-08-04T00:00:00.000Z" },
   ]);
 
-  await h.integrations.connect(inst.id, inst.userId, "gmail", RETURN_URL);
+  await h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL });
 
-  assert.deepEqual(h.calls.revoked.sort(), ["old-expired", "old-failed"]);
+  assert.deepEqual(h.calls.revoked.sort(), ["abandoned", "old-expired", "old-failed"]);
 });
 
-test("a failing prune does not block the connect", async () => {
+test("a failing revoke does not block the connect", async () => {
   const h = harness();
   const inst = h.instance();
-  h.seed([{ ref: "old-expired", app: "gmail", status: "expired", createdAt: null }]);
+  h.seed([{ ref: "old-expired", app: "gmail", status: "expired", label: null, createdAt: null }]);
   h.failRevokeWith(new Error("composio 500"));
 
-  const link = await h.integrations.connect(inst.id, inst.userId, "gmail", RETURN_URL);
+  const link = await h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL });
   assert.equal(link.url, "https://connect/gmail");
 });
 
-test("a failing stale lookup does not block the connect either", async () => {
+test("an attempt that cannot be replaced is an outage, never the owner's name clash or full cap", async () => {
+  const h = harness();
+  const inst = h.instance();
+  h.seed([
+    { ref: "work", app: "gmail", status: "active", label: "עבודה", createdAt: null },
+    { ref: "home-pending", app: "gmail", status: "pending", label: "אישי", createdAt: null },
+  ]);
+  h.failRevokeWith(new Error("composio 500"));
+
+  await assert.rejects(
+    h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL, label: "אישי" }),
+    UpstreamUnavailableError,
+  );
+  assert.equal(h.calls.links.length, 0);
+
+  h.seed([
+    { ref: "a", app: "gmail", status: "active", label: "a", createdAt: null },
+    { ref: "b", app: "gmail", status: "active", label: "b", createdAt: null },
+    { ref: "dead", app: "gmail", status: "expired", label: null, createdAt: null },
+  ]);
+  await assert.rejects(
+    h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL, label: "c" }),
+    UpstreamUnavailableError,
+  );
+  await assert.rejects(
+    h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL, label: "a" }),
+    AccountLabelTakenError,
+    "a name a live account holds is still the owner's clash",
+  );
+});
+
+test("a name the provider refuses as a duplicate reaches the owner as a taken name", async () => {
+  const h = harness();
+  const inst = h.instance();
+  h.seed([{ ref: "work", app: "gmail", status: "active", label: null, createdAt: null }]);
+  h.refuseAliases();
+
+  await assert.rejects(
+    h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL, label: "אישי" }),
+    AccountLabelTakenError,
+  );
+  await assert.rejects(h.integrations.rename(inst.id, inst.userId, "work", "עבודה"), AccountLabelTakenError);
+});
+
+test("a failing account lookup does not block the connect, and still readies the session for another account", async () => {
   const h = harness();
   const inst = h.instance();
   h.failListWith(new Error("composio 502"));
 
-  const link = await h.integrations.connect(inst.id, inst.userId, "gmail", RETURN_URL);
+  const link = await h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL });
   assert.equal(link.url, "https://connect/gmail");
   assert.deepEqual(h.calls.revoked, []);
+  assert.deepEqual(h.calls.multiAccount, ["sess-1"]);
+});
+
+test("a second account connects under its own label once the session allows several", async () => {
+  const h = harness();
+  const inst = h.instance();
+
+  await h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL, label: "עבודה" });
+  assert.deepEqual(h.calls.multiAccount, [], "a first account needs nothing from the session");
+  await h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL, label: "אישי" });
+
+  assert.deepEqual(h.calls.multiAccount, ["sess-1"]);
+  assert.deepEqual(h.calls.links.map((l) => l.label), ["עבודה", "אישי"]);
+  const labels = (await h.integrations.list(inst.id, inst.userId)).map((c) => c.label);
+  assert.deepEqual(labels.sort(), ["אישי", "עבודה"]);
+});
+
+test("retrying under the same name replaces the abandoned attempt instead of refusing the name", async () => {
+  const h = harness({ linkStatus: "pending" });
+  const inst = h.instance();
+  h.seed([{ ref: "work", app: "gmail", status: "active", label: "עבודה", createdAt: null }]);
+
+  await h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL, label: "אישי" });
+  await h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL, label: "אישי" });
+  await h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL, label: "אישי" });
+
+  assert.deepEqual(h.calls.revoked, ["ref-1", "ref-2"]);
+  const accounts = await h.integrations.list(inst.id, inst.userId);
+  assert.deepEqual(accounts.map((c) => c.ref).sort(), ["ref-3", "work"]);
+});
+
+test("repeated unnamed attempts never pile up against the cap", async () => {
+  const h = harness({ linkStatus: "pending" });
+  const inst = h.instance();
+
+  for (let i = 0; i < INTEGRATION_MAX_ACCOUNTS_PER_APP + 2; i += 1) {
+    await h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL });
+  }
+  assert.equal((await h.integrations.list(inst.id, inst.userId)).length, 1);
+});
+
+test("another account's named dead record survives a connect, so its owner still sees it", async () => {
+  const h = harness();
+  const inst = h.instance();
+  h.seed([{ ref: "work-dead", app: "gmail", status: "expired", label: "עבודה", createdAt: null }]);
+
+  await h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL, label: "אישי" });
+
+  assert.deepEqual(h.calls.revoked, []);
+  await h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL, label: "עבודה" });
+  assert.deepEqual(h.calls.revoked, ["work-dead"], "reconnecting under its own name replaces it");
+});
+
+test("a name already used by a live account of that app is refused, however it is cased or composed", async () => {
+  const h = harness();
+  const inst = h.instance();
+  h.seed([
+    { ref: "work", app: "gmail", status: "active", label: "Work", createdAt: null },
+    { ref: "home", app: "gmail", status: "active", label: "e\u0301cole", createdAt: null },
+    { ref: "other-app", app: "notion", status: "active", label: "home", createdAt: null },
+  ]);
+
+  for (const label of ["work", " WORK ", "école"]) {
+    await assert.rejects(
+      h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL, label }),
+      AccountLabelTakenError,
+      label,
+    );
+  }
+  assert.equal(h.calls.links.length, 0);
+  await h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL, label: "home" });
+  assert.deepEqual(h.calls.links.map((l) => l.label), ["home"]);
+});
+
+test("an app at its account cap refuses another; pending counts, dead unnamed attempts do not", async () => {
+  const h = harness();
+  const inst = h.instance();
+  const live: IntegrationConnection[] = Array.from({ length: INTEGRATION_MAX_ACCOUNTS_PER_APP }, (_, i) => ({
+    ref: `live-${i}`,
+    app: "gmail",
+    status: i === 0 ? "pending" : "active",
+    label: `account ${i}`,
+    createdAt: null,
+  }));
+  h.seed(live);
+
+  await assert.rejects(
+    h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL, label: "new" }),
+    AccountLimitReachedError,
+  );
+  assert.equal(h.calls.links.length, 0);
+
+  h.seed([...live.slice(1), { ref: "dead", app: "gmail", status: "expired", label: null, createdAt: null }]);
+  await h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL, label: "new" });
+  assert.deepEqual(h.calls.revoked, ["dead"]);
+  assert.equal(h.calls.links.length, 1);
+});
+
+test("a session gone again straight after its recreate surfaces as an outage, not a crash", async () => {
+  const h = harness({ linkFailures: 2 });
+  const inst = h.instance();
+
+  await assert.rejects(
+    h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL }),
+    UpstreamUnavailableError,
+  );
+  assert.equal(h.calls.createSession, 2);
+});
+
+test("rename sets the label of the bot's own account and refuses a name its sibling holds", async () => {
+  const h = harness();
+  const inst = h.instance();
+  await h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL });
+  await h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL, label: "אישי" });
+  await h.integrations.connect(inst.id, inst.userId, { app: "notion", returnUrl: RETURN_URL, label: "עבודה" });
+
+  await h.integrations.rename(inst.id, inst.userId, "ref-1", "עבודה");
+  await assert.rejects(h.integrations.rename(inst.id, inst.userId, "ref-1", "אישי"), AccountLabelTakenError);
+  await assert.rejects(h.integrations.rename(inst.id, inst.userId, "ref-other", "x"), NotFoundError);
+  await h.integrations.rename(inst.id, inst.userId, "ref-2", "אישי");
+
+  const labels = Object.fromEntries((await h.integrations.list(inst.id, inst.userId)).map((c) => [c.ref, c.label]));
+  assert.deepEqual(labels, { "ref-1": "עבודה", "ref-2": "אישי", "ref-3": "עבודה" });
+  assert.deepEqual(h.calls.renamed, [
+    ["ref-1", "עבודה"],
+    ["ref-2", "אישי"],
+  ]);
+  assert.ok(h.calls.events.includes("integration.renamed"));
+});
+
+test("rename refuses a bot that is being destroyed", async () => {
+  const h = harness({ instance: { status: "destroying" } });
+  const inst = h.instance();
+  await assert.rejects(h.integrations.rename(inst.id, inst.userId, "ref-1", "עבודה"), InvalidStateError);
+  assert.deepEqual(h.calls.renamed, []);
 });
 
 test("list returns newest connections first so a retry outranks the attempt it replaces", async () => {
   const h = harness();
   const inst = h.instance();
-  await h.integrations.connect(inst.id, inst.userId, "gmail", RETURN_URL);
+  await h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL });
   h.seed([
-    { ref: "older", app: "gmail", status: "expired", createdAt: "2026-08-01T00:00:00.000Z" },
-    { ref: "undated", app: "gmail", status: "expired", createdAt: null },
-    { ref: "newer", app: "gmail", status: "active", createdAt: "2026-08-02T00:00:00.000Z" },
+    { ref: "older", app: "gmail", status: "expired", label: null, createdAt: "2026-08-01T00:00:00.000Z" },
+    { ref: "undated", app: "gmail", status: "expired", label: null, createdAt: null },
+    { ref: "newer", app: "gmail", status: "active", label: null, createdAt: "2026-08-02T00:00:00.000Z" },
   ]);
 
   const refs = (await h.integrations.list(inst.id, inst.userId)).map((c) => c.ref);
@@ -297,7 +510,7 @@ test("list returns newest connections first so a retry outranks the attempt it r
 test("disconnect only revokes refs that belong to the bot", async () => {
   const h = harness();
   const inst = h.instance();
-  await h.integrations.connect(inst.id, inst.userId, "gmail", RETURN_URL);
+  await h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL });
 
   await assert.rejects(h.integrations.disconnect(inst.id, inst.userId, "ref-other"), NotFoundError);
   await h.integrations.disconnect(inst.id, inst.userId, "ref-1");
@@ -311,7 +524,7 @@ test("resolveRelay accepts only the bound token of a live bot", async () => {
   const inst = h.instance();
   await assert.rejects(h.integrations.resolveRelay(inst.id, "anything"), AuthenticationError);
 
-  await h.integrations.connect(inst.id, inst.userId, "gmail", RETURN_URL);
+  await h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL });
   const token = h.instance().config.integrations?.relayToken ?? "";
 
   const target = await h.integrations.resolveRelay(inst.id, token);
@@ -339,7 +552,7 @@ test("resolveRelay creates the provider session on a bot's first call and shares
   ]);
   assert.ok(h.calls.events.includes("integration.session_created"));
   // A later dashboard connect reuses the session the relay created.
-  await h.integrations.connect(inst.id, inst.userId, "gmail", RETURN_URL);
+  await h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL });
   assert.equal(h.calls.createSession, 1);
   assert.equal(h.calls.updateConfig.length, 0);
 });
@@ -347,7 +560,7 @@ test("resolveRelay creates the provider session on a bot's first call and shares
 test("resolveRelay refuses a bot that is being destroyed", async () => {
   const h = harness();
   const inst = h.instance();
-  await h.integrations.connect(inst.id, inst.userId, "gmail", RETURN_URL);
+  await h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL });
   const token = h.instance().config.integrations?.relayToken ?? "";
   const destroying = harness({ instance: { status: "destroying", config: h.instance().config } });
   await destroying.sessions.ensure(inst.id, "https://agentforall.co.il/app/bot/connections");
@@ -358,8 +571,8 @@ test("resolveRelay refuses a bot that is being destroyed", async () => {
 test("revokeAll drops every connection, the upstream session, and our row", async () => {
   const h = harness();
   const inst = h.instance();
-  await h.integrations.connect(inst.id, inst.userId, "gmail", RETURN_URL);
-  await h.integrations.connect(inst.id, inst.userId, "notion", RETURN_URL);
+  await h.integrations.connect(inst.id, inst.userId, { app: "gmail", returnUrl: RETURN_URL });
+  await h.integrations.connect(inst.id, inst.userId, { app: "notion", returnUrl: RETURN_URL });
 
   await h.sessions.revokeAll(h.instance());
 

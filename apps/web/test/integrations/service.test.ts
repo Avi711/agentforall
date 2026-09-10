@@ -2,7 +2,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { FEATURED_SLUGS } from "../../src/lib/integrations/catalog.he";
 import { CATALOG_SEARCH_LIMIT, CATALOG_SLUGS_LIMIT } from "../../src/lib/integrations/schemas";
-import type { CatalogApp, CatalogQuery, IntegrationConnection } from "../../src/lib/orchestrator/types";
+import type {
+  CatalogApp,
+  CatalogQuery,
+  ConnectIntegrationRequest,
+  IntegrationConnection,
+} from "../../src/lib/orchestrator/types";
 import { IntegrationsService, type IntegrationsPort } from "../../src/lib/integrations/service";
 
 const app = (slug: string): CatalogApp => ({ slug, name: slug, logo: null, description: null, categories: [], noAuth: false });
@@ -11,11 +16,17 @@ const connection = (slug: string, status: IntegrationConnection["status"] = "act
   ref: `ca_${slug}`,
   app: slug,
   status,
+  label: null,
   createdAt: null,
 });
 
 function fakePort(connections: IntegrationConnection[] = []) {
-  const calls: { connect?: { app: string; returnUrl: string }; disconnect?: string; catalog: CatalogQuery[] } = {
+  const calls: {
+    connect?: ConnectIntegrationRequest;
+    rename?: { ref: string; label: string };
+    disconnect?: string;
+    catalog: CatalogQuery[];
+  } = {
     catalog: [],
   };
   const port: IntegrationsPort = {
@@ -25,9 +36,12 @@ function fakePort(connections: IntegrationConnection[] = []) {
       return { apps, total: query.slugs ? apps.length : 1400 };
     },
     listIntegrations: async () => connections,
-    connectIntegration: async (_u, _b, app, returnUrl) => {
-      calls.connect = { app, returnUrl };
+    connectIntegration: async (_u, _b, request) => {
+      calls.connect = request;
       return { url: "https://connect.example/x", ref: "ref-1" };
+    },
+    renameIntegration: async (_u, _b, ref, label) => {
+      calls.rename = { ref, label };
     },
     disconnectIntegration: async (_u, _b, ref) => {
       calls.disconnect = ref;
@@ -46,7 +60,19 @@ test("connect builds the return url from the app url, never from the browser", a
   assert.deepEqual(calls.connect, {
     app: "gmail",
     returnUrl: "https://agentforall.co.il/app/bot/connections?connected=gmail",
+    label: undefined,
   });
+});
+
+test("connect forwards an additional account's name, and rename its new one", async () => {
+  const { port, calls } = fakePort();
+  const service = new IntegrationsService(port, "https://agentforall.co.il");
+
+  await service.connect("user-1", "bot-1", "gmail", "אישי");
+  await service.rename("user-1", "bot-1", "ca_9", "עבודה");
+
+  assert.equal(calls.connect?.label, "אישי");
+  assert.deepEqual(calls.rename, { ref: "ca_9", label: "עבודה" });
 });
 
 test("return url survives an app url with a trailing path and encodes the slug", () => {

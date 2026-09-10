@@ -28,13 +28,13 @@ function fakeFetch(responder: (call: Call, attempt: number) => Response) {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-test("createSession posts the per-bot user id with agent-managed connections but no removal", async () => {
+test("createSession posts the per-bot user id with agent-managed connections, no removal, and multi-account", async () => {
   const { calls, fetchImpl } = fakeFetch(() =>
     json({ session_id: "sess_1", mcp: { type: "http", url: "https://mcp.example/sess_1" } }, 201),
   );
   const client = new ComposioClient("https://api.example", "key_123", fetchImpl);
 
-  const session = await client.createSession({ userId: "inst-1", callbackUrl: "https://app/cb" });
+  const session = await client.createSession({ userId: "inst-1", callbackUrl: "https://app/cb", maxAccountsPerToolkit: 3 });
 
   assert.equal(session.session_id, "sess_1");
   assert.equal(session.mcp.url, "https://mcp.example/sess_1");
@@ -48,6 +48,7 @@ test("createSession posts the per-bot user id with agent-managed connections but
       enable_wait_for_connections: true,
       enable_connection_removal: false,
     },
+    multi_account: { enable: true, max_accounts_per_toolkit: 3, require_explicit_selection: true },
   });
 });
 
@@ -57,11 +58,22 @@ test("createLink targets the session and returns the hosted redirect", async () 
   );
   const client = new ComposioClient("https://api.example", "k", fetchImpl);
 
-  const link = await client.createLink("sess 1", "gmail", "https://app/cb?connected=gmail");
+  const link = await client.createLink({ sessionId: "sess 1", toolkit: "gmail", callbackUrl: "https://app/cb?connected=gmail" });
 
   assert.equal(calls[0]?.url, "https://api.example/api/v3.1/tool_router/session/sess%201/link");
   assert.deepEqual(calls[0]?.body, { toolkit: "gmail", callback_url: "https://app/cb?connected=gmail" });
   assert.equal(link.connected_account_id, "ca_9");
+});
+
+test("createLink sends the alias when one is given", async () => {
+  const { calls, fetchImpl } = fakeFetch(() =>
+    json({ link_token: "lt", redirect_url: "https://connect.example/x", connected_account_id: "ca_9" }, 201),
+  );
+  const client = new ComposioClient("https://api.example", "k", fetchImpl);
+
+  await client.createLink({ sessionId: "s", toolkit: "gmail", callbackUrl: "https://app/cb", alias: "עבודה" });
+
+  assert.deepEqual(calls[0]?.body, { toolkit: "gmail", callback_url: "https://app/cb", alias: "עבודה" });
 });
 
 test("listConnectedAccounts follows the cursor and tolerates unknown fields", async () => {
@@ -77,6 +89,47 @@ test("listConnectedAccounts follows the cursor and tolerates unknown fields", as
   assert.deepEqual(accounts.map((a) => a.id), ["a", "b"]);
   assert.equal(calls.length, 2);
   assert.match(calls[0]?.url ?? "", /user_ids=inst-1/);
+});
+
+test("enableMultiAccount patches only the multi-account block of the session", async () => {
+  const { calls, fetchImpl } = fakeFetch(() => json({ session_id: "sess 1", mcp: { url: "https://mcp/x" } }));
+  const client = new ComposioClient("https://api.example", "k", fetchImpl);
+
+  await client.enableMultiAccount("sess 1", 3);
+
+  assert.equal(calls[0]?.method, "PATCH");
+  assert.equal(calls[0]?.url, "https://api.example/api/v3.1/tool_router/session/sess%201");
+  assert.deepEqual(calls[0]?.body, { multi_account: { enable: true, max_accounts_per_toolkit: 3, require_explicit_selection: true } });
+});
+
+test("setConnectedAccountAlias patches the account's alias and retries a transient failure", async () => {
+  const { calls, fetchImpl } = fakeFetch((_call, attempt) =>
+    attempt === 1 ? new Response("down", { status: 503 }) : json({ success: true, id: "ca_9", status: "ACTIVE" }),
+  );
+  const client = new ComposioClient("https://api.example", "k", fetchImpl);
+
+  await client.setConnectedAccountAlias("ca_9", "עבודה");
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1]?.method, "PATCH");
+  assert.equal(calls[1]?.url, "https://api.example/api/v3.1/connected_accounts/ca_9");
+  assert.deepEqual(calls[1]?.body, { alias: "עבודה" });
+});
+
+test("errors keep Composio's request id but never the response body, which can echo an alias", async () => {
+  const { fetchImpl } = fakeFetch(() =>
+    json({ error: { message: "alias 'me@example.com' taken", request_id: "req_42" } }, 409),
+  );
+  const client = new ComposioClient("https://api.example", "k", fetchImpl);
+
+  await assert.rejects(client.setConnectedAccountAlias("ca_9", "me@example.com"), (err: unknown) => {
+    assert.ok(err instanceof ComposioApiError);
+    assert.equal(err.status, 409);
+    assert.equal(err.requestId, "req_42");
+    assert.match(err.message, /req_42/);
+    assert.doesNotMatch(err.message, /example\.com/);
+    return true;
+  });
 });
 
 test("deleteConnectedAccount revokes upstream and treats 404 as done", async () => {
@@ -101,7 +154,7 @@ test("idempotent calls retry on 503, non-idempotent session creation does not", 
   const failing = fakeFetch(() => new Response("down", { status: 503 }));
   const strict = new ComposioClient("https://api.example", "k", failing.fetchImpl);
   await assert.rejects(
-    strict.createSession({ userId: "inst-1", callbackUrl: "https://app/cb" }),
+    strict.createSession({ userId: "inst-1", callbackUrl: "https://app/cb", maxAccountsPerToolkit: 3 }),
     (err: unknown) => err instanceof ComposioApiError && err.status === 503,
   );
   assert.equal(failing.calls.length, 1);

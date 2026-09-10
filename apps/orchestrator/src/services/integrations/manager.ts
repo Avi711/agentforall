@@ -2,6 +2,8 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import type { FastifyBaseLogger } from "fastify";
 import type { AppConfig } from "../../config.js";
 import {
+  AccountLabelTakenError,
+  AccountLimitReachedError,
   AuthenticationError,
   DomainError,
   FeatureUnavailableError,
@@ -10,7 +12,15 @@ import {
   UpstreamUnavailableError,
   ValidationError,
 } from "../../domain/errors.js";
-import type { CatalogApp, CatalogPage, CatalogQuery, IntegrationConnection } from "../../domain/integrations.js";
+import {
+  INTEGRATION_MAX_ACCOUNTS_PER_APP,
+  labelKey,
+  type CatalogApp,
+  type CatalogPage,
+  type CatalogQuery,
+  type IntegrationConnection,
+  type IntegrationConnectRequest,
+} from "../../domain/integrations.js";
 import type { Instance } from "../../domain/types.js";
 import type { EventRepository } from "../../storage/event-repository.js";
 import type { InstanceRepository } from "../../storage/instance-repository.js";
@@ -18,7 +28,7 @@ import type { InstanceManager } from "../instance-manager.js";
 import { InstanceOperationLock } from "../instance-operation-lock.js";
 import { searchCatalog } from "./catalog-search.js";
 import type { ConnectLink, IntegrationProvider } from "./provider.js";
-import { SessionGoneError } from "./provider.js";
+import { LabelConflictError, SessionGoneError } from "./provider.js";
 import type { IntegrationSessions } from "./sessions.js";
 
 // Toolkits change on Composio's release cadence, not ours, so a day-old list is fine. What must not
@@ -29,7 +39,6 @@ const CATALOG_REFRESH_AFTER_MS = 23 * 60 * 60 * 1000;
 // A failed refresh must not freeze the list for another day, nor hammer a provider that is down.
 const CATALOG_RETRY_AFTER_MS = 5 * 60 * 1000;
 const DASHBOARD_CONNECTIONS_PATH = "/app/bot/connections";
-// Abandoned or dead attempts for the same app; pending ones may still be mid-consent.
 const STALE_STATUSES = new Set<IntegrationConnection["status"]>(["expired", "failed"]);
 
 type Manager = Pick<InstanceManager, "get">;
@@ -45,6 +54,12 @@ export interface RelayTarget {
 interface CatalogCache {
   apps: CatalogApp[];
   fetchedAt: number;
+}
+
+// `stuck` were superseded but their revoke failed.
+interface ClearedAccounts {
+  kept: IntegrationConnection[];
+  stuck: IntegrationConnection[];
 }
 
 export class IntegrationsManager {
@@ -147,12 +162,8 @@ export class IntegrationsManager {
     return newestFirst(connections);
   }
 
-  async connect(
-    instanceId: string,
-    userId: string,
-    app: string,
-    returnUrl: string,
-  ): Promise<ConnectLink> {
+  async connect(instanceId: string, userId: string, request: IntegrationConnectRequest): Promise<ConnectLink> {
+    const { app, returnUrl, label } = request;
     const inst = await this.manager.get(instanceId, userId);
     this.assertReturnUrl(returnUrl);
     if (inst.runtimeKind !== "openclaw") throw new FeatureUnavailableError("integrations");
@@ -163,24 +174,32 @@ export class IntegrationsManager {
       if (!isLive(current)) throw new InvalidStateError(current.status, "integration connect");
 
       const sessionCallback = this.sessionCallback();
-      let session = await this.upstream(() => this.sessions.ensure(instanceId, sessionCallback));
+      const session = await this.upstream(() => this.sessions.ensure(instanceId, sessionCallback));
 
       // Bound at creation for every bot (and by recreate for older ones); a missing binding is a bug.
       if (!current.config.integrations) throw new FeatureUnavailableError("integrations");
 
-      await this.pruneStale(instanceId, app);
+      const cleared = await this.clearSupersededAttempts(instanceId, app, label);
+      if (cleared) assertRoomForAccount(app, cleared, label);
+      const addsAccount = cleared === null || cleared.kept.length + cleared.stuck.length > 0;
 
-      const createLink = () =>
-        this.upstream(() =>
-          this.provider.createConnectLink({ providerSessionId: session.providerSessionId, app, callbackUrl: returnUrl }),
-        );
+      const createLink = (providerSessionId: string) =>
+        this.upstream(async () => {
+          if (addsAccount) await this.provider.allowMultipleAccounts(providerSessionId, INTEGRATION_MAX_ACCOUNTS_PER_APP);
+          return this.provider
+            .createConnectLink({ providerSessionId, app, callbackUrl: returnUrl, label })
+            .catch(labelTakenAs(app));
+        });
       let link: ConnectLink;
       try {
-        link = await createLink();
+        link = await createLink(session.providerSessionId);
       } catch (err) {
         if (!(err instanceof SessionGoneError)) throw err;
-        session = await this.upstream(() => this.sessions.recreate(instanceId, sessionCallback));
-        link = await createLink();
+        const fresh = await this.upstream(() => this.sessions.recreate(instanceId, sessionCallback));
+        // Gone again straight after a recreate is an outage, not something another recreate fixes.
+        link = await createLink(fresh.providerSessionId).catch((retryErr: unknown) => {
+          throw retryErr instanceof SessionGoneError ? new UpstreamUnavailableError("integrations") : retryErr;
+        });
       }
 
       await this.eventLog.append(instanceId, "integration.connect_requested", {
@@ -188,6 +207,26 @@ export class IntegrationsManager {
         payload: { app },
       });
       return link;
+    });
+  }
+
+  async rename(instanceId: string, userId: string, ref: string, label: string): Promise<void> {
+    const inst = await this.manager.get(instanceId, userId);
+    if (!isLive(inst)) throw new InvalidStateError(inst.status, "integration rename");
+    await this.lock.run(instanceId, async () => {
+      // Under the lock so a connect in flight cannot claim the same name between the check and the write.
+      const connections = await this.upstream(() => this.provider.listConnections(instanceId));
+      const target = connections.find((c) => c.ref === ref);
+      if (!target) throw new NotFoundError("integration connection", ref);
+      const taken = connections.some(
+        (c) => c.ref !== ref && c.app === target.app && labelKey(c.label) === labelKey(label),
+      );
+      if (taken) throw new AccountLabelTakenError(target.app);
+      await this.upstream(() => this.provider.renameConnection(ref, label).catch(labelTakenAs(target.app)));
+      await this.eventLog.append(instanceId, "integration.renamed", {
+        actor: userId,
+        payload: { app: target.app },
+      });
     });
   }
 
@@ -217,19 +256,28 @@ export class IntegrationsManager {
     return { upstreamUrl, headers: this.provider.upstreamHeaders() };
   }
 
-  // Best effort: a reconnect must not fail because yesterday's abandoned attempt could not be removed.
-  private async pruneStale(instanceId: string, app: string): Promise<void> {
+  // Best effort: null (unreadable) never blocks a connect.
+  private async clearSupersededAttempts(
+    instanceId: string,
+    app: string,
+    label: string | undefined,
+  ): Promise<ClearedAccounts | null> {
+    let accounts: IntegrationConnection[];
     try {
-      const stale = (await this.provider.listConnections(instanceId)).filter(
-        (c) => c.app === app && STALE_STATUSES.has(c.status),
-      );
-      const results = await Promise.allSettled(stale.map((c) => this.provider.revokeConnection(c.ref)));
-      for (const result of results) {
-        if (result.status === "rejected") this.log.warn({ instanceId, app, err: result.reason }, "stale connection prune failed");
-      }
+      accounts = (await this.provider.listConnections(instanceId)).filter((c) => c.app === app);
     } catch (err) {
-      this.log.warn({ instanceId, app, err }, "stale connection lookup failed");
+      this.log.warn({ instanceId, app, err }, "connection lookup before connect failed");
+      return null;
     }
+    const superseded = accounts.filter((c) => isSupersededBy(c, label));
+    const results = await Promise.allSettled(superseded.map((c) => this.provider.revokeConnection(c.ref)));
+    const stuck = superseded.filter((_, i) => {
+      const result = results[i];
+      if (result?.status !== "rejected") return false;
+      this.log.warn({ instanceId, app, err: result.reason }, "superseded attempt revoke failed");
+      return true;
+    });
+    return { kept: accounts.filter((c) => !superseded.includes(c)), stuck };
   }
 
   private sessionCallback(): string {
@@ -258,6 +306,32 @@ export class IntegrationsManager {
       throw new UpstreamUnavailableError("integrations");
     }
   }
+}
+
+// A retry under the same name replaces its unfinished attempt; unnamed dead attempts are swept too.
+function isSupersededBy(account: IntegrationConnection, label: string | undefined): boolean {
+  if (account.status === "active") return false;
+  if (labelKey(account.label) === labelKey(label)) return true;
+  return account.label === null && STALE_STATUSES.has(account.status);
+}
+
+function assertRoomForAccount(app: string, { kept, stuck }: ClearedAccounts, label: string | undefined): void {
+  const named = (accounts: IntegrationConnection[]) =>
+    label !== undefined && accounts.some((c) => labelKey(c.label) === labelKey(label));
+  if (kept.length >= INTEGRATION_MAX_ACCOUNTS_PER_APP) {
+    throw new AccountLimitReachedError(app, INTEGRATION_MAX_ACCOUNTS_PER_APP);
+  }
+  if (named(kept)) throw new AccountLabelTakenError(app);
+  // A replaced attempt that would not go away still holds its slot and name upstream: an outage, not the owner's doing.
+  if (kept.length + stuck.length >= INTEGRATION_MAX_ACCOUNTS_PER_APP || named(stuck)) {
+    throw new UpstreamUnavailableError("integrations");
+  }
+}
+
+function labelTakenAs(app: string): (err: unknown) => never {
+  return (err) => {
+    throw err instanceof LabelConflictError ? new AccountLabelTakenError(app) : err;
+  };
 }
 
 function isLive(inst: Instance): boolean {

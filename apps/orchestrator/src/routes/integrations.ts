@@ -6,14 +6,27 @@ import {
   CATALOG_MAX_OFFSET,
   CATALOG_MAX_SLUGS,
   INTEGRATION_APP_SLUG_PATTERN,
+  INTEGRATION_LABEL_MAX_LENGTH,
   INTEGRATION_REF_PATTERN,
+  normalizeLabel,
 } from "../domain/integrations.js";
 import type { IntegrationsManager } from "../services/integrations/manager.js";
 
 const InstanceParam = z.object({ id: z.string().uuid() });
 const ConnectParams = InstanceParam.extend({ app: z.string().regex(INTEGRATION_APP_SLUG_PATTERN) });
 const ConnectionParams = InstanceParam.extend({ ref: z.string().regex(INTEGRATION_REF_PATTERN) });
-const ConnectBody = z.object({ returnUrl: z.string().url() }).strict();
+const AccountLabel = z
+  .string()
+  .transform(normalizeLabel)
+  .pipe(
+    z
+      .string()
+      .min(1)
+      .max(INTEGRATION_LABEL_MAX_LENGTH)
+      .regex(/^[^\p{Cc}]+$/u, "label must not contain control characters"),
+  );
+const ConnectBody = z.object({ returnUrl: z.string().url(), label: AccountLabel.optional() }).strict();
+const RenameBody = z.object({ label: AccountLabel }).strict();
 const CatalogQuery = z
   .object({
     q: z.string().max(64).optional(),
@@ -51,9 +64,16 @@ export const integrationsRoutes: FastifyPluginAsync<IntegrationsRouteDeps> = asy
 
   app.post("/instances/:id/integrations/:app/connect", async (request, reply) => {
     const { id, app: slug } = ConnectParams.parse(request.params);
-    const { returnUrl } = ConnectBody.parse(request.body);
-    const link = await requireIntegrations().connect(id, request.authenticatedUserId, slug, returnUrl);
+    const { returnUrl, label } = ConnectBody.parse(request.body);
+    const link = await requireIntegrations().connect(id, request.authenticatedUserId, { app: slug, returnUrl, label });
     return reply.status(201).send(link);
+  });
+
+  app.patch("/instances/:id/integrations/:ref", async (request, reply) => {
+    const { id, ref } = ConnectionParams.parse(request.params);
+    const { label } = RenameBody.parse(request.body);
+    await requireIntegrations().rename(id, request.authenticatedUserId, ref, label);
+    return reply.status(204).send();
   });
 
   app.delete("/instances/:id/integrations/:ref", async (request, reply) => {

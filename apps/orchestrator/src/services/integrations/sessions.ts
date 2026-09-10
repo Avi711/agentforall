@@ -1,5 +1,5 @@
 import type { FastifyBaseLogger } from "fastify";
-import type { IntegrationSession } from "../../domain/integrations.js";
+import { INTEGRATION_MAX_ACCOUNTS_PER_APP, type IntegrationSession } from "../../domain/integrations.js";
 import type { Instance } from "../../domain/types.js";
 import type { EventRepository } from "../../storage/event-repository.js";
 import type { IntegrationSessionRepository } from "../../storage/integration-session-repository.js";
@@ -61,7 +61,11 @@ export class IntegrationSessions implements IntegrationCleanup {
   }
 
   private async create(instanceId: string, callbackUrl: string): Promise<IntegrationSession> {
-    const created = await this.provider.createSession({ instanceId, callbackUrl });
+    const created = await this.provider.createSession({
+      instanceId,
+      callbackUrl,
+      maxAccountsPerApp: INTEGRATION_MAX_ACCOUNTS_PER_APP,
+    });
     const session = await this.store.upsert({
       instanceId,
       provider: this.provider.name,

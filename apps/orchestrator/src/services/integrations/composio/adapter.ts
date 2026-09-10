@@ -10,7 +10,7 @@ import type {
   CreatedSession,
   IntegrationProvider,
 } from "../provider.js";
-import { SessionGoneError } from "../provider.js";
+import { LabelConflictError, SessionGoneError } from "../provider.js";
 import { ComposioApiError, type ComposioClient, type ComposioToolkit } from "./client.js";
 
 const STATUS_MAP: Record<string, IntegrationConnectionStatus> = {
@@ -36,6 +36,7 @@ export class ComposioIntegrationProvider implements IntegrationProvider {
     const session = await this.client.createSession({
       userId: input.instanceId,
       callbackUrl: input.callbackUrl,
+      maxAccountsPerToolkit: input.maxAccountsPerApp,
     });
     return { providerSessionId: session.session_id, upstreamMcpUrl: session.mcp.url };
   }
@@ -44,16 +45,22 @@ export class ComposioIntegrationProvider implements IntegrationProvider {
     await this.client.deleteSession(providerSessionId);
   }
 
+  async allowMultipleAccounts(providerSessionId: string, maxAccountsPerApp: number): Promise<void> {
+    await sessionCall(providerSessionId, () => this.client.enableMultiAccount(providerSessionId, maxAccountsPerApp));
+  }
+
   async createConnectLink(input: ConnectLinkInput): Promise<ConnectLink> {
-    try {
-      const link = await this.client.createLink(input.providerSessionId, input.app, input.callbackUrl);
-      return { url: link.redirect_url, ref: link.connected_account_id };
-    } catch (err) {
-      if (err instanceof ComposioApiError && err.status === 404) {
-        throw new SessionGoneError(input.providerSessionId);
-      }
-      throw err;
-    }
+    const link = await sessionCall(input.providerSessionId, () =>
+      aliasCall(() =>
+        this.client.createLink({
+          sessionId: input.providerSessionId,
+          toolkit: input.app,
+          callbackUrl: input.callbackUrl,
+          alias: input.label,
+        }),
+      ),
+    );
+    return { url: link.redirect_url, ref: link.connected_account_id };
   }
 
   async listConnections(instanceId: string): Promise<IntegrationConnection[]> {
@@ -62,8 +69,14 @@ export class ComposioIntegrationProvider implements IntegrationProvider {
       ref: account.id,
       app: account.toolkit?.slug ?? "unknown",
       status: STATUS_MAP[account.status.toUpperCase()] ?? "failed",
+      // Composio clears an alias by storing "".
+      label: account.alias?.trim() || null,
       createdAt: account.created_at ?? null,
     }));
+  }
+
+  async renameConnection(ref: string, label: string): Promise<void> {
+    await aliasCall(() => this.client.setConnectedAccountAlias(ref, label));
   }
 
   async revokeConnection(ref: string): Promise<void> {
@@ -72,6 +85,25 @@ export class ComposioIntegrationProvider implements IntegrationProvider {
 
   upstreamHeaders(): Record<string, string> {
     return this.client.authHeaders();
+  }
+}
+
+async function sessionCall<T>(providerSessionId: string, call: () => Promise<T>): Promise<T> {
+  try {
+    return await call();
+  } catch (err) {
+    if (err instanceof ComposioApiError && err.status === 404) throw new SessionGoneError(providerSessionId);
+    throw err;
+  }
+}
+
+// Composio answers 409 when the alias is already another of the user's accounts for the toolkit.
+async function aliasCall<T>(call: () => Promise<T>): Promise<T> {
+  try {
+    return await call();
+  } catch (err) {
+    if (err instanceof ComposioApiError && err.status === 409) throw new LabelConflictError();
+    throw err;
   }
 }
 

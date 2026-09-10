@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { isActive, pollPlan } from "@/lib/integrations/connections";
+import { latestFor, pollPlan } from "@/lib/integrations/connections";
 import { IntegrationsResponseSchema, type IntegrationConnection } from "@/lib/orchestrator/types";
 
 const POLL_TIMEOUT_MS = 90_000;
 
-export type WatchOutcome = "active" | "timeout";
+export type WatchOutcome = { kind: "active"; account: IntegrationConnection } | { kind: "timeout" };
 
 // Keeps the list truthful: refreshes when the tab comes back and polls (bounded) while a consent flow is open.
 export function useLiveConnections(
@@ -42,9 +42,11 @@ export function useLiveConnections(
 
   // The outcome derives from state, so a focus refresh counts as much as a poll tick.
   useEffect(() => {
-    if (watch && isActive(connections, watch)) {
+    if (!watch) return;
+    const latest = latestFor(connections, watch);
+    if (latest?.status === "active") {
       setWatch(null);
-      onWatchRef.current("active");
+      onWatchRef.current({ kind: "active", account: latest });
     }
   }, [connections, watch]);
 
@@ -71,7 +73,7 @@ export function useLiveConnections(
       if (Date.now() >= deadline) {
         if (target) {
           setWatch(null);
-          onWatchRef.current("timeout");
+          onWatchRef.current({ kind: "timeout" });
         }
         return;
       }

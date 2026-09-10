@@ -38,11 +38,33 @@ export interface CatalogPage {
   total: number;
 }
 
+export const INTEGRATION_MAX_ACCOUNTS_PER_APP = 3;
+export const INTEGRATION_LABEL_MAX_LENGTH = 40;
+
 export interface IntegrationConnection {
   ref: string;
   app: string;
   status: IntegrationConnectionStatus;
+  label: string | null;
   createdAt: string | null;
+}
+
+export interface IntegrationConnectRequest {
+  app: string;
+  returnUrl: string;
+  label?: string;
+}
+
+// Invisible marks (Hebrew keyboards add them unasked) make names look alike; emoji need ZWNJ/ZWJ, so those stay.
+const INVISIBLE_FORMAT = /(?![\u200C\u200D])\p{Cf}/gu;
+
+export function normalizeLabel(label: string): string {
+  return label.replace(INVISIBLE_FORMAT, "").normalize("NFC").trim();
+}
+
+// Two names are the same account name when a person would read them as one.
+export function labelKey(label: string | null | undefined): string {
+  return normalizeLabel(label ?? "").toLowerCase();
 }
 
 export interface IntegrationSession {

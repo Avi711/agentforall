@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { authenticatedHandler, errorJson } from "@/lib/auth/api";
 import { getIntegrationsService } from "@/lib/integrations";
-import { ConnectParamsSchema } from "@/lib/integrations/schemas";
+import { ConnectBodySchema, ConnectParamsSchema } from "@/lib/integrations/schemas";
 
 export const dynamic = "force-dynamic";
 
@@ -10,8 +10,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string; re
   const parsed = ConnectParamsSchema.safeParse(await ctx.params);
   if (!parsed.success) return errorJson("invalid_params", 400, parsed.error.flatten());
 
-  return authenticatedHandler({}, async ({ userId }) => {
-    const link = await getIntegrationsService().connect(userId, parsed.data.id, parsed.data.ref);
+  return authenticatedHandler({ bodySchema: ConnectBodySchema }, async ({ userId, body }) => {
+    const link = await getIntegrationsService().connect(userId, parsed.data.id, parsed.data.ref, body?.label);
     return NextResponse.json(link, { status: 201 });
   })(req);
 }

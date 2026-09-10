@@ -3,8 +3,12 @@ import assert from "node:assert/strict";
 import {
   BotIntegrationParamsSchema,
   CatalogSearchSchema,
+  ConnectBodySchema,
   ConnectParamsSchema,
   ConnectedQuerySchema,
+  RenameBodySchema,
+  accountLabelKey,
+  normalizeAccountLabel,
 } from "../../src/lib/integrations/schemas";
 import { FEATURED_APPS, featuredApp, searchFeatured } from "../../src/lib/integrations/catalog.he";
 
@@ -43,6 +47,26 @@ test("hebrew queries match the curated copy, since the provider catalog is engli
   assert.deepEqual(searchFeatured("notion"), ["notion"]);
   assert.deepEqual(searchFeatured(""), []);
   assert.deepEqual(searchFeatured("אין דבר כזה"), []);
+});
+
+test("account labels arrive trimmed, NFC-composed and free of direction marks, like the orchestrator stores them", () => {
+  assert.deepEqual(RenameBodySchema.parse({ label: " \u200Fעבודה\u200E " }), { label: "עבודה" });
+  assert.deepEqual(RenameBodySchema.parse({ label: "e\u0301cole" }), { label: "école" });
+  for (const label of ["", "  ", "\u202E", "x".repeat(41), "a\nb"]) {
+    assert.equal(RenameBodySchema.safeParse({ label }).success, false, JSON.stringify(label));
+  }
+  assert.equal(RenameBodySchema.safeParse({ label: "a", extra: 1 }).success, false);
+  assert.equal(accountLabelKey(" Work\u200F "), accountLabelKey("work"));
+  assert.equal(accountLabelKey("\u200Bwork\uFEFF"), "work");
+  assert.equal(normalizeAccountLabel("\u{1F469}\u200D\u{1F4BB}"), "\u{1F469}\u200D\u{1F4BB}");
+});
+
+test("the connect body is optional, and so is its label", () => {
+  assert.equal(ConnectBodySchema.parse(undefined), undefined);
+  assert.deepEqual(ConnectBodySchema.parse({}), {});
+  assert.deepEqual(ConnectBodySchema.parse({ label: " אישי " }), { label: "אישי" });
+  assert.equal(ConnectBodySchema.safeParse({ label: "" }).success, false);
+  assert.equal(ConnectBodySchema.safeParse({ returnUrl: "https://evil.example" }).success, false);
 });
 
 test("catalog search trims, coerces the limit, and rejects oversized input", () => {

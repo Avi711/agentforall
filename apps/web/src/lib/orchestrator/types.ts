@@ -223,12 +223,20 @@ export const IntegrationConnectionSchema = z.object({
   ref: z.string().min(1),
   app: z.string().min(1),
   status: z.enum(["active", "pending", "expired", "failed", "inactive"]),
+  // Defaulted so the page keeps working against an orchestrator that predates account names.
+  label: z.string().nullable().default(null),
   createdAt: z.string().nullable(),
 });
 export type IntegrationConnection = z.infer<typeof IntegrationConnectionSchema>;
 
 export const ConnectLinkSchema = z.object({ url: z.string().url(), ref: z.string().min(1) });
 export type ConnectLink = z.infer<typeof ConnectLinkSchema>;
+
+export interface ConnectIntegrationRequest {
+  app: string;
+  returnUrl: string;
+  label?: string;
+}
 
 export interface CatalogQuery {
   q?: string;

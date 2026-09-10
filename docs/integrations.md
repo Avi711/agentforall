@@ -75,6 +75,25 @@ container ──Bearer relayToken──▶ routes/mcp-relay.ts ──x-api-key�
    Composio expires abandoned consent flows after 10 minutes, and they would otherwise accumulate forever.
    Because an abandoned flow and a dead token both surface as `expired`, the tile shows it as neutral
    ("פג תוקף"); only `failed`/`inactive` are flagged red.
+   **Several accounts per app** (e.g. work and personal Gmail): sessions are created with Composio's
+   `multi_account` on, capped at `INTEGRATION_MAX_ACCOUNTS_PER_APP` (3). Connect takes an optional `label`,
+   sent as the Composio `alias`; `PATCH /instances/:id/integrations/:ref` renames one. Labels are compared
+   NFC, trimmed and case-insensitively, with direction marks stripped at the route. Before a link is made,
+   a connect replaces that app's non-active attempts under the same label (so a retry after an abandoned
+   consent never hits the cap or its own name) and sweeps unnamed expired/failed ones; it then refuses
+   `ACCOUNT_LIMIT_REACHED` or `ACCOUNT_LABEL_TAKEN` (both 409). An unnamed connect therefore also replaces an
+   unnamed pending attempt, including one started from a chat link. If a replaced attempt cannot be revoked,
+   the connect fails as upstream-unavailable rather than blaming the owner's name or cap; a Composio 409 on
+   an alias maps to `ACCOUNT_LABEL_TAKEN`. Adding to an app that already has an account first PATCHes the
+   session's `multi_account` block, which upgrades sessions created before this lazily.
+   `require_explicit_selection` is on: once an app has two live accounts the agent must pass `account` (alias
+   or id) on every call, so it asks rather than silently sending from the newest account. With one live
+   account nothing changes.
+   The dashboard keeps the one-account tile as it was plus a quiet "חשבון נוסף" link; an app shows its
+   accounts as rows only once it has two. Adding a second account also asks to name the first. Every account
+   the cap counts is shown (only unnamed expired/failed ones, which the next connect sweeps, are hidden).
+   **Deploy the orchestrator before the web**: an older orchestrator rejects `label` (strict body) and has no
+   rename route.
 4. **ניתוק** → `DELETE /api/bot/:id/integrations/:ref` (ref must appear in the bot's own list).
 5. Bot delete → `IntegrationSessions.revokeAll` (best-effort per step) before the container is removed.
 

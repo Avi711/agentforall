@@ -36,6 +36,7 @@ import {
   type CatalogPage,
   type IntegrationConnection,
   type ConnectLink,
+  type ConnectIntegrationRequest,
 } from "./types";
 
 const BackupUploadSessionSchema = z.object({
@@ -326,19 +327,25 @@ export class OrchestratorClient {
   }
 
   // First call per bot creates the provider session and hot-applies the relay config.
-  async connectIntegration(
-    userId: string,
-    id: string,
-    app: string,
-    returnUrl: string,
-  ): Promise<ConnectLink> {
+  async connectIntegration(userId: string, id: string, request: ConnectIntegrationRequest): Promise<ConnectLink> {
     return this.call({
       method: "POST",
-      path: instancePath(id, `/integrations/${encodeURIComponent(app)}/connect`),
+      path: instancePath(id, `/integrations/${encodeURIComponent(request.app)}/connect`),
       userId,
-      body: { returnUrl },
+      body: { returnUrl: request.returnUrl, label: request.label },
       schema: ConnectLinkSchema,
       timeoutMs: 30_000,
+    });
+  }
+
+  async renameIntegration(userId: string, id: string, ref: string, label: string): Promise<void> {
+    await this.call({
+      method: "PATCH",
+      path: instancePath(id, `/integrations/${encodeURIComponent(ref)}`),
+      userId,
+      body: { label },
+      schema: z.unknown(),
+      allowEmptyBody: true,
     });
   }
 
@@ -488,7 +495,7 @@ export class OrchestratorClient {
     // null = platform-scope route (admin reporting); everything else impersonates the user.
     userId: string | null;
     body?: unknown;
-    schema: z.ZodType<T>;
+    schema: z.ZodType<T, z.ZodTypeDef, unknown>;
     allowEmptyBody?: boolean;
     timeoutMs?: number;
   }): Promise<T> {

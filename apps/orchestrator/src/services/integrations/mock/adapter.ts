@@ -39,6 +39,10 @@ export class MockIntegrationProvider implements IntegrationProvider {
     this.sessions.delete(providerSessionId);
   }
 
+  async allowMultipleAccounts(providerSessionId: string): Promise<void> {
+    if (!this.sessions.has(providerSessionId)) throw new SessionGoneError(providerSessionId);
+  }
+
   async createConnectLink(input: ConnectLinkInput): Promise<ConnectLink> {
     const session = this.sessions.get(input.providerSessionId);
     if (!session) throw new SessionGoneError(input.providerSessionId);
@@ -47,6 +51,7 @@ export class MockIntegrationProvider implements IntegrationProvider {
       ref,
       app: input.app,
       status: "active",
+      label: input.label ?? null,
       createdAt: new Date().toISOString(),
     });
     return { url: input.callbackUrl, ref };
@@ -57,6 +62,12 @@ export class MockIntegrationProvider implements IntegrationProvider {
       if (session.instanceId === instanceId) return [...session.connections];
     }
     return [];
+  }
+
+  async renameConnection(ref: string, label: string): Promise<void> {
+    for (const session of this.sessions.values()) {
+      session.connections = session.connections.map((c) => (c.ref === ref ? { ...c, label } : c));
+    }
   }
 
   async revokeConnection(ref: string): Promise<void> {

@@ -1,5 +1,12 @@
 import { OrchestratorError } from "@/lib/orchestrator/client";
-import type { CatalogApp, CatalogPage, CatalogQuery, ConnectLink, IntegrationConnection } from "@/lib/orchestrator/types";
+import type {
+  CatalogApp,
+  CatalogPage,
+  CatalogQuery,
+  ConnectIntegrationRequest,
+  ConnectLink,
+  IntegrationConnection,
+} from "@/lib/orchestrator/types";
 import { FEATURED_SLUGS } from "./catalog.he";
 import { CONNECTIONS_PATH } from "./paths";
 import { CATALOG_SEARCH_LIMIT, CATALOG_SLUGS_LIMIT, type CatalogSearch } from "./schemas";
@@ -25,12 +32,8 @@ export interface ConnectionsOverview {
 export interface IntegrationsPort {
   listIntegrationCatalog(userId: string, query: CatalogQuery): Promise<CatalogPage>;
   listIntegrations(userId: string, botId: string): Promise<IntegrationConnection[]>;
-  connectIntegration(
-    userId: string,
-    botId: string,
-    app: string,
-    returnUrl: string,
-  ): Promise<ConnectLink>;
+  connectIntegration(userId: string, botId: string, request: ConnectIntegrationRequest): Promise<ConnectLink>;
+  renameIntegration(userId: string, botId: string, ref: string, label: string): Promise<void>;
   disconnectIntegration(userId: string, botId: string, ref: string): Promise<void>;
 }
 
@@ -76,8 +79,12 @@ export class IntegrationsService {
   }
 
   // The return URL is ours to build: the browser never gets to choose where OAuth lands.
-  connect(userId: string, botId: string, app: string): Promise<ConnectLink> {
-    return this.port.connectIntegration(userId, botId, app, this.returnUrl(app));
+  connect(userId: string, botId: string, app: string, label?: string): Promise<ConnectLink> {
+    return this.port.connectIntegration(userId, botId, { app, returnUrl: this.returnUrl(app), label });
+  }
+
+  rename(userId: string, botId: string, ref: string, label: string): Promise<void> {
+    return this.port.renameIntegration(userId, botId, ref, label);
   }
 
   disconnect(userId: string, botId: string, ref: string): Promise<void> {
