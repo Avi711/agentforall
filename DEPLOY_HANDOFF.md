@@ -324,6 +324,14 @@ Verified against the live Composio API on 2026-08-27 with the project key: sessi
 
 Known follow-ups: connection-expiry webhook, relay-token rotation, own Google OAuth app (consent screen branding; CASA needed for Gmail read).
 
+**Several accounts per app (2026-09-10, DEPLOYED):** orchestrator
+`orchestrator@sha256:bfec1a7644821d72e1359e33052773850c778d057e0cc44acabc1526b11d7deb` (commit `86c6cc8`), healthy, both
+networks, 16 tenants up, pinned in `infra/variables.tf` and the VM `.env` (backup `.env.bak-20260910-multiaccount`);
+web pushed after it (an older orchestrator rejects `label` and has no rename route). No migration: new sessions get
+Composio `multi_account` with `require_explicit_selection`, older ones on their first second-account connect.
+Rollback: `8eec5643…`. Not yet verified live: Composio accepting a Hebrew alias, and OpenClaw's MCP tools letting the
+agent see account names and pass `account`. Details: `docs/integrations.md`.
+
 ## WhatsApp Business / Meta Cloud API (2026-09-10, DEPLOYED DARK, flag off)
 
 Deployed 2026-09-10: migration 0012 applied to Supabase; VM Caddyfile got the `@wacloud` 404 rule by hand
