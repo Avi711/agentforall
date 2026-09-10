@@ -2,7 +2,7 @@
 
 **Purpose:** session-to-session continuity. Reads top-to-bottom as a complete state-of-the-world. Don't add session-by-session timelines — fold material into the live sections below.
 
-**Last updated:** 2026-09-07
+**Last updated:** 2026-09-10
 
 ## Billing enforcement — on since 2026-09-07
 
@@ -324,7 +324,18 @@ Verified against the live Composio API on 2026-08-27 with the project key: sessi
 
 Known follow-ups: connection-expiry webhook, relay-token rotation, own Google OAuth app (consent screen branding; CASA needed for Gmail read).
 
-## WhatsApp Business / Meta Cloud API (2026-09-09, BUILT, NOT DEPLOYED, uncommitted)
+## WhatsApp Business / Meta Cloud API (2026-09-10, DEPLOYED DARK, flag off)
+
+Deployed 2026-09-10: migration 0012 applied to Supabase; VM Caddyfile got the `@wacloud` 404 rule by hand
+(backup `Caddyfile.bak-20260910`, verified empty-body 404 from outside); orchestrator
+`orchestrator@sha256:f060d9db4ce26580b92f690a7b3f01f0552c65cee2adeebed25e2090b642e710` (commit `9156b21`),
+healthy, both networks, 16 tenants up, pinned in `infra/variables.tf` and the VM `.env`; web from `main`
+with `WHATSAPP_CLOUD_ENABLED` unset, so no tenant sees the channel. `DATABASE_LISTEN_URL` is not set yet, so
+the inbox runs on the 500 ms poll (one warn at boot). Built, not pinned: openclaw-browser with the plugin
+`openclaw-browser@sha256:3a85792c67f1eb3c711bab51895aeb1e9f18be3ea70f23c68a7aa0ba2e65a068` (rehearsal only).
+Remaining: GSM `database-listen-url` then add it to `.env.runtime` and recreate the orchestrator (terraform apply
+fails until the secret exists); Meta setup (Vercel env, webhook URL, test number); rehearsal (doc §15) on one
+test bot recreated onto `3a85792c`; then `WHATSAPP_CLOUD_ENABLED=true`.
 
 Reviewed and hardened 2026-09-09 (fresh reviewer against the code and the 2026.8.2 dist), all suites green:
 customer sessions now also lose `group:ui`/`group:media`/`group:openclaw`; relay rate limit keyed by caller
