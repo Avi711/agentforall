@@ -351,8 +351,9 @@ Coexistence deployed 2026-09-11 (commit `c52f20d`, doc §14 seventh to tenth cha
 checked (nullable PIN, `contacts_synced_at`, `history_synced_at`, `held_until`, `mode_changed_at`); orchestrator
 `orchestrator@sha256:5a5bc437c656fcabdf62aecf47461aee410a8e8a371e3d2aeb318e334e885adf` (Cloud Build `65c84cc9`), healthy,
 both networks, listener connected, 0 errors, 16 tenants; web from `main`, flag still off. Rollback target `bfec1a76`,
-which cannot read a coexistence channel: roll back only before one exists. Still to do: Meta webhook fields
-`smb_message_echoes` and `account_update`; `WHATSAPP_CLOUD_PREVIEW_USER_IDS` on Vercel for the rehearsal account;
+which cannot read a coexistence channel: roll back only before one exists. Meta webhook fields `messages`,
+`smb_message_echoes` and `account_update` subscribed; web on Vercel verified (webhook 403 on a wrong token). Still to
+do: `WHATSAPP_CLOUD_PREVIEW_USER_IDS` on Vercel for the rehearsal account;
 rehearsal items 19-27 (item 24 blocks `WHATSAPP_CLOUD_ENABLED=true`).
 
 Reviewed and hardened 2026-09-09 (fresh reviewer against the code and the 2026.8.2 dist), all suites green:
