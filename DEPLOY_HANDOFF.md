@@ -347,11 +347,13 @@ number (WABA `1781328013209946`) reached the webhook with the app unpublished, o
 WABA's `subscribed_apps` by hand. Remaining: rehearsal (doc §15) on one test bot recreated onto `3a85792c`
 with the test number bound; a refresh job for the 60-day tokens before any client connects; business
 verification to publish; then `WHATSAPP_CLOUD_ENABLED=true`. Diagram: `docs/whatsapp-cloud-architecture.html`.
-Coexistence (number stays in the WhatsApp Business app) is coded, reviewed and tested but not committed (doc §14,
-seventh and eighth changes): deploy order is migration 0013 (nullable PIN, `contacts_synced_at`, `history_synced_at`, `held_until`, `mode_changed_at`),
-orchestrator, web; the orchestrator rollback target cannot read a coexistence channel, so roll back only before any
-exists; then add Meta webhook fields `smb_message_echoes` and
-`account_update`, and set `WHATSAPP_CLOUD_PREVIEW_USER_IDS` on Vercel for the rehearsal account.
+Coexistence deployed 2026-09-11 (commit `c52f20d`, doc §14 seventh to tenth changes): migration 0013 applied and
+checked (nullable PIN, `contacts_synced_at`, `history_synced_at`, `held_until`, `mode_changed_at`); orchestrator
+`orchestrator@sha256:5a5bc437c656fcabdf62aecf47461aee410a8e8a371e3d2aeb318e334e885adf` (Cloud Build `65c84cc9`), healthy,
+both networks, listener connected, 0 errors, 16 tenants; web from `main`, flag still off. Rollback target `bfec1a76`,
+which cannot read a coexistence channel: roll back only before one exists. Still to do: Meta webhook fields
+`smb_message_echoes` and `account_update`; `WHATSAPP_CLOUD_PREVIEW_USER_IDS` on Vercel for the rehearsal account;
+rehearsal items 19-27 (item 24 blocks `WHATSAPP_CLOUD_ENABLED=true`).
 
 Reviewed and hardened 2026-09-09 (fresh reviewer against the code and the 2026.8.2 dist), all suites green:
 customer sessions now also lose `group:ui`/`group:media`/`group:openclaw`; relay rate limit keyed by caller
