@@ -2,7 +2,14 @@
 
 **Purpose:** session-to-session continuity. Reads top-to-bottom as a complete state-of-the-world. Don't add session-by-session timelines — fold material into the live sections below.
 
-**Last updated:** 2026-09-10
+**Last updated:** 2026-09-11
+
+## "No reply was generated" lockups (2026-09-11)
+
+8.2 stores zero usage for our LiteLLM model, so compaction never runs and output gets clamped to ~1 token near 200k.
+- Fix: `compat: { supportsUsageInStreaming: true }` in `buildModelsConfig`, uncommitted on `main`. The 9.x upgrade WIP is in `git stash` ("openclaw 9.x upgrade WIP").
+- Set by hand on שרוליק only, via `openclaw config set 'models.providers.litellm.models[0].compat.supportsUsageInStreaming' true --strict-json`. Compaction has been verified working there.
+- Next: deploy the orchestrator with only this change, then run the same `config set` on every tenant.
 
 ## Billing enforcement — on since 2026-09-07
 

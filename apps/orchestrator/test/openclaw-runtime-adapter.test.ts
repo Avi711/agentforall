@@ -54,6 +54,7 @@ test("generated config supports LiteLLM media provider", () => {
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 200000,
     maxTokens: 8192,
+    compat: { supportsUsageInStreaming: true },
   });
   assert.deepEqual(config.tools?.media?.models, [
     { provider: "litellm", model: "gemini-agentforall", capabilities: ["image"] },

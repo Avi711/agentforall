@@ -88,6 +88,7 @@ export interface ModelDefinition {
   reasoning?: boolean;
   contextWindow?: number;
   maxTokens?: number;
+  compat?: { supportsUsageInStreaming?: boolean };
   cost?: {
     input: number;
     output: number;

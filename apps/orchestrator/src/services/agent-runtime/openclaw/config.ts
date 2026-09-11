@@ -461,6 +461,8 @@ function buildModelsConfig(provider: ProviderConfig): OpenclawConfig["models"] {
             cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
             contextWindow: 200000,
             maxTokens: 8192,
+            // Without it OpenClaw 8.2+ records zero usage on a custom base URL, so auto-compaction never runs (#96463).
+            compat: { supportsUsageInStreaming: true },
           },
         ],
         timeoutSeconds: 300,
