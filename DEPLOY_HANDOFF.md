@@ -6,7 +6,7 @@
 
 ## 2026-09-12 deploy
 - Orchestrator `b954b2fc…` (commit `2ecc80f`) renders `compat.supportsUsageInStreaming: true`. Without it 8.2 stores zero usage, compaction never runs, and bots stall on "No reply was generated". All 16 tenants were also set live with `openclaw config set`.
-- Web (commit `4371a83`): sign-in is Google only. The magic link is gone because Resend isn't configured.
+- Web (commit `4371a83`): sign-in is Google only. The magic link is gone because Resend isn't configured. Account deletion sends no email; it needs a login from the last 24h and otherwise asks the user to sign in with Google again.
 - The OpenClaw 9.x upgrade WIP is in `git stash` ("openclaw 9.x upgrade WIP").
 
 ## Billing enforcement — on since 2026-09-07
@@ -143,7 +143,6 @@ Validation for this batch:
 - Dashboard backup download uses a normal browser download link instead of a hidden iframe, so the GCS redirect is not blocked by `frame-src` CSP.
 - Production sets `PULL_IMAGES_ON_STARTUP=false`; VM startup authenticates Docker to GAR and warms tenant images, while orchestrator boot does not perform unauthenticated registry pulls.
 - Health monitor now self-heals stale `container_id` values by resolving the deterministic container name before WhatsApp probing.
-- Production auth now fails closed if `RESEND_API_KEY` is missing instead of logging magic/delete-account links.
 - Added workspace test scripts and focused regression tests for migration shape, bot schemas, pairing concurrency, and sidecar phone validation. Run `npm run test` before rollout.
 
 Deployment order for this batch:
@@ -277,7 +276,7 @@ terraform -chdir=infra apply -target=google_storage_bucket.backup_imports -targe
 | `NEXT_PUBLIC_APP_URL` | `https://agentforall.co.il` |
 | `NEXT_PUBLIC_ESIM_PARTNER_URL` | placeholder OK (`https://esimdb.com`) |
 
-Stale (can delete): `ORCHESTRATOR_PROVIDER`, `ORCHESTRATOR_PROVIDER_API_KEY`, `ORCHESTRATOR_PROVIDER_MODEL`. Not set: `RESEND_API_KEY`, `AUTH_EMAIL_FROM` (deferred).
+Stale (can delete): `ORCHESTRATOR_PROVIDER`, `ORCHESTRATOR_PROVIDER_API_KEY`, `ORCHESTRATOR_PROVIDER_MODEL`.
 
 ---
 

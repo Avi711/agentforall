@@ -1,44 +1,25 @@
 "use client";
 
-import { useState } from "react";
-import { signIn } from "@/lib/auth/client";
-import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
-
-type State = "idle" | "submitting" | "error";
+import { useGoogleSignIn } from "@/lib/auth/client";
 
 export function LoginForm({ redirectTo }: { redirectTo: string }) {
-  const [state, setState] = useState<State>("idle");
-  const [errorMessage, setErrorMessage] = useState("");
-
-  async function handleGoogle() {
-    setState("submitting");
-    setErrorMessage("");
-    try {
-      await signIn.social({
-        provider: "google",
-        callbackURL: redirectTo,
-      });
-    } catch (err) {
-      setState("error");
-      setErrorMessage(err instanceof Error ? err.message : UNEXPECTED_ERROR_HE);
-    }
-  }
+  const google = useGoogleSignIn();
 
   return (
     <div className="space-y-5">
       <button
         type="button"
-        onClick={handleGoogle}
-        disabled={state === "submitting"}
+        onClick={() => google.start(redirectTo)}
+        disabled={google.redirecting}
         className="w-full flex items-center justify-center gap-3 px-5 py-3 rounded-xl border border-sand bg-white hover:bg-cream-dark transition disabled:opacity-50 text-espresso font-medium"
       >
         <GoogleMark />
         <span>המשך עם Google</span>
       </button>
 
-      {state === "error" && errorMessage ? (
+      {google.error ? (
         <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
-          {errorMessage}
+          {google.error}
         </p>
       ) : null}
     </div>

@@ -15,7 +15,7 @@ export const user = pgTable(
   "user",
   {
     id: text("id").primaryKey(),
-    // Nullable for magic-link signups — Google OAuth always provides one.
+    // Nullable for accounts from the retired magic-link sign-in; Google OAuth always provides one.
     name: text("name"),
     email: text("email").notNull(),
     emailVerified: boolean("email_verified").notNull().default(false),

@@ -3,7 +3,7 @@ import type { PlanCode } from "@/lib/billing/pricing";
 import type { CheckoutSessionStatus } from "@/lib/billing/domain";
 import type { BillingStatus } from "@/lib/billing/service";
 import type { MockCheckoutOutcome } from "@/lib/billing/schemas";
-import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
+import { CHECKOUT_PENDING_HE, UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 
 type ApiErrorCode = BillingErrorCode | "invalid_body" | "invalid_json" | "unauthorized" | "internal_error";
 
@@ -21,7 +21,7 @@ const ERROR_MESSAGES_HE: Record<ApiErrorCode, string> = {
   conflict: "הפעולה כבר בוצעה.",
   rate_limited: "יותר מדי ניסיונות. נסו שוב בעוד שעה.",
   payment_required: "כדי להמשיך צריך מנוי פעיל.",
-  checkout_pending: "יש תשלום שעדיין בתהליך. נסו שוב בעוד כמה דקות.",
+  checkout_pending: CHECKOUT_PENDING_HE,
   no_ledger: UNEXPECTED_ERROR_HE,
   invalid_body: UNEXPECTED_ERROR_HE,
   invalid_json: UNEXPECTED_ERROR_HE,

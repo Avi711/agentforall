@@ -1,40 +1,48 @@
 "use client";
 
 import { useState } from "react";
-import { authClient } from "@/lib/auth/client";
+import { authClient, useGoogleSignIn } from "@/lib/auth/client";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 
 const CONFIRM_PHRASE = "מחק את החשבון שלי";
+const SETTINGS_PATH = "/app/settings";
+
+type Status = "idle" | "deleting" | "reauth";
 
 export function DeleteAccountCard() {
   const [open, setOpen] = useState(false);
   const [phrase, setPhrase] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [emailSent, setEmailSent] = useState(false);
+  const google = useGoogleSignIn();
 
+  const deleting = status === "deleting";
   const canDelete = phrase.trim() === CONFIRM_PHRASE;
+  const shownError = error ?? google.error;
 
   async function handleDelete() {
-    if (!canDelete || busy) return;
-    setBusy(true);
+    if (!canDelete || deleting) return;
+    setStatus("deleting");
     setError(null);
     try {
-      // Better Auth sends a verification email; the actual deletion (and the
-      // orchestrator bot cleanup in beforeDelete) runs when the user clicks
-      // the link. This is a security requirement for OAuth users.
-      const res = await authClient.deleteUser({
-        callbackURL: "/?account_deleted=1",
-      });
-      if (res.error) {
-        throw new Error(res.error.message ?? "שגיאה במחיקה");
+      const res = await authClient.deleteUser();
+      if (res.error?.code === "SESSION_EXPIRED") {
+        setStatus("reauth");
+        return;
       }
-      setEmailSent(true);
+      if (res.error) throw new Error(res.error.message ?? UNEXPECTED_ERROR_HE);
+      window.location.assign("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : UNEXPECTED_ERROR_HE);
-    } finally {
-      setBusy(false);
+      setStatus("idle");
     }
+  }
+
+  function cancel() {
+    setOpen(false);
+    setPhrase("");
+    setError(null);
+    setStatus("idle");
   }
 
   return (
@@ -45,12 +53,7 @@ export function DeleteAccountCard() {
         הנתונים השמורים בחשבון. פעולה זו אינה הפיכה.
       </p>
 
-      {emailSent ? (
-        <div className="text-sm bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-900 leading-relaxed">
-          שלחנו לכם מייל עם קישור לאישור המחיקה. פתחו אותו וכתחילה הקישור
-          למחיקה סופית. הקישור תקף חמש דקות.
-        </div>
-      ) : !open ? (
+      {!open ? (
         <button
           type="button"
           onClick={() => setOpen(true)}
@@ -58,6 +61,30 @@ export function DeleteAccountCard() {
         >
           מחיקת חשבון
         </button>
+      ) : status === "reauth" ? (
+        <div className="space-y-4">
+          <p className="text-sm bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-900 leading-relaxed">
+            מטעמי אבטחה צריך להתחבר מחדש לפני המחיקה. אחרי ההתחברות תחזרו לכאן ותוכלו למחוק.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button
+              type="button"
+              onClick={() => google.start(SETTINGS_PATH)}
+              disabled={google.redirecting}
+              className="px-5 py-3 rounded-lg bg-espresso text-cream font-medium hover:bg-espresso-light transition disabled:opacity-50"
+            >
+              התחברות מחדש עם Google
+            </button>
+            <button
+              type="button"
+              onClick={cancel}
+              disabled={google.redirecting}
+              className="px-5 py-3 rounded-lg text-espresso-light hover:text-espresso hover:bg-cream-dark transition disabled:opacity-50"
+            >
+              ביטול
+            </button>
+          </div>
+        </div>
       ) : (
         <div className="space-y-4">
           <label className="block">
@@ -71,7 +98,7 @@ export function DeleteAccountCard() {
               type="text"
               value={phrase}
               onChange={(e) => setPhrase(e.target.value)}
-              disabled={busy}
+              disabled={deleting}
               dir="rtl"
               autoComplete="off"
               className="w-full px-4 py-2.5 rounded-lg border border-sand bg-white text-espresso focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 disabled:opacity-50"
@@ -82,32 +109,28 @@ export function DeleteAccountCard() {
             <button
               type="button"
               onClick={handleDelete}
-              disabled={!canDelete || busy}
+              disabled={!canDelete || deleting}
               className="px-5 py-3 rounded-lg bg-red-700 text-white font-medium hover:bg-red-800 transition disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {busy ? "מוחק…" : "אישור מחיקה"}
+              {deleting ? "מוחק…" : "אישור מחיקה"}
             </button>
             <button
               type="button"
-              onClick={() => {
-                setOpen(false);
-                setPhrase("");
-                setError(null);
-              }}
-              disabled={busy}
+              onClick={cancel}
+              disabled={deleting}
               className="px-5 py-3 rounded-lg text-espresso-light hover:text-espresso hover:bg-cream-dark transition disabled:opacity-50"
             >
               ביטול
             </button>
           </div>
-
-          {error ? (
-            <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
-              {error}
-            </p>
-          ) : null}
         </div>
       )}
+
+      {shownError ? (
+        <p className="mt-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+          {shownError}
+        </p>
+      ) : null}
     </section>
   );
 }

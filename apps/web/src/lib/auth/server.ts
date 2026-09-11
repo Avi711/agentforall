@@ -1,16 +1,10 @@
 import "server-only";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { APIError } from "better-auth/api";
-import { Resend } from "resend";
 import { getDb } from "../db";
 import { botService } from "../bots/service";
 import { getBillingService } from "../billing";
-import { PendingCheckoutError } from "../billing/errors";
-
-const PENDING_CHECKOUT_HE = "יש תשלום שעדיין בתהליך. נסו למחוק את החשבון שוב בעוד כמה דקות.";
-
-const RESEND_FROM = process.env.AUTH_EMAIL_FROM ?? "login@agentforall.co.il";
+import { deleteUserOptions } from "./delete-user";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -18,33 +12,6 @@ function requireEnv(name: string): string {
     throw new Error(`${name} is required`);
   }
   return value;
-}
-
-const resend = process.env.RESEND_API_KEY
-  ? new Resend(process.env.RESEND_API_KEY)
-  : null;
-
-async function sendDeleteAccountEmail(email: string, url: string): Promise<void> {
-  if (!resend) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("RESEND_API_KEY is required to send delete-account email");
-    }
-    console.log(`[auth] delete-account link for ${email}: ${url}`);
-    return;
-  }
-  await resend.emails.send({
-    from: RESEND_FROM,
-    to: email,
-    subject: "אישור מחיקת החשבון ב-Agent For All",
-    html: `
-      <div dir="rtl" style="font-family: Arial, Helvetica, sans-serif; font-size: 16px; line-height: 1.6; color: #2a1810;">
-        <p>שלום,</p>
-        <p>ביקשתם למחוק את חשבונכם ב-Agent For All. מחיקה זו תסיר את הסוכן, את חיבור ה-WhatsApp וכל הנתונים, ואינה הפיכה.</p>
-        <p><a href="${url}" style="background: #b91c1c; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block;">אישור מחיקת החשבון</a></p>
-        <p style="font-size: 14px; color: #6b5a52;">אם לא ביקשתם זאת, אפשר להתעלם מהמייל. הקישור תקף לחמש דקות.</p>
-      </div>
-    `,
-  });
 }
 
 const BASE_URL = requireEnv("BETTER_AUTH_URL");
@@ -73,26 +40,10 @@ export const auth = betterAuth({
   },
 
   user: {
-    // Wipe the user's bot containers + encrypted creds before cascading to
-    // sessions/accounts/instances. The orchestrator DELETE atomically removes
-    // the Docker container, its volume, and blanks `whatsapp_creds`, so no
-    // secrets survive the delete. If any bot destroy throws, Better Auth
-    // aborts the user deletion — safe by default.
-    deleteUser: {
-      enabled: true,
-      sendDeleteAccountVerification: async ({ user, url }) => {
-        await sendDeleteAccountEmail(user.email, url);
-      },
-      beforeDelete: async (user) => {
-        try {
-          await getBillingService().cancelForAccountDeletion(user.id);
-        } catch (err) {
-          if (err instanceof PendingCheckoutError) throw new APIError("CONFLICT", { message: PENDING_CHECKOUT_HE });
-          throw err;
-        }
-        await botService.deleteAllForUser(user.id);
-      },
-    },
+    deleteUser: deleteUserOptions({
+      cancelBilling: (userId) => getBillingService().cancelForAccountDeletion(userId),
+      deleteBots: (userId) => botService.deleteAllForUser(userId),
+    }),
     additionalFields: {
       consentedWhatsappAt: {
         type: "date",
