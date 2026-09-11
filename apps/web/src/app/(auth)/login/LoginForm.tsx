@@ -4,11 +4,10 @@ import { useState } from "react";
 import { signIn } from "@/lib/auth/client";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 
-type State = "idle" | "submitting" | "sent" | "error";
+type State = "idle" | "submitting" | "error";
 
 export function LoginForm({ redirectTo }: { redirectTo: string }) {
   const [state, setState] = useState<State>("idle");
-  const [email, setEmail] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
   async function handleGoogle() {
@@ -25,50 +24,6 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
     }
   }
 
-  async function handleMagicLink(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setState("submitting");
-    setErrorMessage("");
-    try {
-      const { error } = await signIn.magicLink({
-        email,
-        callbackURL: redirectTo,
-      });
-      if (error) {
-        throw new Error(error.message ?? "שגיאה בשליחת הקישור");
-      }
-      setState("sent");
-    } catch (err) {
-      setState("error");
-      setErrorMessage(err instanceof Error ? err.message : UNEXPECTED_ERROR_HE);
-    }
-  }
-
-  if (state === "sent") {
-    return (
-      <div className="text-center py-4">
-        <div className="text-5xl mb-4">✉️</div>
-        <h2 className="font-display text-xl text-espresso mb-2">
-          שלחנו לכם קישור כניסה
-        </h2>
-        <p className="text-espresso-light text-sm">
-          בדקו את תיבת הדוא״ל{" "}
-          <span dir="ltr" className="inline-block break-all">{email}</span>. הקישור תקף 5 דקות.
-        </p>
-        <button
-          type="button"
-          onClick={() => {
-            setState("idle");
-            setEmail("");
-          }}
-          className="mt-6 text-terra text-sm hover:underline"
-        >
-          שליחה לדוא״ל אחר
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-5">
       <button
@@ -80,39 +35,6 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
         <GoogleMark />
         <span>המשך עם Google</span>
       </button>
-
-      <div className="flex items-center gap-3 text-xs text-espresso-light">
-        <span className="h-px bg-sand-light flex-1" />
-        <span>או</span>
-        <span className="h-px bg-sand-light flex-1" />
-      </div>
-
-      <form onSubmit={handleMagicLink} className="space-y-3">
-        <label className="block">
-          <span className="block text-sm text-espresso-light mb-1.5">
-            כתובת דוא״ל
-          </span>
-          <input
-            type="email"
-            required
-            autoComplete="email"
-            dir="ltr"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            disabled={state === "submitting"}
-            className="w-full px-4 py-3 rounded-xl border border-sand bg-white text-espresso placeholder:text-sand focus:outline-none focus:border-terra focus:ring-2 focus:ring-terra-pale disabled:opacity-50"
-          />
-        </label>
-
-        <button
-          type="submit"
-          disabled={state === "submitting" || !email}
-          className="w-full px-5 py-3 rounded-xl bg-espresso text-cream font-medium hover:bg-espresso-light transition disabled:opacity-50"
-        >
-          {state === "submitting" ? "שולח…" : "שליחת קישור כניסה"}
-        </button>
-      </form>
 
       {state === "error" && errorMessage ? (
         <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
