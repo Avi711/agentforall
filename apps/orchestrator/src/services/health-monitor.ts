@@ -42,6 +42,9 @@ interface LocatedContainer {
   state: ContainerState;
 }
 
+// A healthy row is rewritten only this often; every poll writing every bot is what does not scale.
+const LAST_SEEN_REFRESH_MS = 60_000;
+
 // Cheap gateway liveness runs every poll; the costlier channel probe runs on its own cadence and
 // its last established answer is reused in between, so channel work can never delay liveness.
 interface ChannelStateEntry {
@@ -84,7 +87,6 @@ export class HealthMonitor {
     );
   }
 
-  // Resolves once the pass in flight has finished, so nothing observes after stop.
   async stop(): Promise<void> {
     if (this.intervalHandle) {
       clearInterval(this.intervalHandle);
@@ -163,7 +165,9 @@ export class HealthMonitor {
     result: HealthResult,
   ): Promise<void> {
     if (result.healthy) {
-      await this.repo.updateHealth(inst.id, 0, "running", { markSeen: true });
+      if (this.needsHealthyWrite(inst)) {
+        await this.repo.updateHealth(inst.id, 0, "running", { markSeen: true });
+      }
       if (inst.pairingStatus === "expired" && this.needsWhatsappProbe(inst)) {
         await this.repo.updatePairing(inst.id, { pairingStatus: "paired" });
       }
@@ -207,16 +211,20 @@ export class HealthMonitor {
     }
   }
 
+  private needsHealthyWrite(inst: Instance): boolean {
+    if (inst.status !== "running" || inst.healthFailures > 0) return true;
+    return inst.lastSeenAt === null || this.now() - inst.lastSeenAt.getTime() >= LAST_SEEN_REFRESH_MS;
+  }
+
+  // Docker is asked about a healthy bot once a minute (to repair a lagging container id), not every poll.
   private async checkOne(instance: Instance): Promise<HealthResult> {
-    const located = await this.locateContainer(instance).catch((err: unknown) => {
-      this.logger.warn({ instanceId: instance.id, err }, "container lookup failed");
-      return "lookup_failed" as const;
-    });
+    const adapter = this.runtimes.get(instance.runtimeKind);
+    let located: LocatedContainer | "lookup_failed" | null | undefined;
+    if (!instance.containerId || this.needsHealthyWrite(instance)) {
+      located = await this.tryLocate(instance);
+    }
     const resolved =
-      located && located !== "lookup_failed"
-        ? { ...instance, containerId: located.containerId }
-        : instance;
-    const adapter = this.runtimes.get(resolved.runtimeKind);
+      located && located !== "lookup_failed" ? { ...instance, containerId: located.containerId } : instance;
 
     const liveness = await adapter
       .probeGateway(
@@ -233,6 +241,7 @@ export class HealthMonitor {
       });
 
     if (!liveness.healthy) {
+      if (located === undefined) located = await this.tryLocate(instance);
       return {
         healthy: false,
         liveness: livenessOfFailure(located, this.now()),
@@ -335,6 +344,15 @@ export class HealthMonitor {
       instance.hasWhatsappCreds &&
       instance.config.channels.some((ch) => ch.type === "whatsapp")
     );
+  }
+
+  private async tryLocate(instance: Instance): Promise<LocatedContainer | "lookup_failed" | null> {
+    try {
+      return await this.locateContainer(instance);
+    } catch (err) {
+      this.logger.warn({ instanceId: instance.id, err }, "container lookup failed");
+      return "lookup_failed";
+    }
   }
 
   private async locateContainer(instance: Instance): Promise<LocatedContainer | null> {

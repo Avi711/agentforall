@@ -369,6 +369,10 @@ restart of unresponsive bots (`services/auto-restarter.ts`: 4 consecutive failed
 container → `InstanceManager.restartBySystem`; 10 min cooldown, 3 per hour, then `instance.auto_restart_exhausted` + error log;
 suspended when >50% of the fleet fails at once; `AUTO_RESTART_*` env, default on). Same day: `docker-socket-proxy` moved to
 `control-net` (S-0). Hosting decision and plan: `docs/hosting-plan-2026-09.md`.
+2026-09-14: orchestrator `orchestrator@sha256:d2484033b5beb67f6272c0aabecc8a3c885c8fb148cf812cf83aa16c64b08296` — 3 GB default
+cap for new bots, `MemoryWatch` ("bot memory high" at 80 %), health monitor writes a healthy row once a minute and consults Docker
+once a minute per healthy bot, reconciler resolves containers by name before marking `error`. Phase 1 of the hosting plan is
+complete except the first deliberate VM reboot.
 TODO once the Cloud API is live: a business-only bot (no Baileys link) has no owner number, so the owner is a stranger
 on the business number. Show "המספר שלי" for it (`BotCard.tsx:528`, `OwnerIdentityDialog` `whatsappAvailable`) and store
 the number on the `whatsapp_cloud` channel instead of `withWhatsappOwnerNumber` adding a Baileys channel (`owner.ts:17`).

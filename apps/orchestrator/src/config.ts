@@ -128,7 +128,6 @@ const AppConfigSchema = z.object({
   healthChannelStateMaxAgeMs: z.coerce.number().int().min(10_000).default(600_000),
   healthChannelProbeMaxBackoffMs: z.coerce.number().int().min(10_000).default(900_000),
   healthChannelProbeTimeoutMs: z.coerce.number().int().min(1000).default(10_000),
-  // A gateway that stops answering liveness is restarted; the window budget stops a bot that dies on boot from looping.
   autoRestartEnabled: booleanEnv.default("true"),
   autoRestartFailureThreshold: z.coerce.number().int().min(2).default(4),
   autoRestartCooldownMs: z.coerce.number().int().min(60_000).default(600_000),

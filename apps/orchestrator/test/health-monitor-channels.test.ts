@@ -26,6 +26,7 @@ interface HealthUpdate {
 class FakeRepo {
   readonly healthUpdates: HealthUpdate[] = [];
   readonly pairingUpdates: { id: string; patch: unknown }[] = [];
+  readonly containerIdUpdates: { id: string; containerId: string }[] = [];
 
   constructor(private instances: Instance[]) {}
 
@@ -45,7 +46,9 @@ class FakeRepo {
     this.pairingUpdates.push({ id, patch });
   }
 
-  async updateContainerId(): Promise<void> {}
+  async updateContainerId(id: string, containerId: string): Promise<void> {
+    this.containerIdUpdates.push({ id, containerId });
+  }
 }
 
 const SETTLED: ContainerState = { running: true, restarting: false, health: "healthy", startedAt: null };
@@ -104,6 +107,7 @@ function makeInstance(overrides: Partial<Instance> = {}): Instance {
     pairingStatus: "paired",
     status: "running",
     healthFailures: 0,
+    lastSeenAt: null,
     config: { channels: [{ type: "whatsapp" }] },
     ...overrides,
   } as unknown as Instance;
@@ -152,6 +156,75 @@ function createMonitor(
 
   return { monitor, whatsappCalls: () => whatsappCalls };
 }
+
+test("a healthy row seen less than a minute ago is not rewritten; stale, degraded or recovering rows are", async () => {
+  const clock = { now: 10_000_000 };
+  const cases: { inst: Instance; writes: number; why: string }[] = [
+    { inst: makeInstance({ lastSeenAt: new Date(clock.now - 30_000) }), writes: 0, why: "fresh" },
+    { inst: makeInstance({ lastSeenAt: new Date(clock.now - 60_000) }), writes: 1, why: "stale" },
+    { inst: makeInstance({ lastSeenAt: null }), writes: 1, why: "never seen" },
+    { inst: makeInstance({ status: "degraded", lastSeenAt: new Date(clock.now) }), writes: 1, why: "degraded" },
+    { inst: makeInstance({ healthFailures: 2, lastSeenAt: new Date(clock.now) }), writes: 1, why: "recovering" },
+  ];
+  for (const c of cases) {
+    const repo = new FakeRepo([c.inst]);
+    const { monitor } = createMonitor(repo, { whatsapp: async () => "connected" }, clock);
+    await monitor.pollAll();
+    assert.equal(repo.healthUpdates.length, c.writes, c.why);
+  }
+});
+
+function countingRuntime() {
+  const calls = { state: 0, byName: 0 };
+  const rt = {
+    containerState: async () => {
+      calls.state += 1;
+      return SETTLED;
+    },
+    findContainerByName: async () => {
+      calls.byName += 1;
+      return "container-1";
+    },
+  } as unknown as ContainerRuntime;
+  return { rt, calls };
+}
+
+test("a healthy bot seen within the minute is probed without any Docker call", async () => {
+  const clock = { now: 10_000_000 };
+  const { rt, calls } = countingRuntime();
+  const repo = new FakeRepo([makeInstance({ hasWhatsappCreds: false, lastSeenAt: new Date(clock.now - 10_000) })]);
+  const { monitor } = createMonitor(repo, { whatsapp: async () => "connected" }, clock, silentLogger, { runtime: rt });
+
+  await monitor.pollAll();
+
+  assert.deepEqual(calls, { state: 0, byName: 0 });
+  assert.deepEqual(repo.healthUpdates, []);
+});
+
+test("the minute tick repairs a row whose container id lags, and writes are spaced a minute apart", async () => {
+  const clock = { now: 10_000_000 };
+  const { rt, calls } = countingRuntime();
+  const inst = makeInstance({ hasWhatsappCreds: false, containerId: null, lastSeenAt: null });
+  const repo = new FakeRepo([inst]);
+  const { monitor } = createMonitor(repo, { whatsapp: async () => "connected" }, clock, silentLogger, { runtime: rt });
+
+  await monitor.pollAll();
+  assert.deepEqual(repo.containerIdUpdates, [{ id: "instance-1", containerId: "container-1" }]);
+  assert.equal(calls.byName, 1);
+  assert.equal(repo.healthUpdates.length, 1);
+
+  // Mimic the row after the write: seen now, id repaired.
+  repo.setInstances([makeInstance({ hasWhatsappCreds: false, lastSeenAt: new Date(clock.now) })]);
+  clock.now += 15_000;
+  await monitor.pollAll();
+  clock.now += 15_000;
+  await monitor.pollAll();
+  assert.equal(repo.healthUpdates.length, 1, "no writes inside the minute");
+
+  clock.now += 30_000;
+  await monitor.pollAll();
+  assert.equal(repo.healthUpdates.length, 2, "written again once the minute is up");
+});
 
 test("liveness observer gets down only when the gateway itself fails", async () => {
   const repo = new FakeRepo([makeInstance()]);

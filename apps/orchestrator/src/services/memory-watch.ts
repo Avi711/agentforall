@@ -41,7 +41,6 @@ export class MemoryWatch {
     this.intervalHandle = setInterval(() => void this.sweep(), this.config.intervalMs);
   }
 
-  // Resolves once the sweep in flight has finished, so nothing logs after the pool is closed.
   async stop(): Promise<void> {
     if (this.intervalHandle) {
       clearInterval(this.intervalHandle);

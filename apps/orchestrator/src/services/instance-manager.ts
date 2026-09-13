@@ -250,7 +250,7 @@ export class InstanceManager {
     );
   }
 
-  // Health-driven restart: re-checked inside the lock, never parks the bot in "error", never migrates its image.
+  // Re-checked inside the lock: a bot that answered again, or that a user just restarted, is left alone.
   async restartBySystem(id: string): Promise<SystemRestartOutcome> {
     return this.operationLock.run(id, async () => {
       const inst = await this.requireInstance(id);

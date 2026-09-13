@@ -30,7 +30,6 @@ export const AUTO_RESTART_EVENTS = {
   exhausted: "instance.auto_restart_exhausted",
 } as const;
 
-// Fewer simultaneous failures than this are judged per bot, not as an outage.
 const FLEET_OUTAGE_MIN_DOWN = 3;
 
 interface BotState {
@@ -40,7 +39,7 @@ interface BotState {
   exhaustedNotified: boolean;
 }
 
-// Restarts a bot whose gateway stopped answering; the window budget stops a bot that dies on boot from looping.
+// The per-window budget exists so a bot that dies on every boot cannot be restarted forever.
 export class AutoRestarter implements LivenessObserver {
   private readonly bots = new Map<string, BotState>();
   private readonly inFlight = new Set<Promise<void>>();
@@ -60,7 +59,6 @@ export class AutoRestarter implements LivenessObserver {
     for (const { instance, sample } of report) this.track(instance, sample);
   }
 
-  // Waits for restarts already launched, at most timeoutMs; for shutdown and tests.
   async settle(timeoutMs = Number.POSITIVE_INFINITY): Promise<void> {
     const all = Promise.all([...this.inFlight]).then(() => undefined);
     if (!Number.isFinite(timeoutMs)) return all;

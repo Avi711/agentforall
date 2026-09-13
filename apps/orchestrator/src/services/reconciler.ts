@@ -5,6 +5,7 @@ import type { InstanceManager } from "./instance-manager.js";
 import type { PairingManager } from "./pairing-manager.js";
 import type { AgentRuntimeRegistry } from "./agent-runtime/registry.js";
 import { errorMessage } from "../domain/errors.js";
+import type { Instance } from "../domain/types.js";
 
 const STALE_PROVISIONING_MS = 5 * 60 * 1000;
 // Skip inspection of rows touched within this window — any in-flight operation
@@ -116,16 +117,8 @@ export class Reconciler {
     for (const inst of running) {
       if (inst.updatedAt > freshnessCutoff) continue;
 
-      if (!inst.containerId) {
-        await this.deps.repo.updateStatus(inst.id, "error", {
-          errorMessage: "no container ID on record",
-        });
-        continue;
-      }
-
-      const info = await this.deps.runtime.inspect(inst.containerId);
-
-      if (!info) {
+      const running = await this.resolveRunning(inst);
+      if (running === null) {
         this.deps.logger.warn(
           { instanceId: inst.id },
           "container not found — marking error",
@@ -136,7 +129,7 @@ export class Reconciler {
         continue;
       }
 
-      if (!info.State.Running) {
+      if (!running) {
         this.deps.logger.info(
           { instanceId: inst.id },
           "container stopped — updating status",
@@ -144,6 +137,20 @@ export class Reconciler {
         await this.deps.repo.updateStatus(inst.id, "stopped");
       }
     }
+  }
+
+  // The row's id can lag a crashed rebuild; the container name is the durable handle.
+  private async resolveRunning(inst: Instance): Promise<boolean | null> {
+    if (inst.containerId) {
+      const info = await this.deps.runtime.inspect(inst.containerId);
+      if (info) return info.State.Running;
+    }
+    const byName = await this.deps.runtime.findContainerByName(inst.containerName);
+    if (!byName) return null;
+    const info = await this.deps.runtime.inspect(byName);
+    if (!info) return null;
+    await this.deps.repo.updateContainerId(inst.id, byName);
+    return info.State.Running;
   }
 
   private async expireStalePairings(): Promise<void> {
