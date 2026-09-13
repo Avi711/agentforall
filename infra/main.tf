@@ -303,7 +303,7 @@ resource "google_monitoring_alert_policy" "vm_disk_warning" {
   display_name          = "agent-forall VM disk usage warning"
   combiner              = "OR"
   enabled               = true
-  notification_channels = var.monitoring_notification_channel_ids
+  notification_channels = local.alert_channels
 
   conditions {
     display_name = "Disk used above 75 percent"
@@ -325,7 +325,7 @@ resource "google_monitoring_alert_policy" "vm_disk_critical" {
   display_name          = "agent-forall VM disk usage critical"
   combiner              = "OR"
   enabled               = true
-  notification_channels = var.monitoring_notification_channel_ids
+  notification_channels = local.alert_channels
 
   conditions {
     display_name = "Disk used above 85 percent"

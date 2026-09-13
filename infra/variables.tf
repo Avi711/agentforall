@@ -82,9 +82,15 @@ variable "litellm_image" {
 }
 
 variable "monitoring_notification_channel_ids" {
-  description = "Cloud Monitoring notification channel IDs for production alerts. Empty keeps incidents visible in Monitoring without paging."
+  description = "Extra Cloud Monitoring notification channel IDs for production alerts, on top of the email channel."
   type        = list(string)
   default     = []
+}
+
+variable "alert_email" {
+  description = "Operator email for production alerts. Empty disables the email channel (incidents stay visible in Monitoring)."
+  type        = string
+  default     = ""
 }
 
 variable "litellm_min_instances" {

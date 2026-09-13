@@ -304,11 +304,12 @@ services:
         limits:
           memory: 1g
           cpus: "1.0"
+    # Cloud Logging feeds the alert policies; Docker's dual logging keeps `docker logs` working locally.
     logging:
-      driver: json-file
+      driver: gcplogs
       options:
-        max-size: "50m"
-        max-file: "5"
+        gcp-project: ${project_id}
+        gcp-meta-name: orchestrator
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/health"]
       interval: 30s
