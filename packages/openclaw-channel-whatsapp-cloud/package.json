@@ -6,6 +6,7 @@
   "private": true,
   "main": "index.js",
   "files": [
+    "channel-definition.js",
     "channel.js",
     "inbound-turn.js",
     "inbound.js",
