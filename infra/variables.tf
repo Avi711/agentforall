@@ -54,13 +54,13 @@ variable "github_repo" {
 variable "orchestrator_image" {
   description = "Immutable orchestrator image ref. Production must use a GAR digest or git-SHA tag, never :latest."
   type        = string
-  default     = "europe-west4-docker.pkg.dev/agent-for-all/agent-forall/orchestrator@sha256:54e2a90020fcaa67f6d583693a3e1ac772386ed20d505797f0f710960ed4ee46"
+  default     = "europe-west4-docker.pkg.dev/agent-for-all/agent-forall/orchestrator@sha256:509f910622b553b5853200fe4c44fc884acbc094880ba9dfb81f6ef9de497342"
 }
 
 variable "pairing_image" {
-  description = "WhatsApp pairing sidecar image ref. Prefer immutable GAR digests for production."
+  description = "WhatsApp pairing sidecar image ref (GAR tag waversion-1043857760: Baileys WA version pin, remote version fetch disabled)."
   type        = string
-  default     = "europe-west4-docker.pkg.dev/agent-for-all/agent-forall/whatsapp-pairing@sha256:20b44400bee9b7ea9c5e233d9dfc779434922b92fd9b9a9dc444ae8054544a57"
+  default     = "europe-west4-docker.pkg.dev/agent-for-all/agent-forall/whatsapp-pairing@sha256:d09178dd106501f0968a9d8d589d1aaaff2851c5b7540ece03f403136e05e52f"
 }
 
 variable "agent_runtime_image" {

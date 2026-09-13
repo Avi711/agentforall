@@ -5,6 +5,11 @@ Priority order = roughly the order to ship.
 
 ---
 
+## Done
+
+### S-0. Docker socket proxy reachable from tenants — fixed 2026-09-13
+`docker-socket-proxy` sat on `tenant-net` with `POST=1` and no auth; a tenant container could list and create containers (verified from inside a bot). Now on `control-net` (`internal: true`) shared only with the orchestrator; `infra/startup.sh` compose + prod applied, tenant curl to the proxy fails.
+
 ## Easy (1-2 days each)
 
 ### S-1. Per-tenant rate limit on pair endpoints
@@ -88,6 +93,11 @@ Priority order = roughly the order to ship.
   the UI flips to "לא מחובר".
 - **Files:** new route in `apps/orchestrator/src/routes/`, possibly OpenClaw
   config tweak. Requires upstream OpenClaw support OR a polling worker.
+
+### S-8b. Failed-auth requests are never rate limited (found 2026-09-13 review)
+- **Risk:** `server.ts` registers the auth hook before rate-limit on purpose (the limiter keys on the authenticated user), so a rejected bearer throws before any limiter runs. Token brute force from `tenant-net` or the internet is unthrottled. `trustProxy: true` also lets a tenant hitting `orchestrator:3000` directly spoof `X-Forwarded-For`.
+- **Fix:** a second, pre-auth limiter keyed on `socket.remoteAddress` (like `relay-rate-limit.ts`) with a low budget for 401s; keep the per-user limiter as is.
+- **Files:** `apps/orchestrator/src/server.ts`, `plugins/auth.ts`.
 
 ### S-8a. Replace Docker-exec health probe with Gateway RPC
 - **Risk:** the current production mitigation for S-8 runs OpenClaw channel

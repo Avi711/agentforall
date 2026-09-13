@@ -24,6 +24,37 @@ HERMES_RUNTIME_IMAGE="${hermes_runtime_image}"
 
 mkdir -p /var/lib/agent-forall
 
+# ── Data disk: Docker's data-root (every tenant volume) lives on agent-forall-data, never the boot disk. ──
+DATA_DEV="/dev/disk/by-id/google-agent-forall-data"
+DATA_MOUNT="/mnt/docker"
+if [ -e "$DATA_DEV" ]; then
+  if ! blkid "$DATA_DEV" >/dev/null 2>&1; then
+    mkfs.ext4 -m 0 -E lazy_itable_init=0,lazy_journal_init=0,discard "$DATA_DEV"
+  fi
+  mkdir -p "$DATA_MOUNT"
+  DATA_UUID=$(blkid -s UUID -o value "$DATA_DEV")
+  if ! grep -q " $DATA_MOUNT " /etc/fstab; then
+    echo "UUID=$DATA_UUID $DATA_MOUNT ext4 discard,defaults,nofail 0 2" >> /etc/fstab
+  fi
+  mountpoint -q "$DATA_MOUNT" || mount "$DATA_MOUNT"
+  mkdir -p /etc/docker /etc/systemd/system/docker.service.d
+  # A late or missing mount must stop Docker, not start it on an empty boot-disk directory.
+  cat > /etc/systemd/system/docker.service.d/data-root.conf <<UNITEOF
+[Unit]
+RequiresMountsFor=$DATA_MOUNT
+UNITEOF
+  DAEMON_JSON='{
+  "data-root": "/mnt/docker"
+}'
+  if [ ! -f /etc/docker/daemon.json ] || [ "$(cat /etc/docker/daemon.json)" != "$DAEMON_JSON" ]; then
+    printf '%s\n' "$DAEMON_JSON" > /etc/docker/daemon.json
+  fi
+  systemctl daemon-reload
+else
+  echo "error: data disk $DATA_DEV is not attached; refusing to run Docker off the boot disk"
+  exit 1
+fi
+
 # ── Install Docker Engine + Compose plugin (first boot only) ──
 if ! command -v docker >/dev/null 2>&1; then
   export DEBIAN_FRONTEND=noninteractive
@@ -46,7 +77,8 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 echo "Waiting for Docker..."
-until docker info >/dev/null 2>&1; do sleep 2; done
+for _ in $(seq 1 60); do docker info >/dev/null 2>&1 && break; sleep 2; done
+docker info >/dev/null 2>&1 || { echo "error: Docker did not come up within 120s (is $DATA_MOUNT mounted?)"; exit 1; }
 echo "Docker ready."
 
 if ! command -v cron >/dev/null 2>&1; then
@@ -56,9 +88,11 @@ if ! command -v cron >/dev/null 2>&1; then
 fi
 systemctl enable --now cron
 
-if ! systemctl is-active --quiet google-cloud-ops-agent; then
-  curl -fsS -o /tmp/add-google-cloud-ops-agent-repo.sh https://dl.google.com/cloudagents/add-google-cloud-ops-agent-repo.sh
-  bash /tmp/add-google-cloud-ops-agent-repo.sh --also-install
+# Best effort: an apt lock held by unattended-upgrades at boot must not abort the platform start.
+if ! systemctl is-enabled --quiet google-cloud-ops-agent 2>/dev/null; then
+  { curl -fsS -o /tmp/add-google-cloud-ops-agent-repo.sh https://dl.google.com/cloudagents/add-google-cloud-ops-agent-repo.sh \
+      && bash /tmp/add-google-cloud-ops-agent-repo.sh --also-install; } \
+    || echo "warn: ops agent install failed; VM metrics stay degraded until the next boot"
   rm -f /tmp/add-google-cloud-ops-agent-repo.sh
 fi
 
@@ -164,19 +198,6 @@ RUNTIMEEOF
   echo "Bootstrap complete."
 else
   echo "Bootstrap sentinel found — re-syncing secrets from Secret Manager."
-  # Sync secrets on every boot in case they were rotated. Atomic write so a
-  # mid-boot crash never leaves a partial file.
-  TMP_RUNTIME=$(mktemp)
-  sed -e "s|^DATABASE_URL=.*|DATABASE_URL=$DATABASE_URL|" \
-      -e "s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=$ENCRYPTION_KEY|" \
-      -e "s|^SERVICE_TOKENS=.*|SERVICE_TOKENS=$DASHBOARD_SERVICE_TOKEN|" \
-      -e "s|^DEFAULT_PROVIDER_NAME=.*|DEFAULT_PROVIDER_NAME=litellm|" \
-      -e "s|^DEFAULT_PROVIDER_API_KEY=.*|DEFAULT_PROVIDER_API_KEY=$DEFAULT_PROVIDER_API_KEY|" \
-      -e "s|^DEFAULT_PROVIDER_MODEL=.*|DEFAULT_PROVIDER_MODEL=gemini-agentforall|" \
-      -e "s|^LITELLM_MASTER_KEY=.*|LITELLM_MASTER_KEY=$LITELLM_MASTER_KEY|" \
-      -e "s|^COMPOSIO_API_KEY=.*|COMPOSIO_API_KEY=$COMPOSIO_API_KEY|" \
-      .env.runtime > "$TMP_RUNTIME"
-  mv "$TMP_RUNTIME" .env.runtime
 
   # Values go through awk's ENVIRON, not a sed pattern or -v: a URL with &, | or \\ must land byte for byte.
   set_runtime_env() {
@@ -190,6 +211,13 @@ else
     fi
   }
 
+  # Secrets re-synced on every boot in case they were rotated.
+  set_runtime_env DATABASE_URL "$DATABASE_URL"
+  set_runtime_env ENCRYPTION_KEY "$ENCRYPTION_KEY"
+  set_runtime_env SERVICE_TOKENS "$DASHBOARD_SERVICE_TOKEN"
+  set_runtime_env DEFAULT_PROVIDER_API_KEY "$DEFAULT_PROVIDER_API_KEY"
+  set_runtime_env DEFAULT_PROVIDER_NAME litellm
+  set_runtime_env DEFAULT_PROVIDER_MODEL gemini-agentforall
   set_runtime_env DEFAULT_PROVIDER_ID litellm
   set_runtime_env AGENT_RUNTIME_KIND "$AGENT_RUNTIME_KIND"
   set_runtime_env AGENT_RUNTIME_IMAGE "$AGENT_RUNTIME_IMAGE"
@@ -270,6 +298,7 @@ services:
     networks:
       - frontend
       - tenant-net
+      - control-net
     deploy:
       resources:
         limits:
@@ -303,8 +332,9 @@ services:
       DELETE: 1
       PING: 1
       LOG_LEVEL: warning
+    # Orchestrator-only network: a tenant container must never be able to reach the Docker API.
     networks:
-      - tenant-net
+      - control-net
     deploy:
       resources:
         limits:
@@ -326,6 +356,9 @@ networks:
   tenant-net:
     driver: bridge
     name: tenant-net
+  control-net:
+    driver: bridge
+    internal: true
 COMPOSEEOF
 
 # ── Caddyfile ──
@@ -404,12 +437,18 @@ for i in $(seq 1 $MAX_RETRIES); do
   sleep 10
 done
 
+STARTED=0
 for i in $(seq 1 $MAX_RETRIES); do
   if docker compose up -d --no-recreate; then
+    STARTED=1
     break
   fi
   echo "Start attempt $i/$MAX_RETRIES failed, retrying in 10s..."
   sleep 10
 done
+if [ "$STARTED" -ne 1 ]; then
+  echo "error: agent-forall platform did not start after $MAX_RETRIES attempts."
+  exit 1
+fi
 
 echo "agent-forall platform started."

@@ -240,13 +240,13 @@ terraform -chdir=infra apply -target=google_storage_bucket.backup_imports -targe
 
 | Resource | State |
 |---|---|
-| `agent-forall` VM | `e2-highmem-4`, IP `34.90.58.155`, healthy. `deletionProtection=true` + `lifecycle.prevent_destroy` (2026-08-29). **Do not reboot** — open issue 3. |
-| `agent-forall-data` disk | 80 GB pd-balanced, `autoDelete=false`, `/mnt/docker` via UUID+`nofail` in fstab, Docker `data-root`. Created out-of-band 2026-08-29 — not in Terraform state. |
+| `agent-forall` VM | `e2-highmem-4`, IP `34.90.58.155`, healthy. `deletionProtection=true` + `lifecycle.prevent_destroy` (2026-08-29). Startup script in sync since 2026-09-13 (issue 3 resolved); a reboot is believed safe but has not been exercised yet — do the first one deliberately in a quiet window. |
+| `agent-forall-data` disk | 80 GB pd-balanced, `autoDelete=false`, `/mnt/docker` via UUID+`nofail` in fstab, Docker `data-root`. Created out-of-band 2026-08-29; in Terraform since 2026-09-13 (`google_compute_disk.data` + `attached_disk` + snapshot attachment); `startup.sh` now owns fstab, `daemon.json` and a `RequiresMountsFor` drop-in. |
 | `api.agentforall.co.il` | Caddy + Let's Encrypt, `/health` → 200 |
 | `orchestrator` container | GAR image digest `sha256:bf4777ab90929b66e593440ac839091985ce0f715ee7a030641d258b65cdf95c` (verified running 2026-08-29) |
 | `openclaw-browser` image | GAR digest `sha256:f0e4aec97e55e0a3afd852ef72994cfe4ed3157ff4a90554de0a66b3940c31ca` (OpenClaw 2026.8.2 `-browser` variant with its own Chromium 151, WhatsApp plugin pinned to core, `agentforall-credit` + `agentforall-media` preinstalled, doctor prewarm) |
 | `litellm-gateway` Cloud Run | 1 vCPU / 3 GiB, `minScale=1`, `cpu-throttling=false`, revision `litellm-gateway-00009-r8r` (downsized from 2 vCPU / 4 GiB on 2026-08-29) |
-| `whatsapp-pairing` image | GAR digest `sha256:20b44400bee9b7ea9c5e233d9dfc779434922b92fd9b9a9dc444ae8054544a57` |
+| `whatsapp-pairing` image | VM `.env.runtime` still points at the locally built `whatsapp-pairing:waversion-1043857760`; Terraform pins GAR `sha256:d09178dd…` (tag `waversion-1043857760`), verified 2026-09-13 to carry identical `server.js` and patched Baileys files. A reboot switches the VM to the GAR digest; switch it by hand first so the reboot changes nothing. |
 | Tenant containers | per-tenant `openclaw-<shortId>` + state volume `oc-<shortId>-state` |
 | Supabase `instances` | host-scoped via `host_id` column. Local = `local-dev`, VM = `agent-forall-vm`. |
 | Supabase `leads` | preserved (7 rows). Better Auth tables intact. |
@@ -362,6 +362,11 @@ which cannot read a coexistence channel: roll back only before one exists. Meta 
 `WHATSAPP_CLOUD_PREVIEW_USER_IDS` set on Vercel; test bot קוקי30 (`de6ba822`) holds Meta's test number and alone runs
 the plugin from `openclaw-browser@sha256:803a79f894c4e9acafd2b4341d147b49cc35baf97bd9929fa8b4aa667968234d`; customer
 message → bot reply proven. State and next steps: doc status block and §14 eleventh change.
+2026-09-13 (later): orchestrator `orchestrator@sha256:509f910622b553b5853200fe4c44fc884acbc094880ba9dfb81f6ef9de497342` — auto
+restart of unresponsive bots (`services/auto-restarter.ts`: 4 consecutive failed `/healthz` polls on a settled, current-image
+container → `InstanceManager.restartBySystem`; 10 min cooldown, 3 per hour, then `instance.auto_restart_exhausted` + error log;
+suspended when >50% of the fleet fails at once; `AUTO_RESTART_*` env, default on). Same day: `docker-socket-proxy` moved to
+`control-net` (S-0). Hosting decision and plan: `docs/hosting-plan-2026-09.md`.
 TODO once the Cloud API is live: a business-only bot (no Baileys link) has no owner number, so the owner is a stranger
 on the business number. Show "המספר שלי" for it (`BotCard.tsx:528`, `OwnerIdentityDialog` `whatsappAvailable`) and store
 the number on the `whatsapp_cloud` channel instead of `withWhatsappOwnerNumber` adding a Baileys channel (`owner.ts:17`).
@@ -477,15 +482,11 @@ Honest answer: not definitively known. Likely contributors (none verified indivi
 
 To diagnose: run identical fresh containers in both envs with same first message, time each step from the internal log (`/tmp/openclaw/openclaw-<date>.log` has per-call latencies); compare `time curl` to `generativelanguage.googleapis.com` from both.
 
-### 3. VM startup-script drift — DO NOT REBOOT (found 2026-08-29)
+### 3. VM startup-script drift — RESOLVED 2026-09-13 (found 2026-08-29)
 
-Deployed `metadata_startup_script` differs from `infra/startup.sh` in 75 lines: BOM + ANSI-mangled em-dashes (`???`), older `ORCHESTRATOR_IMAGE`/`AGENT_RUNTIME_IMAGE` digests, and **missing the `LITELLM_MASTER_KEY` + `COMPOSIO_API_KEY` fetches**. A reboot comes up without those secrets. Unbitten only because the VM is up since 2026-05-02.
+Was: deployed `metadata_startup_script` lagged `infra/startup.sh` (BOM, mangled em-dashes, old digests, missing `LITELLM_MASTER_KEY` + `COMPOSIO_API_KEY` fetches, no Caddy `/api/v1/mcp` + `/api/v1/whatsapp-cloud` blocks), and the attribute is ForceNew, so every plan wanted to replace the VM.
 
-The field is ForceNew → Terraform wants to replace the instance; `prevent_destroy` now makes that plan **error**, so every apply needs `-target` (the 2026-08-29 Cloud Run change used `-target=google_cloud_run_v2_service.litellm`).
-
-Also missing from state, so the plan wants duplicates: `google_monitoring_alert_policy.vm_disk_warning` / `vm_disk_critical` (exist in GCP since 2026-05-26 → `terraform import`). `google_secret_manager_secret_iam_member.vm_secret_access["litellm-master-key"]` is genuinely absent → create.
-
-Fix: tenant volumes now survive instance replacement, so update script + digests, replace deliberately, restore `prevent_destroy`. Add `.gitattributes` (`*.sh text eol=lf`) to stop PowerShell reintroducing the BOM.
+Fix applied without replacing anything: the script now lives in `metadata["startup-script"]` (in-place updates); the instance was `state rm` + re-imported so the legacy attribute left state; `agent-forall-data` disk, its snapshot attachment, the two disk alert policies and the `litellm-master-key` IAM member were imported; Cloud Run ignores gcloud's `client` annotations. `terraform plan` is empty. Boot hardening added the same day after review: `startup.sh` owns the data disk (fstab by UUID, `daemon.json` data-root, `docker.service.d/data-root.conf` with `RequiresMountsFor=/mnt/docker` so Docker never starts on an empty boot-disk dir; exits 1 if the disk is not attached), Ops Agent install is best effort, every `.env.runtime` key goes through `set_runtime_env` (awk, no sed delimiter bugs), Docker wait and compose start fail loudly. Verified on the VM: metadata server serves a byte-identical render, `bash -n` clean; the data-disk block ran twice on the live VM (drop-in created, fstab/daemon.json untouched, Docker unaffected); a dry run of the re-sync branch against a copy of `.env.runtime` changes only `PAIRING_IMAGE`; regenerated compose and Caddyfile equal the live files. Not yet done: the first real reboot (see runtime table).
 
 ### 4. Chromium tab leak — do after the GKE move (found 2026-09-12)
 
@@ -597,7 +598,7 @@ gcloud compute ssh deploy@agent-forall --zone=europe-west4-a --project=agent-for
   sudo env ORCHESTRATOR_IMAGE=europe-west4-docker.pkg.dev/agent-for-all/agent-forall/orchestrator@sha256:<digest> docker compose up -d --force-recreate orchestrator'
 ```
 
-The orchestrator must be attached to both Docker networks: `agent-forall_frontend` for Caddy and `tenant-net` for `docker-socket-proxy` and tenant containers. If recreated manually, connect `tenant-net` with alias `docker-socket-proxy` before health verification.
+The orchestrator must be attached to three Docker networks: `agent-forall_frontend` for Caddy, `tenant-net` for tenant containers and sidecars, and `agent-forall_control-net` for `docker-socket-proxy` (2026-09-13: the proxy left `tenant-net` so tenants cannot reach the Docker API; the compose file on the VM was replaced, backup `docker-compose.yml.bak-20260913-controlnet`). Recreate through `docker compose up -d`, not by hand, so the network set stays declarative. A reboot runs `up -d --no-recreate`, which creates a missing network but does not move a running proxy; a VM still holding the old compose needs one plain `up -d`.
 
 If `.env.runtime` missing a new env var (e.g. when adding `ORCHESTRATOR_HOST_ID`):
 ```bash

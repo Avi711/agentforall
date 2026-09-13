@@ -149,6 +149,11 @@ resource "google_cloud_run_v2_service" "litellm" {
     google_secret_manager_secret_iam_member.litellm_cloudsql_database_url_access,
     google_project_iam_member.litellm_cloudsql_client,
   ]
+
+  # gcloud deploys stamp these; a plan must not roll a revision just to rewrite them.
+  lifecycle {
+    ignore_changes = [client, client_version]
+  }
 }
 
 resource "google_cloud_run_v2_service_iam_member" "litellm_internal_invoker" {
