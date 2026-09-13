@@ -4,7 +4,10 @@ import { createWhatsappCloudPlugin, CHANNEL_ID } from "./channel-definition.js";
 
 // Mirrors the 2026.8.2 SDK: createChannelPluginBase copies a fixed key list (no status, no gateway) and
 // createChatChannelPlugin spreads `base`. A plugin that hands gateway/status to the base helper loses them.
-const BASE_KEYS = ["setupWizard", "capabilities", "commands", "doctor", "reload", "config", "security", "groups", "setup"];
+const BASE_KEYS = [
+  "setupWizard", "capabilities", "commands", "doctor", "agentPrompt", "streaming", "reload", "gatewayMethods",
+  "gatewayMethodDescriptors", "configSchema", "config", "security", "groups", "setup", "setupContract",
+];
 const sdk = {
   createChannelPluginBase: (params) => ({
     id: params.id,
@@ -13,10 +16,13 @@ const sdk = {
   }),
   createChatChannelPlugin: (params) => ({
     ...params.base,
+    conversationBindings: { supportsCurrentConversationBinding: true, ...params.base.conversationBindings },
     ...(params.security ? { security: params.security } : {}),
+    ...(params.pairing ? { pairing: params.pairing } : {}),
+    ...(params.threading ? { threading: params.threading } : {}),
     ...(params.outbound ? { outbound: params.outbound } : {}),
   }),
-  dispatchInboundDirectDm: async () => {},
+  dispatch: async () => {},
 };
 
 test("the gateway can start and stop the account, and the status surfaces survive the SDK helpers", () => {
@@ -87,9 +93,12 @@ test("a revoked relay token ends the run with an error the gateway can show", as
   const relay = fakeRelay({ status: 401 });
   const plugin = createWhatsappCloudPlugin({ ...sdk, fetchImpl: relay.fetchImpl });
   const account = plugin.config.resolveAccount(CFG, "default");
+  const statuses = [];
+  const ctx = { cfg: CFG, account, abortSignal: new AbortController().signal, log: null, setStatus: (s) => statuses.push(s) };
 
-  await assert.rejects(plugin.gateway.startAccount({ cfg: CFG, account, abortSignal: new AbortController().signal, log: null }), /rejected the token/);
+  await assert.rejects(plugin.gateway.startAccount(ctx), /rejected the token/);
   assert.equal(plugin.status.buildAccountSnapshot({ account }).running, false);
+  assert.deepEqual(statuses.at(-1), { accountId: "default", connected: false, lastError: "relay 401 UNAUTHORIZED" });
 });
 
 test("an account is listed, resolved and reported not running until the gateway starts it", () => {

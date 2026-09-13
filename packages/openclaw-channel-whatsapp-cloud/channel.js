@@ -7,5 +7,5 @@ export { CHANNEL_ID, CHANNEL_LABEL, RELAY_TOKEN_ENV, createRelayFor, isConfigure
 export const whatsappCloudPlugin = createWhatsappCloudPlugin({
   createChannelPluginBase,
   createChatChannelPlugin,
-  dispatchInboundDirectDm: dispatchInboundDirectDmWithRuntime,
+  dispatch: dispatchInboundDirectDmWithRuntime,
 });

@@ -51,6 +51,23 @@ test("a stored row with an encrypted PIN still passes the config schema", () => 
   assert.equal(parsed.success, true, JSON.stringify(parsed.success ? null : parsed.error.issues));
 });
 
+// The schema runs on the row as stored, so every secret it names must be accepted in its encrypted form.
+test("a stored row with every channel kind and the integrations relay passes the config schema", () => {
+  const config = {
+    ...configWith([
+      { type: "telegram", botToken: "tg", botUsername: "bot", botId: 7, dmPolicy: "allowlist", allowFrom: ["1"] },
+      { type: "discord", token: "dc", guildId: "g" },
+      { type: "slack", botToken: "sb", appToken: "sa" },
+      { type: "whatsapp", ownerNumber: "+972501234567", dmAccess: "owner" },
+      makeWhatsappCloudChannel({ pin: "246810" }),
+    ]),
+    integrations: { relayToken: "relay", relayUrl: "http://orchestrator:3000/api/v1/mcp/x" },
+  };
+  const parsed = InstanceConfigSchema.safeParse(encryptConfig(config, key));
+
+  assert.equal(parsed.success, true, JSON.stringify(parsed.success ? null : parsed.error.issues));
+});
+
 test("a business number saved before coexistence existed still loads, as a plain API number", () => {
   const { coexistence: _added, ...saved } = makeWhatsappCloudChannel();
   const parsed = InstanceConfigSchema.safeParse({ ...configWith([]), channels: [saved] });

@@ -78,6 +78,8 @@ async function startAccount(ctx, dispatch, fetchImpl) {
     const started = new PollLoop({
       relay,
       log: ctx.log,
+      // The gateway's own status store learns about connectivity the way the bundled plugins report it.
+      onState: (state) => ctx.setStatus?.({ accountId: account.accountId, connected: state.connected, lastError: state.lastError }),
       handle: (item) => {
         if (!pluginRuntime) throw new Error("channel runtime not set");
         return handleInbound({ cfg: ctx.cfg, account, relay, item, log: ctx.log, replies, runtime: pluginRuntime, dispatch });
@@ -110,7 +112,7 @@ async function stopAccount(ctx) {
 }
 
 // The SDK helpers are injected so the definition is testable without the openclaw package installed; fetchImpl is for tests.
-export function createWhatsappCloudPlugin({ createChannelPluginBase, createChatChannelPlugin, dispatchInboundDirectDm, fetchImpl }) {
+export function createWhatsappCloudPlugin({ createChannelPluginBase, createChatChannelPlugin, dispatch, fetchImpl }) {
   return createChatChannelPlugin({
     // createChannelPluginBase copies a fixed key list that leaves out status and gateway; they sit beside it, as in the bundled WhatsApp plugin.
     base: {
@@ -147,7 +149,7 @@ export function createWhatsappCloudPlugin({ createChannelPluginBase, createChatC
         buildAccountSnapshot: ({ account }) => snapshotOf(account, loops.get(account.accountId)),
       },
       gateway: {
-        startAccount: (ctx) => startAccount(ctx, dispatchInboundDirectDm, fetchImpl),
+        startAccount: (ctx) => startAccount(ctx, dispatch, fetchImpl),
         stopAccount: (ctx) => serialized(ctx.account.accountId, () => stopAccount(ctx)),
       },
     },

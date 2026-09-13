@@ -217,7 +217,7 @@ test("a telegram block that predates the group defaults receives them", () => {
   assert.deepEqual(patched.channels.telegram?.groups, { "*": { requireMention: true } });
 });
 
-test("the plugin a channel needs is enabled without dropping the runtime's other plugins", () => {
+test("our plugins and the one a channel needs are enabled without dropping the runtime's other plugins", () => {
   const existing = { plugins: { entries: { somethingElse: { enabled: true } } } };
   const patched = patch(existing, [{ type: "whatsapp" }]);
 

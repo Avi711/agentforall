@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { customerOfSession, peerIdOf, waIdOf } from "./session-peer.js";
@@ -14,6 +14,12 @@ test("manifest ids match what the orchestrator renders", () => {
   assert.deepEqual(manifest.contracts.tools, ["whatsapp_cloud_escalate", "whatsapp_cloud_handoff", "whatsapp_cloud_reply"]);
   assert.deepEqual(pkg.bundleDependencies, ["typebox"]);
   for (const file of pkg.files) assert.doesNotThrow(() => readFileSync(new URL(`./${file}`, import.meta.url)), file);
+});
+
+// npm pack ships only `files`; a module left out here loads fine in tests and fails only inside the image.
+test("every shipped module is listed in package.json files", () => {
+  const modules = readdirSync(new URL(".", import.meta.url)).filter((f) => f.endsWith(".js") && !f.endsWith(".test.js"));
+  assert.deepEqual(modules.filter((f) => !pkg.files.includes(f)), []);
 });
 
 test("the customer behind a session comes from the session key; a bare Telegram id never matches", () => {

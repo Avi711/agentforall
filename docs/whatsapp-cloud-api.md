@@ -200,7 +200,8 @@ orchestrator, so each VM serves exactly its own tenants without a `host_id` join
    half-finished connect is simply retried by the user.
 5. The response is the connected view; the dashboard shows it at once. The relay token lands in the
    container's `.env`, so `applyConfig` restarts the container once (seconds); `channels.whatsapp_cloud`
-   and the plugin entry are set on the live config in the same step. Connecting the **same** number again
+   is set on the live config in the same step (the plugin entry is rendered for every bot, since 2026-09-13,
+   because the gateway validates the block only against loaded plugins). Connecting the **same** number again
    (the popup minted a new token — a revoked one is the usual reason) re-runs the Meta steps with the new
    token and replaces it in the channel (`whatsapp_cloud.reconnected`).
 
@@ -295,7 +296,7 @@ audited as `kind: "owner"`.
 PIN kept, so the ingress stops queueing at once) → only if the number is still ours or free:
 `DELETE /{waba_id}/subscribed_apps` and `POST /{phone_number_id}/deregister` (best effort, warn) — a stale
 channel whose number moved to another bot must not deregister that bot's number → strip the channel (`buildChannels` omits the
-block → `ownedPaths` deletes `channels.whatsapp_cloud` and the plugin entry whole) → purge inbox,
+block → `ownedPaths` deletes `channels.whatsapp_cloud` whole; the plugin entry stays, idle) → purge inbox,
 conversations and sends for the instance → event `whatsapp_cloud.disconnected`. The `.env` change restarts
 the container once. Destroy runs release → Meta → purge before the container is removed; the FK sets the
 number row's `instance_id` to null if anything is left. The token is discarded; Meta invalidates it when
@@ -736,6 +737,16 @@ number released, channel removed, state purged, owner told on Telegram, and the 
 business's app. A removal for another account, or a bot already disconnected, is acked and changes nothing. The
 plugin then gets 401 and stops polling, as designed.
 
+Eleventh change 2026-09-13 (first live connect: Meta's test number on קוקי30). Three faults the suites could not see,
+each fixed test-first. The gateway validates `channels.whatsapp_cloud` against loaded plugins, so the plugin entry is now
+rendered for every bot (inert where the plugin is absent) instead of only after a connect. The stored-row schema ran the
+6-digit PIN rule on the encrypted value and marked the bot's row corrupted after the first plain connect; it now asks for
+a non-empty string only. `createChannelPluginBase` copies a fixed key list, so the `gateway` and `status` blocks handed
+to it vanished and the gateway answered "does not support start"; the definition moved to `channel-definition.js` with
+the SDK helpers injected, beside a test that mirrors the helper. Meta facts: a WABA created from the developer app
+cannot pass Embedded Signup (`FINISH_ONLY_WABA`), so the test number was connected through the orchestrator's connect
+route with a dashboard token, after its Meta-set two-step PIN was switched off in WhatsApp Manager.
+
 ## 15. Rehearsal checklist (before any tenant sees it)
 
 Run on the built `openclaw-browser` image with Meta's test number, in this order; each line is a thing
@@ -757,8 +768,8 @@ the code assumes and the SDK typings could not prove.
    `bot` restores replies.
 5. Kill the orchestrator for a minute mid-conversation: the plugin backs off and resumes, nothing is
    lost, the row is redelivered once and deduped.
-6. Disconnect from the dashboard: `channels.whatsapp_cloud` and the plugin entry vanish from the live
-   config (one restart for the `.env` change); a later webhook for that number is a 200 with
+6. Disconnect from the dashboard: `channels.whatsapp_cloud` vanishes from the live config and the plugin
+   entry stays (one restart for the `.env` change); a later webhook for that number is a 200 with
    `unknownNumbers:1`.
 7. Memory: `group:memory` is denied to customers. Confirm memory-core's automatic recall still
    injects the owner's taught knowledge into customer turns; if recall is tool-driven, allow the read

@@ -28,10 +28,12 @@ export class PollLoop {
     handleTimeoutMs = HANDLE_TIMEOUT_MS,
     stopGraceMs = STOP_GRACE_MS,
     sleep = defaultSleep,
+    onState = null,
   }) {
     this.relay = relay;
     this.handle = handle;
     this.log = log;
+    this.onState = onState;
     this.waitMs = waitMs;
     this.maxInFlight = maxInFlight;
     this.handleTimeoutMs = handleTimeoutMs;
@@ -72,10 +74,12 @@ export class PollLoop {
       let items;
       try {
         items = await this.relay.pull(this.waitMs, signal);
+        const wasConnected = this.state.connected;
         this.state.connected = true;
         this.state.lastError = null;
         this.state.lastPollAt = Date.now();
         backoff = BACKOFF_MIN_MS;
+        if (!wasConnected) this.onState?.(this.state);
       } catch (err) {
         if (signal.aborted) break;
         this.state.connected = false;
@@ -84,8 +88,10 @@ export class PollLoop {
           // A revoked relay token never heals on its own; stop and let the status surface say so.
           this.state.unauthorized = true;
           this.log?.warn?.("whatsapp cloud relay rejected the token; polling stopped");
+          this.onState?.(this.state);
           return;
         }
+        this.onState?.(this.state);
         this.log?.warn?.(`whatsapp cloud poll failed: ${this.state.lastError}`);
         await this.sleep(backoff, signal);
         backoff = Math.min(backoff * 2, BACKOFF_MAX_MS);
