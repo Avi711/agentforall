@@ -357,9 +357,11 @@ checked (nullable PIN, `contacts_synced_at`, `history_synced_at`, `held_until`, 
 `orchestrator@sha256:5a5bc437c656fcabdf62aecf47461aee410a8e8a371e3d2aeb318e334e885adf` (Cloud Build `65c84cc9`), healthy,
 both networks, listener connected, 0 errors, 16 tenants; web from `main`, flag still off. Rollback target `bfec1a76`,
 which cannot read a coexistence channel: roll back only before one exists. Meta webhook fields `messages`,
-`smb_message_echoes` and `account_update` subscribed; web on Vercel verified (webhook 403 on a wrong token). Still to
-do: `WHATSAPP_CLOUD_PREVIEW_USER_IDS` on Vercel for the rehearsal account;
-rehearsal items 19-27 (item 24 blocks `WHATSAPP_CLOUD_ENABLED=true`).
+`smb_message_echoes` and `account_update` subscribed; web on Vercel verified (webhook 403 on a wrong token).
+2026-09-13: orchestrator `orchestrator@sha256:54e2a90020fcaa67f6d583693a3e1ac772386ed20d505797f0f710960ed4ee46`;
+`WHATSAPP_CLOUD_PREVIEW_USER_IDS` set on Vercel; test bot קוקי30 (`de6ba822`) holds Meta's test number and alone runs
+the plugin from `openclaw-browser@sha256:803a79f894c4e9acafd2b4341d147b49cc35baf97bd9929fa8b4aa667968234d`; customer
+message → bot reply proven. State and next steps: doc status block and §14 eleventh change.
 TODO once the Cloud API is live: a business-only bot (no Baileys link) has no owner number, so the owner is a stranger
 on the business number. Show "המספר שלי" for it (`BotCard.tsx:528`, `OwnerIdentityDialog` `whatsappAvailable`) and store
 the number on the `whatsapp_cloud` channel instead of `withWhatsappOwnerNumber` adding a Baileys channel (`owner.ts:17`).

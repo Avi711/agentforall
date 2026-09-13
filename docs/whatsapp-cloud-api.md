@@ -6,15 +6,19 @@ own business number and the bot answers as the business. It sits next to the Bai
 general-purpose AI assistants (policy effective 2026-01-15) but allows customer service, orders, bookings
 and FAQ.
 
-Status: **deployed dark 2026-09-11**: main `c52f20d`, orchestrator `5a5bc437`, migration 0013, Meta webhook fields
-`messages`, `smb_message_echoes`, `account_update` subscribed; `WHATSAPP_CLOUD_ENABLED` off. Real inbound from Meta's
-test number reaches the webhook; no tenant has run it end to end. Plugin image `openclaw-browser@sha256:3a85792c…` is
-current (rehearsal only; tenants stay on `f0e4aec9…`). §14 is the change history, §15 the rehearsal.
+Status: **deployed dark, first live run passed 2026-09-13**: orchestrator `54e2a900` (main `972d3bb`), migration 0013,
+Meta webhook fields `messages`, `smb_message_echoes`, `account_update` subscribed; `WHATSAPP_CLOUD_ENABLED` off,
+`WHATSAPP_CLOUD_PREVIEW_USER_IDS` = the owner's account. Meta's test number is bound to test bot קוקי30, which runs
+the plugin from `openclaw-browser@sha256:803a79f8…` (other tenants stay on `f0e4aec9…`); a customer message gets a
+bot reply end to end (§15 items 1, 2, 9, 13 proven). §14 is the change history (eleventh change = what the live run
+found), §15 the rehearsal.
 
 Open, in order:
-1. Set `WHATSAPP_CLOUD_PREVIEW_USER_IDS` on Vercel to the rehearsal account, then run §15 items 1–18 (test number,
-   our own portfolio). Items 19–27 need coexistence, which Meta opens only to Tech Providers ("You must already be a
-   Solution Partner or Tech Provider"), so they wait on step 5; item 24 blocks enabling.
+1. §15 items 3–8, 10–12, 14–18 from a phone that is not the bot's owner (the owner's phone is routed to the owner
+   session by design; a second Meta test recipient is needed). Items 19–27 need coexistence, which Meta opens only
+   to Tech Providers ("You must already be a Solution Partner or Tech Provider"), so they wait on step 5; item 24
+   blocks enabling. The test number's dashboard token lasts 24 h; reconnect with a fresh one (turn its two-step
+   verification off first in WhatsApp Manager, else Meta answers 131031).
 2. Business-token refresh job before any tenant is 50 days in (§13; needs the app secret on web and the token on the
    orchestrator together, design open).
 3. Show the retained two-step PIN to the owner on a full-move disconnect.
