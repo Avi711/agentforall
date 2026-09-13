@@ -282,7 +282,7 @@ function harness(overrides: Overrides) {
   };
   const runtime = {
     isRunning: async () => overrides.containerRunning ?? true,
-    inspect: async (containerId: string) => ({ Id: containerId }),
+    containerState: async () => ({ running: true, restarting: false, health: "healthy", startedAt: null }),
     waitForHealthy: async (containerId: string) => {
       calls.waited.push(containerId);
       return true;

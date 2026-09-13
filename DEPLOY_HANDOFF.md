@@ -240,7 +240,7 @@ terraform -chdir=infra apply -target=google_storage_bucket.backup_imports -targe
 
 | Resource | State |
 |---|---|
-| `agent-forall` VM | `e2-highmem-4`, IP `34.90.58.155`, healthy. `deletionProtection=true` + `lifecycle.prevent_destroy` (2026-08-29). Startup script in sync since 2026-09-13 (issue 3 resolved); a reboot is believed safe but has not been exercised yet — do the first one deliberately in a quiet window. |
+| `agent-forall` VM | `e2-highmem-4`, IP `34.90.58.155`, healthy. `deletionProtection=true` + `lifecycle.prevent_destroy` (2026-08-29). Startup script in sync since 2026-09-13 (issue 3 resolved). Reboot exercised 2026-09-13 22:45 UTC: data disk mounted by UUID, Docker root `/mnt/docker`, startup log clean, 17/17 bots back at +95 s (Docker restart policy), script done at +4:18 (3 min of that is the Hermes image pre-pull before `compose up`, lines 429-448 — reorder if API-first boot matters). |
 | `agent-forall-data` disk | 80 GB pd-balanced, `autoDelete=false`, `/mnt/docker` via UUID+`nofail` in fstab, Docker `data-root`. Created out-of-band 2026-08-29; in Terraform since 2026-09-13 (`google_compute_disk.data` + `attached_disk` + snapshot attachment); `startup.sh` now owns fstab, `daemon.json` and a `RequiresMountsFor` drop-in. |
 | `api.agentforall.co.il` | Caddy + Let's Encrypt, `/health` → 200 |
 | `orchestrator` container | GAR image digest `sha256:bf4777ab90929b66e593440ac839091985ce0f715ee7a030641d258b65cdf95c` (verified running 2026-08-29) |
@@ -248,7 +248,7 @@ terraform -chdir=infra apply -target=google_storage_bucket.backup_imports -targe
 | `litellm-gateway` Cloud Run | 1 vCPU / 3 GiB, `minScale=1`, `cpu-throttling=false`, revision `litellm-gateway-00009-r8r` (downsized from 2 vCPU / 4 GiB on 2026-08-29) |
 | `whatsapp-pairing` image | GAR `sha256:d09178dd…` (tag `waversion-1043857760`) on the VM and in Terraform since 2026-09-13; verified identical `server.js` and patched Baileys files to the locally built image it replaced. |
 | Alerting | `infra/monitoring.tf`: email channel (`alert_email` tfvar), uptime check on `/health` (60 s) → "API unreachable", VM memory > 85 %, disk 75/85 %, log-based "orchestrator needs attention" (auto-restart budget exhausted / fleet liveness failure). Orchestrator container logs go to Cloud Logging via `gcplogs` (`logName …/gcplogs-docker-driver`, text in `jsonPayload.message`); pino level-30 lines excluded at the `_Default` sink. `docker logs orchestrator` still works on the VM. |
-| Backups | Daily 03:00 snapshots of both disks, 14 days. Restore rehearsed 2026-09-13: disk from snapshot → read-only on a credential-less scratch VM → SQLite `integrity_check` ok. Pre-reboot snapshots `prereboot-{boot,data}-20260913-2048`. |
+| Backups | Daily 03:00 snapshots of both disks, 14 days. Restore rehearsed 2026-09-13: disk from snapshot → read-only on a credential-less scratch VM → SQLite `integrity_check` ok. Pre-reboot snapshots `prereboot-{boot,data}-20260913-{2048,2235}` (delete once the daily ones cover them). |
 | Tenant containers | per-tenant `openclaw-<shortId>` + state volume `oc-<shortId>-state` |
 | Supabase `instances` | host-scoped via `host_id` column. Local = `local-dev`, VM = `agent-forall-vm`. |
 | Supabase `leads` | preserved (7 rows). Better Auth tables intact. |
@@ -372,11 +372,14 @@ suspended when >50% of the fleet fails at once; `AUTO_RESTART_*` env, default on
 2026-09-14: orchestrator `orchestrator@sha256:d2484033b5beb67f6272c0aabecc8a3c885c8fb148cf812cf83aa16c64b08296` — 3 GB default
 cap for new bots, `MemoryWatch` ("bot memory high" at 80 %), health monitor writes a healthy row once a minute and consults Docker
 once a minute per healthy bot, reconciler resolves containers by name before marking `error`. Phase 1 of the hosting plan is
-complete except the first deliberate VM reboot.
+complete; the deliberate VM reboot passed the same night (see runtime table).
 2026-09-14 (later): orchestrator `orchestrator@sha256:1c3509d895d77e34880874622eed953a7d2ff6825a204fc18bc9119c3ecabe41` — final
 audit fixes: a restart the system cannot perform (other image, no container on record) spends budget and logs
 `instance.auto_restart_blocked`, so the exhausted alert still fires; cooldown independent of the budget window; reconciler skips
 rows under an operation lock (no false `stopped` during a restart); `startup.sh` never formats the data disk after bootstrap.
+2026-09-14: orchestrator `orchestrator@sha256:1dfc406aeb46d228036a2477f339a8a83a7d3807b3d3554ab0aae9df99623e58` — hosting plan
+Phase 2 step 1: `ContainerRuntime` is an interface (`services/container-runtime.ts`), Docker lives in `services/docker-container-runtime.ts`.
+Pure refactor, no behavior change.
 TODO once the Cloud API is live: a business-only bot (no Baileys link) has no owner number, so the owner is a stranger
 on the business number. Show "המספר שלי" for it (`BotCard.tsx:528`, `OwnerIdentityDialog` `whatsappAvailable`) and store
 the number on the `whatsapp_cloud` channel instead of `withWhatsappOwnerNumber` adding a Baileys channel (`owner.ts:17`).

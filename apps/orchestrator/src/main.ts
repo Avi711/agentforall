@@ -2,7 +2,6 @@ import { fileURLToPath } from "node:url";
 import { InstanceOperationLock } from "./services/instance-operation-lock.js";
 import { dirname, resolve } from "node:path";
 import { Pool } from "pg";
-import Docker from "dockerode";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { loadConfig, extractPairingConfig } from "./config.js";
@@ -21,7 +20,8 @@ import { AdminOverviewService } from "./services/admin-overview.js";
 import { InstanceRepository } from "./storage/instance-repository.js";
 import { HealthRepository } from "./storage/health-repository.js";
 import { assertValidEncryptionKey } from "./services/crypto.js";
-import { ContainerRuntime } from "./services/container-runtime.js";
+import type { ContainerRuntime } from "./services/container-runtime.js";
+import { DockerContainerRuntime, createDockerClient } from "./services/docker-container-runtime.js";
 import { AgentRuntimeRegistry } from "./services/agent-runtime/registry.js";
 import { OpenClawRuntimeAdapter } from "./services/agent-runtime/openclaw/adapter.js";
 import { HermesRuntimeAdapter } from "./services/agent-runtime/hermes/adapter.js";
@@ -96,23 +96,6 @@ async function waitForDependency(
   }
 }
 
-function createDockerClient(config: {
-  dockerHost?: string;
-  dockerPort?: number;
-  dockerSocketPath?: string;
-}): Docker {
-  if (config.dockerHost) {
-    return new Docker({
-      host: config.dockerHost,
-      port: config.dockerPort ?? 2375,
-    });
-  }
-  if (config.dockerSocketPath) {
-    return new Docker({ socketPath: config.dockerSocketPath });
-  }
-  return new Docker();
-}
-
 // Pull failures are non-fatal because the image may already exist locally.
 async function tryPullImage(
   runtime: ContainerRuntime,
@@ -154,8 +137,7 @@ async function main(): Promise<void> {
   log.info({ hostId: config.orchestratorHostId }, "host scoping enabled");
   const eventLog = new EventRepository(db);
 
-  const docker = createDockerClient(config);
-  const runtime = new ContainerRuntime(docker, config.dockerNetwork, log);
+  const runtime: ContainerRuntime = new DockerContainerRuntime(createDockerClient(config), config.dockerNetwork, log);
 
   await waitForDependency("docker", async () => {
     await runtime.ping();

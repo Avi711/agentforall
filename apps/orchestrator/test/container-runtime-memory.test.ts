@@ -2,9 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type Docker from "dockerode";
 import type { FastifyBaseLogger } from "fastify";
-import { ContainerRuntime } from "../src/services/container-runtime.js";
+import { DockerContainerRuntime } from "../src/services/docker-container-runtime.js";
 
-function runtimeWithStats(stats: unknown | Error): ContainerRuntime {
+function runtimeWithStats(stats: unknown | Error): DockerContainerRuntime {
   const docker = {
     getContainer: () => ({
       stats: async () => {
@@ -13,7 +13,7 @@ function runtimeWithStats(stats: unknown | Error): ContainerRuntime {
       },
     }),
   } as unknown as Docker;
-  return new ContainerRuntime(docker, "net", {} as FastifyBaseLogger);
+  return new DockerContainerRuntime(docker, "net", {} as FastifyBaseLogger);
 }
 
 test("cgroup v2: usage minus inactive_file, limit as reported", async () => {

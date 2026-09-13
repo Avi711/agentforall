@@ -384,7 +384,7 @@ export class InstanceManager {
 
   // The row's id can be stale after a crash mid-rebuild; the name is the durable handle.
   private async existingContainerId(inst: Instance): Promise<string | null> {
-    if (inst.containerId && (await this.runtime.inspect(inst.containerId))) return inst.containerId;
+    if (inst.containerId && (await this.runtime.containerState(inst.containerId))) return inst.containerId;
     return this.runtime.findContainerByName(inst.containerName);
   }
 
@@ -940,10 +940,7 @@ export class InstanceManager {
   }
 
   private async resolveContainerId(inst: Instance): Promise<string | null> {
-    if (inst.containerId) {
-      const current = await this.runtime.inspect(inst.containerId);
-      if (current) return inst.containerId;
-    }
+    if (inst.containerId && (await this.runtime.containerState(inst.containerId))) return inst.containerId;
     const byName = await this.runtime.findContainerByName(inst.containerName);
     if (byName) await this.repo.updateContainerId(inst.id, byName);
     return byName;

@@ -173,7 +173,7 @@ class FakeRuntime {
     this.removedContainers.push(containerId);
   }
 
-  async inspect(): Promise<null> {
+  async containerState(): Promise<null> {
     return null;
   }
 

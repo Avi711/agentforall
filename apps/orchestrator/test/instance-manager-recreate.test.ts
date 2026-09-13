@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { FastifyBaseLogger } from "fastify";
 import { InstanceManager } from "../src/services/instance-manager.js";
-import type { ContainerRuntime } from "../src/services/container-runtime.js";
+import type { ContainerRuntime, ContainerState } from "../src/services/container-runtime.js";
 import type { AppConfig } from "../src/config.js";
 import type { AgentRuntimeRegistry } from "../src/services/agent-runtime/registry.js";
 import type { AgentRuntimeAdapter } from "../src/services/agent-runtime/types.js";
@@ -468,8 +468,10 @@ class FakeRuntime {
     this.startedContainers.push(containerId);
   }
 
-  async inspect(containerId: string): Promise<{ Id: string } | null> {
-    return containerId.startsWith("container-") && containerId !== "container-gone" ? { Id: containerId } : null;
+  async containerState(containerId: string): Promise<ContainerState | null> {
+    return containerId.startsWith("container-") && containerId !== "container-gone"
+      ? { running: true, restarting: false, health: "healthy", startedAt: null }
+      : null;
   }
 
   // Like Docker: a removed container frees its name.

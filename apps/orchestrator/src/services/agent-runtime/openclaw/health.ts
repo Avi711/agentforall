@@ -76,8 +76,8 @@ async function resolveRunningContainerId(
   instance: Instance,
 ): Promise<string | null> {
   if (instance.containerId) {
-    const current = await runtime.inspect(instance.containerId);
-    if (current?.State.Running) return instance.containerId;
+    const current = await runtime.containerState(instance.containerId);
+    if (current?.running) return instance.containerId;
   }
   return runtime.findContainerByName(instance.containerName);
 }

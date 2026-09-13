@@ -4,7 +4,7 @@ import { Readable } from "node:stream";
 import type Docker from "dockerode";
 import type { FastifyBaseLogger } from "fastify";
 import tar from "tar-stream";
-import { ContainerRuntime } from "../src/services/container-runtime.js";
+import { DockerContainerRuntime } from "../src/services/docker-container-runtime.js";
 
 function tarOf(entries: { name: string; body: string }[]): Promise<Buffer> {
   const pack = tar.pack();
@@ -18,7 +18,7 @@ function tarOf(entries: { name: string; body: string }[]): Promise<Buffer> {
   });
 }
 
-function runtimeReturning(archive: Buffer | Error): ContainerRuntime {
+function runtimeReturning(archive: Buffer | Error): DockerContainerRuntime {
   const docker = {
     getContainer: () => ({
       getArchive: async () => {
@@ -27,7 +27,7 @@ function runtimeReturning(archive: Buffer | Error): ContainerRuntime {
       },
     }),
   } as unknown as Docker;
-  return new ContainerRuntime(docker, "net", {} as FastifyBaseLogger);
+  return new DockerContainerRuntime(docker, "net", {} as FastifyBaseLogger);
 }
 
 function notFound(): Error {

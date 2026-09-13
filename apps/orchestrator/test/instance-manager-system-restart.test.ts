@@ -50,10 +50,6 @@ class FakeRuntime {
     return this.state;
   }
 
-  async inspect(containerId: string): Promise<{ Id: string } | null> {
-    return { Id: containerId };
-  }
-
   async findContainerByName(): Promise<string | null> {
     return null;
   }
