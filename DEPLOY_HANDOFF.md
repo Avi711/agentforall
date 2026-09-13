@@ -360,10 +360,11 @@ checked (nullable PIN, `contacts_synced_at`, `history_synced_at`, `held_until`, 
 both networks, listener connected, 0 errors, 16 tenants; web from `main`, flag still off. Rollback target `bfec1a76`,
 which cannot read a coexistence channel: roll back only before one exists. Meta webhook fields `messages`,
 `smb_message_echoes` and `account_update` subscribed; web on Vercel verified (webhook 403 on a wrong token).
-2026-09-13: orchestrator `orchestrator@sha256:54e2a90020fcaa67f6d583693a3e1ac772386ed20d505797f0f710960ed4ee46`;
-`WHATSAPP_CLOUD_PREVIEW_USER_IDS` set on Vercel; test bot קוקי30 (`de6ba822`) holds Meta's test number and alone runs
-the plugin from `openclaw-browser@sha256:803a79f894c4e9acafd2b4341d147b49cc35baf97bd9929fa8b4aa667968234d`; customer
-message → bot reply proven. State and next steps: doc status block and §14 eleventh change.
+2026-09-14: orchestrator `orchestrator@sha256:9286095c32e32f2f202818a55703c3247ecb0a70db6966bd0265e6fd02ecd695`
+(dead-token idle, doc §14 twelfth change); `WHATSAPP_CLOUD_PREVIEW_USER_IDS` set on Vercel; test bot קוקי30
+(`de6ba822`) holds Meta's test number (its 24 h dashboard token is expired: reconnect with a fresh one) and alone runs
+the plugin from `openclaw-browser@sha256:34d45dbb94ad5fb4f2f11dcb93cdc1482e32b304cff0b18c7a3d151140d27a89`; customer
+message → bot reply proven. State and next steps: doc status block.
 2026-09-13 (later): orchestrator `orchestrator@sha256:509f910622b553b5853200fe4c44fc884acbc094880ba9dfb81f6ef9de497342` — auto
 restart of unresponsive bots (`services/auto-restarter.ts`: 4 consecutive failed `/healthz` polls on a settled, current-image
 container → `InstanceManager.restartBySystem`; 10 min cooldown, 3 per hour, then `instance.auto_restart_exhausted` + error log;
