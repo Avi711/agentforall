@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createWhatsappCloudPlugin, CHANNEL_ID } from "./channel-definition.js";
 
@@ -25,27 +25,25 @@ const sdk = {
   dispatch: async () => {},
 };
 
-test("the gateway can start and stop the account, and the status surfaces survive the SDK helpers", () => {
-  const plugin = createWhatsappCloudPlugin(sdk);
-  assert.equal(plugin.id, CHANNEL_ID);
-  assert.equal(typeof plugin.gateway?.startAccount, "function");
-  assert.equal(typeof plugin.gateway?.stopAccount, "function");
-  assert.equal(typeof plugin.status?.probeAccount, "function");
-  assert.equal(typeof plugin.status?.buildAccountSnapshot, "function");
-  assert.equal(typeof plugin.config?.listAccountIds, "function");
-  assert.equal(typeof plugin.outbound?.attachedResults?.sendText, "function");
-});
-
 const CFG = {
   channels: { whatsapp_cloud: { accounts: { default: { phoneNumberId: "1", displayPhoneNumber: "+15550001", relayUrl: "http://relay" } } } },
 };
 
-// A relay whose long poll answers only when the caller gives up, like the orchestrator's 25 s wait; 401 when told to.
-function fakeRelay({ status = 200 } = {}) {
+before(() => {
+  process.env.WHATSAPP_CLOUD_RELAY_TOKEN = "t";
+});
+after(() => {
+  delete process.env.WHATSAPP_CLOUD_RELAY_TOKEN;
+});
+
+// A relay whose long poll answers only when the caller gives up, like the orchestrator's 25 s wait.
+// `answers` empty batches first; `status` other than 200 answers every call with that status.
+function fakeRelay({ status = 200, answers = 0 } = {}) {
   const calls = [];
   const fetchImpl = (url, init) => {
     calls.push(url);
     if (status !== 200) return Promise.resolve(new Response(JSON.stringify({ code: "UNAUTHORIZED" }), { status }));
+    if (calls.length <= answers) return Promise.resolve(new Response(JSON.stringify({ items: [] }), { status: 200 }));
     return new Promise((resolve) => {
       init.signal.addEventListener("abort", () => resolve(new Response(JSON.stringify({ items: [] }), { status: 200 })), { once: true });
     });
@@ -57,57 +55,100 @@ function settled(promise) {
   return Promise.race([promise.then(() => "settled", () => "settled"), new Promise((r) => setTimeout(() => r("pending"), 50))]);
 }
 
-test("startAccount stays pending while polling and settles once stopAccount ran", async () => {
-  process.env.WHATSAPP_CLOUD_RELAY_TOKEN = "t";
-  const relay = fakeRelay();
-  const plugin = createWhatsappCloudPlugin({ ...sdk, fetchImpl: relay.fetchImpl });
-  const account = plugin.config.resolveAccount(CFG, "default");
-  const ctx = { cfg: CFG, account, abortSignal: new AbortController().signal, log: null };
-
-  const running = plugin.gateway.startAccount(ctx);
-  assert.equal(await settled(running), "pending");
-  assert.equal(plugin.status.buildAccountSnapshot({ account }).running, true);
-  assert.ok(relay.calls.length >= 1);
-
-  await plugin.gateway.stopAccount(ctx);
-  await running;
-  assert.equal(plugin.status.buildAccountSnapshot({ account }).running, false);
-});
-
-test("the gateway's abort stops the loop and settles startAccount", async () => {
-  process.env.WHATSAPP_CLOUD_RELAY_TOKEN = "t";
-  const relay = fakeRelay();
-  const plugin = createWhatsappCloudPlugin({ ...sdk, fetchImpl: relay.fetchImpl });
-  const account = plugin.config.resolveAccount(CFG, "default");
-  const abort = new AbortController();
-
-  const running = plugin.gateway.startAccount({ cfg: CFG, account, abortSignal: abort.signal, log: null });
-  assert.equal(await settled(running), "pending");
-  abort.abort();
-  await running;
-  assert.equal(plugin.status.buildAccountSnapshot({ account }).running, false);
-});
-
-test("a revoked relay token ends the run with an error the gateway can show", async () => {
-  process.env.WHATSAPP_CLOUD_RELAY_TOKEN = "t";
-  const relay = fakeRelay({ status: 401 });
+function pluginWith(relay) {
   const plugin = createWhatsappCloudPlugin({ ...sdk, fetchImpl: relay.fetchImpl });
   const account = plugin.config.resolveAccount(CFG, "default");
   const statuses = [];
-  const ctx = { cfg: CFG, account, abortSignal: new AbortController().signal, log: null, setStatus: (s) => statuses.push(s) };
+  const ctx = (abortSignal = new AbortController().signal, setStatus = (s) => statuses.push(s)) => ({ cfg: CFG, account, abortSignal, log: null, setStatus });
+  return { plugin, account, statuses, ctx };
+}
 
-  await assert.rejects(plugin.gateway.startAccount(ctx), /rejected the token/);
+test("the gateway can start and stop the account, and the status surfaces survive the SDK helpers", () => {
+  const plugin = createWhatsappCloudPlugin(sdk);
+  assert.equal(plugin.id, CHANNEL_ID);
+  assert.equal(typeof plugin.gateway?.startAccount, "function");
+  assert.equal(typeof plugin.gateway?.stopAccount, "function");
+  assert.equal(typeof plugin.status?.probeAccount, "function");
+  assert.equal(typeof plugin.status?.buildAccountSnapshot, "function");
+  assert.equal(typeof plugin.config?.listAccountIds, "function");
+  assert.equal(typeof plugin.outbound?.attachedResults?.sendText, "function");
+});
+
+test("startAccount stays pending while polling, reports ready once, and settles once stopAccount ran", async () => {
+  const relay = fakeRelay({ answers: 1 });
+  const { plugin, account, statuses, ctx } = pluginWith(relay);
+  const c = ctx();
+
+  const running = plugin.gateway.startAccount(c);
+  assert.equal(await settled(running), "pending");
+  assert.equal(plugin.status.buildAccountSnapshot({ account }).running, true);
+  assert.ok(relay.calls.length >= 2);
+  assert.equal(statuses.length, 1);
+  assert.deepEqual({ ...statuses[0], lastConnectedAt: "at" }, { accountId: "default", connected: true, lastError: null, lifecycle: "ready", lastConnectedAt: "at" });
+
+  await plugin.gateway.stopAccount(c);
+  await running;
   assert.equal(plugin.status.buildAccountSnapshot({ account }).running, false);
-  assert.deepEqual(statuses.at(-1), { accountId: "default", connected: false, lastError: "relay 401 UNAUTHORIZED" });
+});
+
+test("the gateway's abort stops the loop and settles startAccount; a stopAccount after it is a no-op", async () => {
+  const { plugin, account, ctx } = pluginWith(fakeRelay());
+  const abort = new AbortController();
+  const c = ctx(abort.signal);
+
+  const running = plugin.gateway.startAccount(c);
+  assert.equal(await settled(running), "pending");
+  abort.abort();
+  await running;
+  await plugin.gateway.stopAccount(c);
+  assert.equal(plugin.status.buildAccountSnapshot({ account }).running, false);
+});
+
+test("an abort that landed while the setup was queued still stops the loop", async () => {
+  const { plugin, account, ctx } = pluginWith(fakeRelay());
+  const aborted = new AbortController();
+  aborted.abort();
+
+  await plugin.gateway.startAccount(ctx(aborted.signal));
+  assert.equal(plugin.status.buildAccountSnapshot({ account }).running, false);
+});
+
+test("a revoked relay token ends the run as blocked, and the snapshot keeps saying so from the gateway's record", async () => {
+  const { plugin, account, statuses, ctx } = pluginWith(fakeRelay({ status: 401 }));
+
+  await assert.rejects(plugin.gateway.startAccount(ctx()), /rejected the token/);
+  assert.deepEqual(statuses, [
+    { accountId: "default", connected: false, lastError: "relay 401 UNAUTHORIZED", linked: false, lifecycle: "blocked", terminalDisconnect: true },
+  ]);
+  const snapshot = plugin.status.buildAccountSnapshot({ account, runtime: { lastError: "gone", terminalDisconnect: true } });
+  assert.equal(snapshot.running, false);
+  assert.equal(snapshot.linked, false);
+  assert.equal(snapshot.lifecycle, "blocked");
+  assert.equal(snapshot.lastError, "gone");
+});
+
+test("a status sink that throws neither ends the run nor reads as a poll failure", async () => {
+  const relay = fakeRelay({ answers: 1 });
+  const { plugin, account, ctx } = pluginWith(relay);
+  const c = ctx(undefined, () => {
+    throw new Error("sink down");
+  });
+
+  const running = plugin.gateway.startAccount(c);
+  assert.equal(await settled(running), "pending");
+  assert.ok(relay.calls.length >= 2);
+  const snapshot = plugin.status.buildAccountSnapshot({ account });
+  assert.equal(snapshot.connected, true);
+  assert.equal(snapshot.lastError, null);
+
+  await plugin.gateway.stopAccount(c);
+  await running;
 });
 
 test("an account is listed, resolved and reported not running until the gateway starts it", () => {
   const plugin = createWhatsappCloudPlugin(sdk);
-  const cfg = {
-    channels: { whatsapp_cloud: { accounts: { default: { phoneNumberId: "1", displayPhoneNumber: "+15550001", relayUrl: "http://relay" } } } },
-  };
-  assert.deepEqual(plugin.config.listAccountIds(cfg), ["default"]);
-  const account = plugin.config.resolveAccount(cfg, "default");
+  assert.deepEqual(plugin.config.listAccountIds(CFG), ["default"]);
+  const account = plugin.config.resolveAccount(CFG, "default");
   assert.equal(account.phoneNumberId, "1");
   const snapshot = plugin.status.buildAccountSnapshot({ account });
   assert.equal(snapshot.running, false);

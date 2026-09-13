@@ -47,6 +47,21 @@ function harness(pending: Record<string, InboundMessage[]>, opts: HarnessOptions
   return { dispatcher, leaseCalls, events };
 }
 
+test("idle waits out the poll without registering a waiter, and returns at once after stop", async () => {
+  const { dispatcher, leaseCalls } = harness({ [A]: [message("1")] });
+
+  const started = Date.now();
+  await dispatcher.idle(30);
+  await dispatcher.tick();
+  assert.ok(Date.now() - started >= 25);
+  assert.deepEqual(leaseCalls, []);
+
+  dispatcher.stop();
+  const again = Date.now();
+  await dispatcher.idle(10_000);
+  assert.ok(Date.now() - again < 1000);
+});
+
 test("a tick leases only for bots that are waiting and hands each its own messages in order", async () => {
   const { dispatcher, leaseCalls } = harness({ [A]: [message("1"), message("2")], [B]: [message("3")] });
 

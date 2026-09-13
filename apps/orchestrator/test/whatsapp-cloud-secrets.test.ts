@@ -66,6 +66,7 @@ test("a stored row with every channel kind and the integrations relay passes the
   const parsed = InstanceConfigSchema.safeParse(encryptConfig(config, key));
 
   assert.equal(parsed.success, true, JSON.stringify(parsed.success ? null : parsed.error.issues));
+  if (parsed.success) assert.deepEqual(decryptConfig(parsed.data, key), config);
 });
 
 test("a business number saved before coexistence existed still loads, as a plain API number", () => {

@@ -441,7 +441,7 @@ tenants via `infra/ops/rollout-plugin.sh --plugin agentforall-whatsapp-cloud --s
 | Duplicate webhook | `ON CONFLICT DO NOTHING`. |
 | Customer writes during a 40s turn | Queued in that customer's lane; other customers are not blocked. |
 | One customer floods | At most 50 rows leased per bot per tick; other bots on the host unaffected. |
-| Token revoked by the client | Graph `190` → `ChannelCredentialError`; event `whatsapp_cloud.token_invalid` + one Telegram notice to the owner; `/status` shows `health: "token_invalid"`. |
+| Token revoked by the client | Graph `190` → `ChannelCredentialError`; event `whatsapp_cloud.token_invalid` + one Telegram notice to the owner; `/status` shows `health: "token_invalid"`; the bot's polls idle (no leases, no Meta calls) until a reconnect, and queued customer messages wait. |
 | Number already live on another bot | `ConflictError` before any Meta call. |
 | Number carries a two-step PIN we do not know | Meta `133005` → `CHANNEL_PIN_REQUIRED` → the dashboard asks for the PIN and the user runs the popup again. |
 | Model escalates in a loop, or a container spams `/escalate` | One request per customer per 2 minutes, 60 owner messages per bot per minute of any kind; repeats are told "already notified". |
@@ -750,6 +750,15 @@ to it vanished and the gateway answered "does not support start"; the definition
 the SDK helpers injected, beside a test that mirrors the helper. Meta facts: a WABA created from the developer app
 cannot pass Embedded Signup (`FINISH_ONLY_WABA`), so the test number was connected through the orchestrator's connect
 route with a dashboard token, after its Meta-set two-step PIN was switched off in WhatsApp Manager.
+
+Twelfth change 2026-09-14 (review of the eleventh, plus the expired test token overnight). A reply refused for a dead
+token was left for redelivery on purpose, which turned every 60 s lease into a failed Meta call all night; now the
+orchestrator records the dead token on the first failure and `pull` idles instead of leasing rows until the reconnect
+clears it (`InboxDispatcher.idle`), so the customer's message waits in the inbox and Meta is not called. Plugin: a
+revoked relay token is reported to the gateway as `blocked` + `terminalDisconnect` (no auto-restart) and the snapshot
+falls back to the gateway's record once the loop is gone; failed polls report `recovering` with `lastDisconnect`; the
+status sink is guarded; an abort that lands during the queued setup still stops the loop; a pull that returns after a
+stop leaves its items unacked.
 
 ## 15. Rehearsal checklist (before any tenant sees it)
 

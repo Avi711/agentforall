@@ -80,6 +80,7 @@ function harness(initial: Instance, opts: HarnessOptions = {}) {
   const sends: unknown[] = [];
   const ownerMessages: OwnerMessage[] = [];
   const acks: bigint[][] = [];
+  const idles: number[] = [];
   let purged = 0;
   const clockNow = () => opts.now?.() ?? new Date();
   // The real rules (stale replies, open-ended holds, extensions) live in SQL and are proven by the DB tier.
@@ -200,7 +201,12 @@ function harness(initial: Instance, opts: HarnessOptions = {}) {
     { findById: async (id: string) => (id === channels.instance().id ? channels.instance() : null) },
     repo,
     graph,
-    { wait: async () => opts.inbox ?? [] },
+    {
+      wait: async () => opts.inbox ?? [],
+      idle: async (waitMs: number) => {
+        idles.push(waitMs);
+      },
+    },
     eventLog,
     { orchestratorInternalUrl: "http://orchestrator:3000" },
     silentLog,
@@ -221,7 +227,7 @@ function harness(initial: Instance, opts: HarnessOptions = {}) {
       updatedAt: new Date(),
     });
   const conversation = (waId: string) => conversations.get(waId) ?? null;
-  return { manager, channels, graphCalls, events, sends, ownerMessages, acks, seedConversation, conversation, purgedCount: () => purged, numbers };
+  return { manager, channels, graphCalls, events, sends, ownerMessages, acks, idles, seedConversation, conversation, purgedCount: () => purged, numbers };
 }
 
 const CONNECT = { accessToken: "meta-token", phoneNumberId: "2000", wabaId: "1000", businessId: "3000" };
@@ -453,10 +459,33 @@ test("a dead token is recorded once and the owner is told once by plain Telegram
 
   assert.equal(status.health, "token_invalid");
   assert.equal(later.health, "token_invalid");
-  assert.equal(h.graphCalls.filter((c) => c.method === "getPhoneNumber").length, 2);
+  // The failed send already recorded the dead token, so the first status needs no probe.
+  assert.equal(h.graphCalls.filter((c) => c.method === "getPhoneNumber").length, 1);
   assert.deepEqual(h.events.map((e) => e.type), ["whatsapp_cloud.token_invalid"]);
   assert.deepEqual(h.ownerMessages.map((m) => [m.botToken, m.chatId]), [["tg-bot-token", 123456]]);
   assert.match(h.ownerMessages[0]?.text ?? "", /\+972501112233/);
+});
+
+test("once the token is known dead, pull idles instead of leasing rows, until a reconnect", async () => {
+  let dead = true;
+  const h = harness(makeInstance([TELEGRAM, makeWhatsappCloudChannel()]), {
+    inbox: [customerItem("1")],
+    failGraph: (method) => (dead && (method === "sendText" || method === "getPhoneNumber") ? new MetaGraphError(401, 190, "x", "expired") : null),
+  });
+  const ctx = await h.manager.resolveRelay(ID, "cloud-relay-token");
+  h.seedConversation(CUSTOMER, new Date());
+
+  assert.deepEqual((await h.manager.pull(ID, 1000)).map((item) => item.id), ["1"]);
+  await assert.rejects(h.manager.send(ctx, { to: CUSTOMER, text: "x", kind: "reply" }), ChannelCredentialError);
+  assert.deepEqual(await h.manager.pull(ID, 1000), []);
+  assert.deepEqual(await h.manager.pull(ID, 1000), []);
+  assert.deepEqual(h.idles, [1000, 1000]);
+
+  dead = false;
+  await h.manager.connect(ID, USER, { ...CONNECT, accessToken: "fresh-token" });
+
+  assert.deepEqual((await h.manager.pull(ID, 1000)).map((item) => item.id), ["1"]);
+  assert.deepEqual(h.idles, [1000, 1000]);
 });
 
 test("the health probe is cached for a minute so the dashboard cannot burn Meta's app limit", async () => {

@@ -88,6 +88,12 @@ export class InboxDispatcher {
     });
   }
 
+  // For a bot the manager will not serve right now: keeps the plugin's long-poll cadence without leasing a row.
+  idle(waitMs: number): Promise<void> {
+    if (this.stopped) return Promise.resolve();
+    return new Promise((resolve) => setTimeout(resolve, waitMs).unref());
+  }
+
   // Called on NOTIFY: only a bot whose plugin is waiting here is worth a query, and only that bot is queried.
   wake(instanceId: string): void {
     if (!this.waiters.has(instanceId)) return;

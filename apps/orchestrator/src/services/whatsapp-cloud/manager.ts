@@ -90,7 +90,7 @@ type ChannelStore = Pick<
   | "recordSend"
   | "ack"
 >;
-type Inbox = Pick<InboxDispatcher, "wait">;
+type Inbox = Pick<InboxDispatcher, "wait" | "idle">;
 type EventLog = Pick<EventRepository, "append">;
 type Graph = Pick<
   MetaGraphClient,
@@ -385,6 +385,11 @@ export class WhatsappCloudManager {
 
   // Owner replies from the app are applied first, in order, and never reach the plugin; a failure leaves the batch for redelivery.
   async pull(instanceId: string, waitMs: number): Promise<InboundMessage[]> {
+    // A dead token answers nobody: leasing rows would turn every lease into a failed Meta call. The reconnect clears it.
+    if (this.healthCache.get(instanceId)?.health === "token_invalid") {
+      await this.dispatcher.idle(waitMs);
+      return [];
+    }
     const items: InboxItem[] = await this.dispatcher.wait(instanceId, waitMs);
     const removals = items.filter(isPartnerRemoved);
     if (removals.length > 0) {
@@ -678,7 +683,10 @@ export class WhatsappCloudManager {
       if (err instanceof MetaGraphError) {
         this.log.warn({ status: err.status, code: err.code, path: err.path }, "meta graph call failed");
         if (isCredentialFailure(err)) {
-          if (ctx) await this.reportTokenInvalid(ctx.instance, ctx.channel);
+          if (ctx) {
+            this.healthCache.set(ctx.instance.id, { health: "token_invalid", at: this.now().getTime() });
+            await this.reportTokenInvalid(ctx.instance, ctx.channel);
+          }
           throw new ChannelCredentialError(CHANNEL_LABEL);
         }
         if (err.code === META_ERROR_PIN_MISMATCH) throw new ChannelPinRequiredError();

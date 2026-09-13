@@ -74,12 +74,6 @@ export class PollLoop {
       let items;
       try {
         items = await this.relay.pull(this.waitMs, signal);
-        const wasConnected = this.state.connected;
-        this.state.connected = true;
-        this.state.lastError = null;
-        this.state.lastPollAt = Date.now();
-        backoff = BACKOFF_MIN_MS;
-        if (!wasConnected) this.onState?.(this.state);
       } catch (err) {
         if (signal.aborted) break;
         this.state.connected = false;
@@ -88,16 +82,33 @@ export class PollLoop {
           // A revoked relay token never heals on its own; stop and let the status surface say so.
           this.state.unauthorized = true;
           this.log?.warn?.("whatsapp cloud relay rejected the token; polling stopped");
-          this.onState?.(this.state);
+          this.report();
           return;
         }
-        this.onState?.(this.state);
         this.log?.warn?.(`whatsapp cloud poll failed: ${this.state.lastError}`);
+        this.report();
         await this.sleep(backoff, signal);
         backoff = Math.min(backoff * 2, BACKOFF_MAX_MS);
         continue;
       }
+      // A pull that lands after the stop leaves its items unacked, like the pending ones.
+      if (signal.aborted) break;
+      const wasConnected = this.state.connected;
+      this.state.connected = true;
+      this.state.lastError = null;
+      this.state.lastPollAt = Date.now();
+      backoff = BACKOFF_MIN_MS;
+      if (!wasConnected) this.report();
       for (const item of items) this.enqueue(item);
+    }
+  }
+
+  // The status sink is best effort: a throw there must not read as a poll failure or end the run.
+  report() {
+    try {
+      this.onState?.(this.state);
+    } catch (err) {
+      this.log?.warn?.(`whatsapp cloud status report failed: ${errorLabel(err)}`);
     }
   }
 

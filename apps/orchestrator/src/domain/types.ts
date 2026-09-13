@@ -121,7 +121,7 @@ export interface InstanceConfig {
 }
 
 // Input is what the database holds, which may predate a field that now has a default.
-// Parsed on the stored row before decryptConfig: secret fields hold ciphertext here, so no plaintext-shape rules on them.
+// Runs on the stored row, before decryptConfig: secret fields are ciphertext here.
 export const InstanceConfigSchema: z.ZodType<InstanceConfig, z.ZodTypeDef, unknown> = z.object({
   integrations: z
     .object({ relayToken: z.string().min(1), relayUrl: z.string().url() })
