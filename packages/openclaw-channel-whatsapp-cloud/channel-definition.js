@@ -66,36 +66,51 @@ function snapshotOf(account, loop) {
   };
 }
 
-async function startAccount(ctx, dispatch) {
+// The gateway treats a settled startAccount as the channel having exited (and restarts it), so this
+// resolves only once the loop is stopped: by stopAccount, by the gateway's abort, or by a revoked token.
+async function startAccount(ctx, dispatch, fetchImpl) {
   const account = ctx.account;
-  if (!isConfigured(account)) {
-    ctx.log?.warn?.(`${CHANNEL_LABEL}: account ${account.accountId} is not configured; not starting`);
-    return;
-  }
-  await loops.get(account.accountId)?.stop();
-  const relay = createRelayFor(account);
-  const replies = new ReplyQueue();
-  const loop = new PollLoop({
-    relay,
-    log: ctx.log,
-    handle: (item) => {
-      if (!pluginRuntime) throw new Error("channel runtime not set");
-      return handleInbound({ cfg: ctx.cfg, account, relay, item, log: ctx.log, replies, runtime: pluginRuntime, dispatch });
-    },
+  if (!isConfigured(account)) throw new Error(`${CHANNEL_LABEL}: account ${account.accountId} is not configured`);
+  const loop = await serialized(account.accountId, async () => {
+    await loops.get(account.accountId)?.stop();
+    const relay = createRelayFor(account, fetchImpl);
+    const replies = new ReplyQueue();
+    const started = new PollLoop({
+      relay,
+      log: ctx.log,
+      handle: (item) => {
+        if (!pluginRuntime) throw new Error("channel runtime not set");
+        return handleInbound({ cfg: ctx.cfg, account, relay, item, log: ctx.log, replies, runtime: pluginRuntime, dispatch });
+      },
+    });
+    loops.set(account.accountId, started);
+    started.start();
+    ctx.log?.info?.(`${CHANNEL_LABEL}: polling for ${account.displayPhoneNumber ?? account.phoneNumberId}`);
+    return started;
   });
-  loops.set(account.accountId, loop);
-  loop.start();
-  ctx.log?.info?.(`${CHANNEL_LABEL}: polling for ${account.displayPhoneNumber ?? account.phoneNumberId}`);
+  const onAbort = () => void serialized(account.accountId, () => releaseLoop(account.accountId, loop));
+  ctx.abortSignal?.addEventListener("abort", onAbort, { once: true });
+  try {
+    await loop.done;
+  } finally {
+    ctx.abortSignal?.removeEventListener("abort", onAbort);
+    if (loops.get(account.accountId) === loop) loops.delete(account.accountId);
+  }
+  if (loop.state.unauthorized) throw new Error(`${CHANNEL_LABEL}: the relay rejected the token; connect the number again from the dashboard`);
+}
+
+async function releaseLoop(accountId, loop) {
+  if (loops.get(accountId) === loop) loops.delete(accountId);
+  await loop.stop();
 }
 
 async function stopAccount(ctx) {
   const loop = loops.get(ctx.account.accountId);
-  loops.delete(ctx.account.accountId);
-  await loop?.stop();
+  if (loop) await releaseLoop(ctx.account.accountId, loop);
 }
 
-// The SDK helpers are injected so the definition is testable without the openclaw package installed.
-export function createWhatsappCloudPlugin({ createChannelPluginBase, createChatChannelPlugin, dispatchInboundDirectDm }) {
+// The SDK helpers are injected so the definition is testable without the openclaw package installed; fetchImpl is for tests.
+export function createWhatsappCloudPlugin({ createChannelPluginBase, createChatChannelPlugin, dispatchInboundDirectDm, fetchImpl }) {
   return createChatChannelPlugin({
     // createChannelPluginBase copies a fixed key list that leaves out status and gateway; they sit beside it, as in the bundled WhatsApp plugin.
     base: {
@@ -132,7 +147,7 @@ export function createWhatsappCloudPlugin({ createChannelPluginBase, createChatC
         buildAccountSnapshot: ({ account }) => snapshotOf(account, loops.get(account.accountId)),
       },
       gateway: {
-        startAccount: (ctx) => serialized(ctx.account.accountId, () => startAccount(ctx, dispatchInboundDirectDm)),
+        startAccount: (ctx) => startAccount(ctx, dispatchInboundDirectDm, fetchImpl),
         stopAccount: (ctx) => serialized(ctx.account.accountId, () => stopAccount(ctx)),
       },
     },
