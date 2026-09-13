@@ -3,8 +3,9 @@ import type { Readable } from "node:stream";
 import type { FastifyBaseLogger } from "fastify";
 import type { InstanceRepository } from "../storage/instance-repository.js";
 import { isUniqueViolation } from "../storage/pg-errors.js";
-import type { ContainerRuntime } from "./container-runtime.js";
+import { isContainerBooting, type ContainerRuntime } from "./container-runtime.js";
 import type { PortAllocator } from "./port-allocator.js";
+import type { SystemRestartOutcome } from "./auto-restarter.js";
 import type { EventRepository, ProvisioningEvent } from "../storage/event-repository.js";
 import type { PairingManager } from "./pairing-manager.js";
 import type { AppConfig } from "../config.js";
@@ -65,6 +66,7 @@ export interface AgentBackupStream {
 
 // Docker's healthcheck StartPeriod is 90s; give a booting container that long plus slack before restarting it.
 const STARTUP_SETTLE_MS = 120_000;
+const RESTARTABLE_STATUSES: readonly InstanceStatus[] = ["running", "degraded", "unhealthy"];
 
 export interface InstanceDetails extends Instance {
   provisioningStage: ProvisioningStage | null;
@@ -243,12 +245,44 @@ export class InstanceManager {
   }
 
   async restart(id: string, userId: string): Promise<void> {
-    return this.operationLock.run(id, () => this.restartLocked(id, userId));
+    return this.operationLock.run(id, async () =>
+      this.restartLocked(await this.requireOwnedInstance(id, userId)),
+    );
   }
 
-  private async restartLocked(id: string, userId: string): Promise<void> {
-    const inst = await this.requireOwnedInstance(id, userId);
-    if (!["running", "degraded", "unhealthy"].includes(inst.status)) {
+  // Health-driven restart: re-checked inside the lock, never parks the bot in "error", never migrates its image.
+  async restartBySystem(id: string): Promise<SystemRestartOutcome> {
+    return this.operationLock.run(id, async () => {
+      const inst = await this.requireInstance(id);
+      if (!RESTARTABLE_STATUSES.includes(inst.status)) return { restarted: false, reason: `bot is ${inst.status}` };
+      if (!inst.containerId) return { restarted: false, reason: "bot has no container on record" };
+      const state = await this.runtime.containerState(inst.containerId);
+      if (!state?.running) return { restarted: false, reason: "container is not running" };
+      if (isContainerBooting(state, Date.now())) return { restarted: false, reason: "container is booting" };
+      if (!(await this.runtimes.get(inst.runtimeKind).isOnCurrentImage(inst.containerId))) {
+        return { restarted: false, reason: "container is on another image; recreate is a supervised step" };
+      }
+      if (await this.gatewayAnswers(inst)) return { restarted: false, reason: "gateway answered" };
+      await this.restartLocked(inst, { failureStatus: inst.status, injectCreds: false });
+      return { restarted: true };
+    });
+  }
+
+  private async gatewayAnswers(inst: Instance): Promise<boolean> {
+    const probe = await this.runtimes
+      .get(inst.runtimeKind)
+      .probeGateway(inst, this.appConfig.healthRequestTimeoutMs, this.appConfig.useDockerNetwork)
+      // A probe that cannot even be sent is one more "no answer" from a bot the monitor already saw down.
+      .catch(() => ({ healthy: false }));
+    return probe.healthy;
+  }
+
+  private async restartLocked(
+    inst: Instance,
+    opts: { failureStatus: InstanceStatus; injectCreds: boolean } = { failureStatus: "error", injectCreds: true },
+  ): Promise<void> {
+    const id = inst.id;
+    if (!RESTARTABLE_STATUSES.includes(inst.status)) {
       throw new InvalidStateError(inst.status, "running");
     }
     if (!inst.containerId) {
@@ -257,13 +291,14 @@ export class InstanceManager {
 
     try {
       const { containerId, rebuilt } = await this.containerForBoot(inst);
-      if (inst.hasWhatsappCreds) {
+      // The pairing-time credentials can be staler than the live session; a hang restart keeps the volume's copy.
+      if (opts.injectCreds && inst.hasWhatsappCreds) {
         await this.injectWhatsappCreds(id, containerId);
       }
       if (rebuilt) await this.runtime.start(containerId);
       else await this.restartContainer(containerId);
     } catch (err) {
-      await this.repo.updateStatus(id, "error", { errorMessage: errorMessage(err) });
+      await this.repo.updateStatus(id, opts.failureStatus, { errorMessage: errorMessage(err) });
       throw err;
     }
     await this.repo.updateStatus(id, "running");

@@ -97,6 +97,23 @@ export interface ContainerArchiveFile {
   sizeBytes: number;
 }
 
+export type ContainerHealth = "starting" | "healthy" | "unhealthy" | "none";
+
+export interface ContainerState {
+  running: boolean;
+  restarting: boolean;
+  health: ContainerHealth;
+  startedAt: Date | null;
+}
+
+// Boots can outlast Docker's start period (doctor migrations run ~2 min), so age counts as booting too.
+export const BOOT_GRACE_MS = 180_000;
+
+export function isContainerBooting(state: ContainerState, now: number): boolean {
+  const young = state.startedAt !== null && now - state.startedAt.getTime() < BOOT_GRACE_MS;
+  return state.restarting || state.health === "starting" || young;
+}
+
 export class ContainerRuntime {
   constructor(
     private readonly docker: Docker,
@@ -390,6 +407,17 @@ export class ContainerRuntime {
     return Boolean(info?.State.Running);
   }
 
+  async containerState(containerId: string): Promise<ContainerState | null> {
+    const info = await this.inspect(containerId);
+    if (!info) return null;
+    return {
+      running: info.State.Running,
+      restarting: info.State.Restarting,
+      health: containerHealthOf(info.State.Health?.Status),
+      startedAt: startedAtOf(info.State.StartedAt),
+    };
+  }
+
   // Resolves once the container has left Docker's start-up window (healthy, unhealthy, restarting,
   // stopped, or no healthcheck) or after timeoutMs; true only when it ended healthy.
   async waitForHealthy(containerId: string, timeoutMs: number): Promise<boolean> {
@@ -635,6 +663,24 @@ function captureBoundedWritable(chunks: Buffer[], maxBytes: number): Writable {
       callback();
     },
   });
+}
+
+// Docker reports a zero timestamp for a container that never started.
+function startedAtOf(raw: string | undefined): Date | null {
+  if (!raw) return null;
+  const at = new Date(raw);
+  return Number.isNaN(at.getTime()) || at.getTime() <= 0 ? null : at;
+}
+
+function containerHealthOf(status: string | undefined): ContainerHealth {
+  switch (status) {
+    case "starting":
+    case "healthy":
+    case "unhealthy":
+      return status;
+    default:
+      return "none";
+  }
 }
 
 function isDockerNotFound(err: unknown): boolean {

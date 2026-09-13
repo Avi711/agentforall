@@ -1,8 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { HealthMonitor } from "../src/services/health-monitor.js";
+import {
+  HealthMonitor,
+  type LivenessObserver,
+  type LivenessReport,
+  type LivenessSample,
+} from "../src/services/health-monitor.js";
 import type { Instance } from "../src/domain/types.js";
-import type { ContainerRuntime } from "../src/services/container-runtime.js";
+import type { ContainerRuntime, ContainerState } from "../src/services/container-runtime.js";
 import type { AgentRuntimeRegistry } from "../src/services/agent-runtime/registry.js";
 import type {
   AgentRuntimeAdapter,
@@ -43,10 +48,34 @@ class FakeRepo {
   async updateContainerId(): Promise<void> {}
 }
 
-const runtime = {
-  inspect: async () => ({ State: { Running: true } }),
-  findContainerByName: async () => "container-1",
-} as unknown as ContainerRuntime;
+const SETTLED: ContainerState = { running: true, restarting: false, health: "healthy", startedAt: null };
+
+function fakeRuntime(
+  state: ContainerState | null = SETTLED,
+  options: { byName?: string | null; throws?: boolean } = {},
+) {
+  return {
+    containerState: async () => {
+      if (options.throws) throw new Error("docker unreachable");
+      return state;
+    },
+    findContainerByName: async () => (options.byName === undefined ? "container-1" : options.byName),
+  } as unknown as ContainerRuntime;
+}
+
+const runtime = fakeRuntime();
+
+class RecordingObserver implements LivenessObserver {
+  readonly reports: { id: string; sample: LivenessSample }[][] = [];
+
+  observe(report: readonly LivenessReport[]): void {
+    this.reports.push(report.map((entry) => ({ id: entry.instance.id, sample: entry.sample })));
+  }
+
+  get samples(): { id: string; sample: LivenessSample }[] {
+    return this.reports.flat();
+  }
+}
 
 function createLogger() {
   const warnings: string[] = [];
@@ -88,6 +117,7 @@ function createMonitor(
   },
   clock: { now: number },
   logger: unknown = silentLogger,
+  options: { observer?: LivenessObserver; runtime?: ContainerRuntime } = {},
 ) {
   let whatsappCalls = 0;
   const adapter = {
@@ -101,7 +131,7 @@ function createMonitor(
 
   const monitor = new HealthMonitor(
     repo as never,
-    runtime,
+    options.runtime ?? runtime,
     { get: () => adapter } as unknown as AgentRuntimeRegistry,
     logger as never,
     {
@@ -117,10 +147,175 @@ function createMonitor(
       maxConcurrentChecks: 4,
     },
     () => clock.now,
+    options.observer ?? null,
   );
 
   return { monitor, whatsappCalls: () => whatsappCalls };
 }
+
+test("liveness observer gets down only when the gateway itself fails", async () => {
+  const repo = new FakeRepo([makeInstance()]);
+  const observer = new RecordingObserver();
+  let gatewayUp = false;
+  const { monitor } = createMonitor(
+    repo,
+    {
+      gateway: async () => ({ healthy: gatewayUp, degraded: null }),
+      whatsapp: async () => "disconnected",
+    },
+    { now: 1_000 },
+    silentLogger,
+    { observer },
+  );
+
+  await monitor.pollAll();
+  gatewayUp = true;
+  await monitor.pollAll();
+
+  // A disconnected channel degrades the row but is not a hang; only the dead gateway is "down".
+  assert.deepEqual(observer.samples, [
+    { id: "instance-1", sample: "down" },
+    { id: "instance-1", sample: "live" },
+  ]);
+  // The row still counts the disconnect as a failure; the observer alone separates the two.
+  assert.equal(repo.healthUpdates[1]?.failures, 1);
+});
+
+test("a container Docker still reports as starting is booting, not down", async () => {
+  const repo = new FakeRepo([makeInstance()]);
+  const observer = new RecordingObserver();
+  const { monitor } = createMonitor(
+    repo,
+    {
+      gateway: async () => ({ healthy: false, degraded: null }),
+      whatsapp: async () => "connected",
+    },
+    { now: 1_000 },
+    silentLogger,
+    { observer, runtime: fakeRuntime({ ...SETTLED, health: "starting" }) },
+  );
+
+  await monitor.pollAll();
+
+  assert.deepEqual(observer.samples, [{ id: "instance-1", sample: "booting" }]);
+  // The row still counts the failure exactly as before.
+  assert.deepEqual(repo.healthUpdates, [{ id: "instance-1", failures: 1, status: "running" }]);
+});
+
+test("a container Docker is restarting, or one started moments ago, is booting too", async () => {
+  const clock = { now: 10_000_000 };
+  const cases: ContainerState[] = [
+    { ...SETTLED, restarting: true },
+    { ...SETTLED, startedAt: new Date(clock.now - 60_000) },
+  ];
+  for (const state of cases) {
+    const observer = new RecordingObserver();
+    const { monitor } = createMonitor(
+      new FakeRepo([makeInstance()]),
+      { gateway: async () => ({ healthy: false, degraded: null }), whatsapp: async () => "connected" },
+      clock,
+      silentLogger,
+      { observer, runtime: fakeRuntime(state) },
+    );
+    await monitor.pollAll();
+    assert.deepEqual(observer.samples, [{ id: "instance-1", sample: "booting" }]);
+  }
+});
+
+test("a container that started long ago is down when its gateway fails", async () => {
+  const clock = { now: 10_000_000 };
+  const observer = new RecordingObserver();
+  const { monitor } = createMonitor(
+    new FakeRepo([makeInstance()]),
+    { gateway: async () => ({ healthy: false, degraded: null }), whatsapp: async () => "connected" },
+    clock,
+    silentLogger,
+    { observer, runtime: fakeRuntime({ ...SETTLED, startedAt: new Date(clock.now - 3_600_000) }) },
+  );
+
+  await monitor.pollAll();
+
+  assert.deepEqual(observer.samples, [{ id: "instance-1", sample: "down" }]);
+});
+
+test("a container Docker cannot tell us about is unknown, never down", async () => {
+  const cases = [fakeRuntime(null, { throws: true }), fakeRuntime(null, { byName: null })];
+  for (const rt of cases) {
+    const repo = new FakeRepo([makeInstance()]);
+    const observer = new RecordingObserver();
+    const { monitor } = createMonitor(
+      repo,
+      { gateway: async () => ({ healthy: false, degraded: null }), whatsapp: async () => "connected" },
+      { now: 1_000 },
+      silentLogger,
+      { observer, runtime: rt },
+    );
+    await monitor.pollAll();
+    assert.deepEqual(observer.samples, [{ id: "instance-1", sample: "unknown" }]);
+    // The row is still marked, so the dashboard shows the problem.
+    assert.equal(repo.healthUpdates[0]?.failures, 1);
+  }
+});
+
+test("a probe that throws on a settled container is down", async () => {
+  const repo = new FakeRepo([makeInstance()]);
+  const observer = new RecordingObserver();
+  const { monitor } = createMonitor(
+    repo,
+    {
+      gateway: async () => {
+        throw new Error("boom");
+      },
+      whatsapp: async () => "connected",
+    },
+    { now: 1_000 },
+    silentLogger,
+    { observer },
+  );
+
+  await monitor.pollAll();
+
+  assert.deepEqual(observer.samples, [{ id: "instance-1", sample: "down" }]);
+});
+
+test("the observer gets one report per poll covering exactly the active set", async () => {
+  const repo = new FakeRepo([makeInstance()]);
+  const observer = new RecordingObserver();
+  const { monitor } = createMonitor(
+    repo,
+    { whatsapp: async () => "connected" },
+    { now: 1_000 },
+    silentLogger,
+    { observer },
+  );
+
+  await monitor.pollAll();
+  repo.setInstances([]);
+  await monitor.pollAll();
+
+  assert.deepEqual(observer.reports, [[{ id: "instance-1", sample: "live" }], []]);
+});
+
+test("an observer that throws never breaks the health pass", async () => {
+  const repo = new FakeRepo([makeInstance()]);
+  const observer = {
+    observe: () => {
+      throw new Error("observer bug");
+    },
+  };
+  const { monitor } = createMonitor(
+    repo,
+    { whatsapp: async () => "connected" },
+    { now: 1_000 },
+    silentLogger,
+    { observer },
+  );
+
+  await monitor.pollAll();
+  await monitor.pollAll();
+
+  assert.equal(repo.healthUpdates.length, 2);
+});
 
 test("a probe that cannot answer never marks a live instance unhealthy", async () => {
   const repo = new FakeRepo([makeInstance()]);

@@ -28,6 +28,7 @@ import { HermesRuntimeAdapter } from "./services/agent-runtime/hermes/adapter.js
 import { PortAllocator } from "./services/port-allocator.js";
 import { InstanceManager } from "./services/instance-manager.js";
 import { HealthMonitor } from "./services/health-monitor.js";
+import { AutoRestarter } from "./services/auto-restarter.js";
 import { Reconciler } from "./services/reconciler.js";
 import { EventRepository } from "./storage/event-repository.js";
 import { HealthService } from "./services/health-service.js";
@@ -364,18 +365,35 @@ async function main(): Promise<void> {
   if (inboxListener) void inboxListener.start();
   else log.warn("DATABASE_URL is Supabase's transaction pooler (port 6543), which cannot hold a LISTEN: whatsapp cloud inbox runs on the poll alone");
 
-  const healthMonitor = new HealthMonitor(repo, runtime, runtimeAdapters, log, {
-    pollIntervalMs: config.healthPollIntervalMs,
-    degradedThreshold: config.healthDegradedThreshold,
-    unhealthyThreshold: config.healthUnhealthyThreshold,
-    requestTimeoutMs: config.healthRequestTimeoutMs,
-    useDockerNetwork: config.nodeEnv === "production",
-    maxConcurrentChecks: config.healthMaxConcurrentChecks,
-    channelPollIntervalMs: config.healthChannelPollIntervalMs,
-    channelStateMaxAgeMs: config.healthChannelStateMaxAgeMs,
-    channelProbeMaxBackoffMs: config.healthChannelProbeMaxBackoffMs,
-    channelProbeTimeoutMs: config.healthChannelProbeTimeoutMs,
-  });
+  const autoRestarter = config.autoRestartEnabled
+    ? new AutoRestarter(manager, eventLog, log, {
+        failureThreshold: config.autoRestartFailureThreshold,
+        cooldownMs: config.autoRestartCooldownMs,
+        maxRestartsPerWindow: config.autoRestartMaxPerWindow,
+        windowMs: config.autoRestartWindowMs,
+      })
+    : null;
+  log.info({ enabled: autoRestarter !== null }, "auto restart of unresponsive bots");
+  const healthMonitor = new HealthMonitor(
+    repo,
+    runtime,
+    runtimeAdapters,
+    log,
+    {
+      pollIntervalMs: config.healthPollIntervalMs,
+      degradedThreshold: config.healthDegradedThreshold,
+      unhealthyThreshold: config.healthUnhealthyThreshold,
+      requestTimeoutMs: config.healthRequestTimeoutMs,
+      useDockerNetwork: config.useDockerNetwork,
+      maxConcurrentChecks: config.healthMaxConcurrentChecks,
+      channelPollIntervalMs: config.healthChannelPollIntervalMs,
+      channelStateMaxAgeMs: config.healthChannelStateMaxAgeMs,
+      channelProbeMaxBackoffMs: config.healthChannelProbeMaxBackoffMs,
+      channelProbeTimeoutMs: config.healthChannelProbeTimeoutMs,
+    },
+    Date.now,
+    autoRestarter,
+  );
   healthMonitor.start();
 
   // Skip tick if a run is in flight, so overlapping intervals don't race on the same rows.
@@ -413,10 +431,12 @@ async function main(): Promise<void> {
       log.error({ err }, "error closing server");
     }
 
-    healthMonitor.stop();
+    await healthMonitor.stop();
     telegramLinker?.stop();
     await inboxListener?.stop();
     clearInterval(reconcileInterval);
+    // A restart in flight can outlive the forced-exit timer; give it half the budget, then let pool.end run.
+    await autoRestarter?.settle(config.shutdownTimeoutMs / 2);
 
     try {
       await pool.end();

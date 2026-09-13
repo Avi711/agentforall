@@ -128,6 +128,12 @@ const AppConfigSchema = z.object({
   healthChannelStateMaxAgeMs: z.coerce.number().int().min(10_000).default(600_000),
   healthChannelProbeMaxBackoffMs: z.coerce.number().int().min(10_000).default(900_000),
   healthChannelProbeTimeoutMs: z.coerce.number().int().min(1000).default(10_000),
+  // A gateway that stops answering liveness is restarted; the window budget stops a bot that dies on boot from looping.
+  autoRestartEnabled: booleanEnv.default("true"),
+  autoRestartFailureThreshold: z.coerce.number().int().min(2).default(4),
+  autoRestartCooldownMs: z.coerce.number().int().min(60_000).default(600_000),
+  autoRestartMaxPerWindow: z.coerce.number().int().min(1).default(3),
+  autoRestartWindowMs: z.coerce.number().int().min(600_000).default(3_600_000),
 
   shutdownTimeoutMs: z.coerce.number().int().min(1000).default(10_000),
 
@@ -223,7 +229,10 @@ const AppConfigSchema = z.object({
   whatsappCloudInboxSweepIntervalMs: z.coerce.number().int().min(10_000).default(60_000),
 });
 
-export type AppConfig = z.infer<typeof AppConfigSchema>;
+export type AppConfig = z.infer<typeof AppConfigSchema> & {
+  // Prod reaches bots and the proxy by Docker DNS; dev publishes ports on localhost instead.
+  useDockerNetwork: boolean;
+};
 
 export interface PairingConfig {
   image: string;
@@ -248,7 +257,7 @@ export function extractPairingConfig(config: AppConfig): PairingConfig {
     logLevel: config.pairingLogLevel,
     orchestratorInternalUrl: config.orchestratorInternalUrl,
     publishSidecarPort: config.nodeEnv === "development",
-    useDockerNetwork: config.nodeEnv === "production",
+    useDockerNetwork: config.useDockerNetwork,
   };
 }
 
@@ -282,6 +291,11 @@ export function loadConfig(): AppConfig {
     healthChannelStateMaxAgeMs: process.env.HEALTH_CHANNEL_STATE_MAX_AGE_MS,
     healthChannelProbeMaxBackoffMs: process.env.HEALTH_CHANNEL_PROBE_MAX_BACKOFF_MS,
     healthChannelProbeTimeoutMs: process.env.HEALTH_CHANNEL_PROBE_TIMEOUT_MS,
+    autoRestartEnabled: process.env.AUTO_RESTART_ENABLED,
+    autoRestartFailureThreshold: process.env.AUTO_RESTART_FAILURE_THRESHOLD,
+    autoRestartCooldownMs: process.env.AUTO_RESTART_COOLDOWN_MS,
+    autoRestartMaxPerWindow: process.env.AUTO_RESTART_MAX_PER_WINDOW,
+    autoRestartWindowMs: process.env.AUTO_RESTART_WINDOW_MS,
     shutdownTimeoutMs: process.env.SHUTDOWN_TIMEOUT_MS,
     reconcileOnStartup: process.env.RECONCILE_ON_STARTUP,
     reconcileIntervalMs: process.env.RECONCILE_INTERVAL_MS,
@@ -341,5 +355,5 @@ export function loadConfig(): AppConfig {
     );
   }
 
-  return result.data;
+  return { ...result.data, useDockerNetwork: result.data.nodeEnv === "production" };
 }

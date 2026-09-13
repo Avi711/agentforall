@@ -1,7 +1,7 @@
 import type { FastifyBaseLogger } from "fastify";
 import type { InstanceRepository } from "../storage/instance-repository.js";
 import type { Instance, InstanceStatus } from "../domain/types.js";
-import type { ContainerRuntime } from "./container-runtime.js";
+import { isContainerBooting, type ContainerRuntime, type ContainerState } from "./container-runtime.js";
 import type { AgentRuntimeRegistry } from "./agent-runtime/registry.js";
 import type { AgentRuntimeAdapter, WhatsappLinkState } from "./agent-runtime/types.js";
 
@@ -20,7 +20,25 @@ interface HealthMonitorConfig {
 
 interface HealthResult {
   healthy: boolean;
+  liveness: LivenessSample;
   whatsappDisconnected: boolean;
+}
+
+// "down" needs a running, settled container; anything not established (missing, Docker unreachable) is "unknown".
+export type LivenessSample = "live" | "down" | "booting" | "unknown";
+
+export interface LivenessReport {
+  instance: Instance;
+  sample: LivenessSample;
+}
+
+export interface LivenessObserver {
+  observe(report: readonly LivenessReport[]): void;
+}
+
+interface LocatedContainer {
+  containerId: string;
+  state: ContainerState;
 }
 
 // Cheap gateway liveness runs every poll; the costlier channel probe runs on its own cadence and
@@ -35,6 +53,7 @@ interface ChannelStateEntry {
 export class HealthMonitor {
   private intervalHandle: ReturnType<typeof setInterval> | null = null;
   private polling = false;
+  private currentPoll: Promise<void> | null = null;
   private readonly channelStates = new Map<string, ChannelStateEntry>();
   private readonly degradedInstances = new Set<string>();
 
@@ -45,6 +64,7 @@ export class HealthMonitor {
     private readonly logger: FastifyBaseLogger,
     private readonly config: HealthMonitorConfig,
     private readonly now: () => number = Date.now,
+    private readonly livenessObserver: LivenessObserver | null = null,
   ) {}
 
   start(): void {
@@ -63,12 +83,14 @@ export class HealthMonitor {
     );
   }
 
-  stop(): void {
+  // Resolves once the pass in flight has finished, so nothing observes after stop.
+  async stop(): Promise<void> {
     if (this.intervalHandle) {
       clearInterval(this.intervalHandle);
       this.intervalHandle = null;
       this.logger.info("health monitor stopped");
     }
+    await this.currentPoll;
   }
 
   async pollAll(): Promise<void> {
@@ -77,7 +99,16 @@ export class HealthMonitor {
       return;
     }
     this.polling = true;
+    this.currentPoll = this.runPoll();
+    try {
+      await this.currentPoll;
+    } finally {
+      this.currentPoll = null;
+      this.polling = false;
+    }
+  }
 
+  private async runPoll(): Promise<void> {
     try {
       const active = await this.repo.findByStatuses([
         "running",
@@ -92,13 +123,15 @@ export class HealthMonitor {
         (inst) => this.checkOne(inst),
       );
 
+      const report: LivenessReport[] = [];
       for (let i = 0; i < active.length; i++) {
         const inst = active[i]!;
         const result = results[i]!;
-        const health =
+        const health: HealthResult =
           result.status === "fulfilled"
             ? result.value
-            : { healthy: false, whatsappDisconnected: false };
+            : { healthy: false, liveness: "unknown", whatsappDisconnected: false };
+        report.push({ instance: inst, sample: health.liveness });
 
         try {
           await this.processResult(inst, health);
@@ -109,10 +142,18 @@ export class HealthMonitor {
           );
         }
       }
+      this.notifyObserver(report);
     } catch (err) {
       this.logger.error({ err }, "health monitor poll failed");
-    } finally {
-      this.polling = false;
+    }
+  }
+
+  private notifyObserver(report: readonly LivenessReport[]): void {
+    if (!this.livenessObserver) return;
+    try {
+      this.livenessObserver.observe(report);
+    } catch (err) {
+      this.logger.error({ err }, "liveness observer failed");
     }
   }
 
@@ -166,8 +207,14 @@ export class HealthMonitor {
   }
 
   private async checkOne(instance: Instance): Promise<HealthResult> {
-    const containerId = await this.resolveContainerId(instance);
-    const resolved = containerId ? { ...instance, containerId } : instance;
+    const located = await this.locateContainer(instance).catch((err: unknown) => {
+      this.logger.warn({ instanceId: instance.id, err }, "container lookup failed");
+      return "lookup_failed" as const;
+    });
+    const resolved =
+      located && located !== "lookup_failed"
+        ? { ...instance, containerId: located.containerId }
+        : instance;
     const adapter = this.runtimes.get(resolved.runtimeKind);
 
     const liveness = await adapter
@@ -185,20 +232,24 @@ export class HealthMonitor {
       });
 
     if (!liveness.healthy) {
-      return { healthy: false, whatsappDisconnected: false };
+      return {
+        healthy: false,
+        liveness: livenessOfFailure(located, this.now()),
+        whatsappDisconnected: false,
+      };
     }
     this.trackReadiness(instance.id, liveness.degraded);
     if (!this.needsWhatsappProbe(resolved)) {
-      return { healthy: true, whatsappDisconnected: false };
+      return { healthy: true, liveness: "live", whatsappDisconnected: false };
     }
 
     const state = await this.resolveWhatsappState(resolved, adapter);
     // Only a definite "disconnected" degrades the instance: a probe that could not answer says
     // nothing about the channel, and must never take a live tenant down.
     if (state === "disconnected") {
-      return { healthy: false, whatsappDisconnected: true };
+      return { healthy: false, liveness: "live", whatsappDisconnected: true };
     }
-    return { healthy: true, whatsappDisconnected: false };
+    return { healthy: true, liveness: "live", whatsappDisconnected: false };
   }
 
   // Logged on transition only: a permanently unready gateway must not flood every poll.
@@ -285,17 +336,28 @@ export class HealthMonitor {
     );
   }
 
-  private async resolveContainerId(instance: Instance): Promise<string | null> {
+  private async locateContainer(instance: Instance): Promise<LocatedContainer | null> {
     if (instance.containerId) {
-      const current = await this.runtime.inspect(instance.containerId);
-      if (current?.State.Running) return instance.containerId;
+      const current = await this.runtime.containerState(instance.containerId);
+      if (current?.running) return { containerId: instance.containerId, state: current };
     }
 
     const byName = await this.runtime.findContainerByName(instance.containerName);
     if (!byName) return null;
+    const state = await this.runtime.containerState(byName);
+    if (!state) return null;
     await this.repo.updateContainerId(instance.id, byName);
-    return byName;
+    return { containerId: byName, state };
   }
+}
+
+function livenessOfFailure(
+  located: LocatedContainer | "lookup_failed" | null,
+  now: number,
+): LivenessSample {
+  if (located === "lookup_failed" || located === null) return "unknown";
+  if (!located.state.running) return "unknown";
+  return isContainerBooting(located.state, now) ? "booting" : "down";
 }
 
 // A state nobody has confirmed for too long stops counting as evidence.
