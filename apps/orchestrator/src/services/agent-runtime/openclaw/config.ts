@@ -304,9 +304,8 @@ function buildPlugins(channels: InstanceConfig["channels"]): OpenclawConfig["plu
       // cannot change tenant spend unnoticed.
       [MEMORY_PLUGIN_ID]: { enabled: true, config: { dreaming: { enabled: true } } },
       ...(channels.some((ch) => ch.type === "whatsapp") ? { whatsapp: { enabled: true } } : {}),
-      ...(channels.some((ch) => ch.type === "whatsapp_cloud")
-        ? { [WHATSAPP_CLOUD_PLUGIN_ID]: { enabled: true } }
-        : {}),
+      // Always on: the gateway validates a connect only against loaded plugins; absent from the volume it is inert.
+      [WHATSAPP_CLOUD_PLUGIN_ID]: { enabled: true },
     },
   };
 }

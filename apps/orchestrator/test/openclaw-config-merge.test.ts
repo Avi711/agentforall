@@ -230,6 +230,7 @@ test("the plugin a channel needs is enabled without dropping the runtime's other
     },
     "agentforall-media": { enabled: true },
     "memory-core": { enabled: true, config: { dreaming: { enabled: true } } },
+    "agentforall-whatsapp-cloud": { enabled: true },
   });
 });
 

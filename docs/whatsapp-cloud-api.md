@@ -6,14 +6,23 @@ own business number and the bot answers as the business. It sits next to the Bai
 general-purpose AI assistants (policy effective 2026-01-15) but allows customer service, orders, bookings
 and FAQ.
 
-Status: **built 2026-09-09 (uncommitted), reviewed and hardened the same day (§14), not yet run against a
-live gateway or Meta.** Design revised 2026-09-02 against OpenClaw 2026.8.2 and Meta's current docs. Everything marked *verify in build* is an
-assumption that must be proven on the real gateway before it ships; everything else is sourced (§13).
-What exists: migration `0012_whatsapp_cloud`; orchestrator domain/config/relay/manager/dispatcher with
-tests; web ingress, connect flow, dashboard row and page with tests; the channel plugin package
-`packages/openclaw-channel-whatsapp-cloud` (written against the shipped 2026.8.2 SDK typings and the
-official `@openclaw/whatsapp` plugin's structure, its SDK-facing files untested until the rehearsal);
-Dockerfile, Caddy guard and rollout script updated. See §15 for the rehearsal checklist.
+Status: **deployed dark 2026-09-11**: main `c52f20d`, orchestrator `5a5bc437`, migration 0013, Meta webhook fields
+`messages`, `smb_message_echoes`, `account_update` subscribed; `WHATSAPP_CLOUD_ENABLED` off. Real inbound from Meta's
+test number reaches the webhook; no tenant has run it end to end. Plugin image `openclaw-browser@sha256:3a85792c…` is
+current (rehearsal only; tenants stay on `f0e4aec9…`). §14 is the change history, §15 the rehearsal.
+
+Open, in order:
+1. Set `WHATSAPP_CLOUD_PREVIEW_USER_IDS` on Vercel to the rehearsal account, then run §15 items 1–18 (test number,
+   our own portfolio). Items 19–27 need coexistence, which Meta opens only to Tech Providers ("You must already be a
+   Solution Partner or Tech Provider"), so they wait on step 5; item 24 blocks enabling.
+2. Business-token refresh job before any tenant is 50 days in (§13; needs the app secret on web and the token on the
+   orchestrator together, design open).
+3. Show the retained two-step PIN to the owner on a full-move disconnect.
+4. A business-only bot has no owner number, so the owner is a stranger on the business number: store it on the
+   `whatsapp_cloud` channel instead of `withWhatsappOwnerNumber` adding a Baileys channel (`owner.ts:17`) and show
+   "המספר שלי" for it (`BotCard.tsx:528`, `OwnerIdentityDialog` `whatsappAvailable`).
+5. Tech Provider (§12): business verification, access verification, app review; then publish the app.
+6. `WHATSAPP_CLOUD_ENABLED=true`; each tenant gets the plugin by `rollout-plugin.sh` before its own connect (§10).
 
 ## 1. Why not Baileys for business clients
 
@@ -515,7 +524,7 @@ Client-side facts: no partner status and no verification needed to start (unveri
 business-initiated conversations/24h; **service replies inside the 24h window are unlimited and free**);
 Meta bills the client's WABA, never the Tech Provider; the number must be off the WhatsApp/WA Business
 app. **Coexistence** (number stays in the WA Business app; 180-day history sync; no groups; 20 msg/s) is
-supported for Tech Providers — country eligibility for Israel unconfirmed. The "Meta-hosted Embedded
+supported for Tech Providers only, Israel included. The "Meta-hosted Embedded
 Signup link" seen on the onboarding page is unverified as to where credentials land; v1 uses the JS SDK
 popup, which is fully documented.
 
@@ -692,7 +701,7 @@ the orchestrator applies it before handing the batch to the plugin, so that cust
 orchestrator stays the only writer of who answers. A bot reply to a customer in `human` is refused with 409
 `CONVERSATION_HELD_BY_OWNER`, which closes the race with a turn that was already running. For a coexistence number
 a forward is not copied to Telegram (the owner sees it in the app) and a hand-over needs no Telegram owner.
-`PARTNER_REMOVED` is logged; the next Meta call reports the dead token to the owner. `WHATSAPP_CLOUD_PREVIEW_USER_IDS`
+`PARTNER_REMOVED` was only logged here (handled since the tenth change). `WHATSAPP_CLOUD_PREVIEW_USER_IDS`
 opens the Connect button to listed accounts while `WHATSAPP_CLOUD_ENABLED` stays off. Meta webhook fields:
 `messages`, `smb_message_echoes`, `account_update`.
 
@@ -707,8 +716,7 @@ ledger rows are deleted after 30 days whatever the mode. Each accepted sync kind
 "reconnect within 24h" banner while anything is (`syncPending`). The orchestrator reads Meta's `is_on_biz_app` before
 linking anything and refuses a mismatch with the owner's pick (409 `NUMBER_MODE_MISMATCH`); an account named without
 its number resolves to the one Meta marks as in the app. Configs saved before these fields load with defaults. A
-customer asking for a person on a coexistence bot with no Telegram is held the same way. Still open: `PARTNER_REMOVED`
-is only logged; whether the app's automatic greeting and away messages arrive as owner replies is undocumented (the
+customer asking for a person on a coexistence bot with no Telegram is held the same way. Still open: whether the app's automatic greeting and away messages arrive as owner replies is undocumented (the
 connect page tells owners to switch them off; rehearsal item 24); the 409 guard is best-effort while the plugin's
 lanes are all busy.
 

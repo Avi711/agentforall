@@ -94,11 +94,11 @@ test("the owner's phone identifies them on the business number too", () => {
   assert.deepEqual(config.commands?.ownerAllowFrom, config.session?.identityLinks?.owner);
 });
 
-test("a bot without a business number renders none of it", () => {
+test("a bot without a business number renders no channel, but the plugin entry stays so a connect can validate", () => {
   const { config, dotEnv } = render([TELEGRAM]);
   assert.equal(config.channels.whatsapp_cloud, undefined);
   assert.equal(config.tools?.toolsBySender, undefined);
-  assert.equal(config.plugins?.entries?.["agentforall-whatsapp-cloud"], undefined);
+  assert.deepEqual(config.plugins?.entries?.["agentforall-whatsapp-cloud"], { enabled: true });
   assert.equal(dotEnv.includes("WHATSAPP_CLOUD"), false);
 });
 
@@ -114,7 +114,7 @@ test("disconnecting the business number removes its block, plugin and policy fro
   assert.equal(patched.channels.whatsapp_cloud, undefined);
   assert.equal(patched.channels.telegram?.botToken, "tg-token");
   assert.equal(patched.tools?.toolsBySender, undefined);
-  assert.equal(patched.plugins?.entries?.["agentforall-whatsapp-cloud"], undefined);
+  assert.deepEqual(patched.plugins?.entries?.["agentforall-whatsapp-cloud"], { enabled: true });
   assert.deepEqual(patched.plugins?.entries?.["memory-core"], { enabled: true, config: { dreaming: { enabled: true } } });
 });
 

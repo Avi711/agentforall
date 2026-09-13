@@ -291,6 +291,7 @@ Pattern: secrets created once with `gcloud secrets create`; values populated via
 | `dashboard-service-token` | bearer token Vercel uses to call orchestrator. Matches Vercel env `ORCHESTRATOR_SERVICE_TOKEN`. |
 | `default-provider-api-key` | LLM provider API key (currently Gemini, switching to OpenAI) |
 | `composio-api-key` | Composio project API key for integrations. Never enters a tenant container (see `docs/integrations.md`). Create before deploying the integrations orchestrator image; `startup.sh` reads it on every boot. |
+| `google-integrations-oauth-client` | Client JSON of OAuth client `agent-for-all-integrations` (2026-09-12), our own Google app for Composio's Google toolkits. Read by no service; the secret is pasted only into Composio auth configs. Not live yet (consent screen in Testing, awaiting Google verification + CASA). Rotate the client secret before go-live. |
 
 VM startup script reads these on every boot via `gcloud secrets versions access latest`. Restart the VM to pick up rotated values.
 
@@ -359,6 +360,9 @@ which cannot read a coexistence channel: roll back only before one exists. Meta 
 `smb_message_echoes` and `account_update` subscribed; web on Vercel verified (webhook 403 on a wrong token). Still to
 do: `WHATSAPP_CLOUD_PREVIEW_USER_IDS` on Vercel for the rehearsal account;
 rehearsal items 19-27 (item 24 blocks `WHATSAPP_CLOUD_ENABLED=true`).
+TODO once the Cloud API is live: a business-only bot (no Baileys link) has no owner number, so the owner is a stranger
+on the business number. Show "המספר שלי" for it (`BotCard.tsx:528`, `OwnerIdentityDialog` `whatsappAvailable`) and store
+the number on the `whatsapp_cloud` channel instead of `withWhatsappOwnerNumber` adding a Baileys channel (`owner.ts:17`).
 
 Reviewed and hardened 2026-09-09 (fresh reviewer against the code and the 2026.8.2 dist), all suites green:
 customer sessions now also lose `group:ui`/`group:media`/`group:openclaw`; relay rate limit keyed by caller
@@ -480,6 +484,11 @@ The field is ForceNew → Terraform wants to replace the instance; `prevent_dest
 Also missing from state, so the plan wants duplicates: `google_monitoring_alert_policy.vm_disk_warning` / `vm_disk_critical` (exist in GCP since 2026-05-26 → `terraform import`). `google_secret_manager_secret_iam_member.vm_secret_access["litellm-master-key"]` is genuinely absent → create.
 
 Fix: tenant volumes now survive instance replacement, so update script + digests, replace deliberately, restore `prevent_destroy`. Add `.gitattributes` (`*.sh text eol=lf`) to stop PowerShell reintroducing the BOM.
+
+### 4. Chromium tab leak — do after the GKE move (found 2026-09-12)
+
+OpenClaw 2026.8.2 `browser.tabCleanup` (default on: 120 min idle, 8/session, 5 min sweep) only tracks `action: "open"` tabs; `navigate` tabs and tabs Chrome restores from `user-data/Default/Sessions` are never closed. `openclaw-9901b13d-cce` sat at its 4 GB cap (1 OOM kill 2026-09-10).
+Fix: orchestrator job closes page tabs via CDP (`:18800/json/list`) + clear `Sessions/` on start. Not via heartbeat (LLM turn, costs credits, unreliable). Report upstream; recheck on 9.x.
 
 ---
 
