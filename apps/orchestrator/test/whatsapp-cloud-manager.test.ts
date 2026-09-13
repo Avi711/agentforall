@@ -466,26 +466,34 @@ test("a dead token is recorded once and the owner is told once by plain Telegram
   assert.match(h.ownerMessages[0]?.text ?? "", /\+972501112233/);
 });
 
-test("once the token is known dead, pull idles instead of leasing rows, until a reconnect", async () => {
+test("once the token is known dead, pull idles instead of leasing rows: one re-check per 15 minutes, none after a reconnect", async () => {
+  let clock = new Date("2026-09-14T00:00:00Z").getTime();
   let dead = true;
   const h = harness(makeInstance([TELEGRAM, makeWhatsappCloudChannel()]), {
+    now: () => new Date(clock),
     inbox: [customerItem("1")],
     failGraph: (method) => (dead && (method === "sendText" || method === "getPhoneNumber") ? new MetaGraphError(401, 190, "x", "expired") : null),
   });
   const ctx = await h.manager.resolveRelay(ID, "cloud-relay-token");
-  h.seedConversation(CUSTOMER, new Date());
+  h.seedConversation(CUSTOMER, new Date(clock));
 
   assert.deepEqual((await h.manager.pull(ID, 1000)).map((item) => item.id), ["1"]);
   await assert.rejects(h.manager.send(ctx, { to: CUSTOMER, text: "x", kind: "reply" }), ChannelCredentialError);
   assert.deepEqual(await h.manager.pull(ID, 1000), []);
+  clock += 14 * 60_000;
   assert.deepEqual(await h.manager.pull(ID, 1000), []);
   assert.deepEqual(h.idles, [1000, 1000]);
+
+  clock += 2 * 60_000;
+  assert.deepEqual((await h.manager.pull(ID, 1000)).map((item) => item.id), ["1"]);
+  await assert.rejects(h.manager.send(ctx, { to: CUSTOMER, text: "x", kind: "reply" }), ChannelCredentialError);
+  assert.deepEqual(await h.manager.pull(ID, 1000), []);
 
   dead = false;
   await h.manager.connect(ID, USER, { ...CONNECT, accessToken: "fresh-token" });
 
   assert.deepEqual((await h.manager.pull(ID, 1000)).map((item) => item.id), ["1"]);
-  assert.deepEqual(h.idles, [1000, 1000]);
+  assert.deepEqual(h.idles, [1000, 1000, 1000]);
 });
 
 test("the health probe is cached for a minute so the dashboard cannot burn Meta's app limit", async () => {

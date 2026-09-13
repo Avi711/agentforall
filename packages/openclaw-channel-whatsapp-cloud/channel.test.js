@@ -52,7 +52,11 @@ function fakeRelay({ status = 200, answers = 0 } = {}) {
 }
 
 function settled(promise) {
-  return Promise.race([promise.then(() => "settled", () => "settled"), new Promise((r) => setTimeout(() => r("pending"), 50))]);
+  let timer;
+  const pending = new Promise((r) => {
+    timer = setTimeout(() => r("pending"), 50);
+  });
+  return Promise.race([promise.then(() => "settled", () => "settled"), pending]).finally(() => clearTimeout(timer));
 }
 
 function pluginWith(relay) {
@@ -104,12 +108,22 @@ test("the gateway's abort stops the loop and settles startAccount; a stopAccount
   assert.equal(plugin.status.buildAccountSnapshot({ account }).running, false);
 });
 
-test("an abort that landed while the setup was queued still stops the loop", async () => {
-  const { plugin, account, ctx } = pluginWith(fakeRelay());
-  const aborted = new AbortController();
-  aborted.abort();
+test("a start whose abort landed while it was queued behind a stop never polls", async () => {
+  const relay = fakeRelay();
+  const { plugin, account, ctx } = pluginWith(relay);
+  const first = ctx();
 
-  await plugin.gateway.startAccount(ctx(aborted.signal));
+  const running = plugin.gateway.startAccount(first);
+  assert.equal(await settled(running), "pending");
+  const callsBefore = relay.calls.length;
+
+  const stopping = plugin.gateway.stopAccount(first);
+  const second = new AbortController();
+  const queued = plugin.gateway.startAccount(ctx(second.signal));
+  second.abort();
+  await Promise.all([stopping, running, queued]);
+
+  assert.equal(relay.calls.length, callsBefore);
   assert.equal(plugin.status.buildAccountSnapshot({ account }).running, false);
 });
 
@@ -118,7 +132,7 @@ test("a revoked relay token ends the run as blocked, and the snapshot keeps sayi
 
   await assert.rejects(plugin.gateway.startAccount(ctx()), /rejected the token/);
   assert.deepEqual(statuses, [
-    { accountId: "default", connected: false, lastError: "relay 401 UNAUTHORIZED", linked: false, lifecycle: "blocked", terminalDisconnect: true },
+    { accountId: "default", connected: false, lastError: "relay 401 UNAUTHORIZED", lifecycle: "blocked", terminalDisconnect: true },
   ]);
   const snapshot = plugin.status.buildAccountSnapshot({ account, runtime: { lastError: "gone", terminalDisconnect: true } });
   assert.equal(snapshot.running, false);

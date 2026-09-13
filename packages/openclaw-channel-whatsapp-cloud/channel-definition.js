@@ -72,9 +72,7 @@ function snapshotOf(account, loop, runtime) {
 // What the gateway's status store is told, in the shape the bundled plugins use; blocked is terminal, so no auto-restart.
 function statusPatch(accountId, state) {
   const at = Date.now();
-  if (state.unauthorized) {
-    return { accountId, connected: false, lastError: state.lastError, linked: false, lifecycle: "blocked", terminalDisconnect: true };
-  }
+  if (state.unauthorized) return { accountId, connected: false, lastError: state.lastError, lifecycle: "blocked", terminalDisconnect: true };
   if (state.connected) return { accountId, connected: true, lastError: null, lifecycle: "ready", lastConnectedAt: at };
   return { accountId, connected: false, lastError: state.lastError, lifecycle: "recovering", lastDisconnect: { at, error: state.lastError } };
 }
@@ -85,6 +83,8 @@ async function startAccount(ctx, dispatch, fetchImpl) {
   if (!isConfigured(account)) throw new Error(`${CHANNEL_LABEL}: account ${account.accountId} is not configured`);
   const loop = await serialized(account.accountId, async () => {
     await loops.get(account.accountId)?.stop();
+    // The gateway gave up on this start while it was queued behind a stop.
+    if (ctx.abortSignal?.aborted) return null;
     const relay = createRelayFor(account, fetchImpl);
     const replies = new ReplyQueue();
     const started = new PollLoop({
@@ -101,6 +101,7 @@ async function startAccount(ctx, dispatch, fetchImpl) {
     ctx.log?.info?.(`${CHANNEL_LABEL}: polling for ${account.displayPhoneNumber ?? account.phoneNumberId}`);
     return started;
   });
+  if (!loop) return;
   const onAbort = () => {
     serialized(account.accountId, () => releaseLoop(account.accountId, loop)).catch((err) =>
       ctx.log?.warn?.(`${CHANNEL_LABEL}: stop after abort failed: ${errorLabel(err)}`),

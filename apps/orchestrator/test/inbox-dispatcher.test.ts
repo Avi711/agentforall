@@ -56,8 +56,10 @@ test("idle waits out the poll without registering a waiter, and returns at once 
   assert.ok(Date.now() - started >= 25);
   assert.deepEqual(leaseCalls, []);
 
-  dispatcher.stop();
+  const inFlight = dispatcher.idle(10_000);
   const again = Date.now();
+  dispatcher.stop();
+  await inFlight;
   await dispatcher.idle(10_000);
   assert.ok(Date.now() - again < 1000);
 });

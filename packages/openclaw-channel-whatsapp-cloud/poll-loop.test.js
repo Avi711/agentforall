@@ -27,6 +27,31 @@ function fakeRelay(batches) {
   return { relay, acked, pulls: () => pulls };
 }
 
+test("a pull that returns after the stop leaves its items unhandled and unacked", async () => {
+  const handled = [];
+  const acked = [];
+  let release;
+  const relay = {
+    pull: () => new Promise((resolve) => {
+      release = () => resolve([item("1")]);
+    }),
+    ack: async (ids) => {
+      acked.push(...ids);
+      return ids.length;
+    },
+  };
+  const loop = new PollLoop({ relay, log: silent, handle: async (m) => handled.push(m.text) });
+
+  loop.start();
+  await waitFor(() => Boolean(release));
+  const stopping = loop.stop();
+  release();
+  await stopping;
+
+  assert.deepEqual(handled, []);
+  assert.deepEqual(acked, []);
+});
+
 test("messages are handled in order, acked after the handler returns, and a late redelivery is acked without a turn", async () => {
   const handled = [];
   const batches = [[item("1"), item("2")]];

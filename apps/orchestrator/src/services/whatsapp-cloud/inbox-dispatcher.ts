@@ -20,6 +20,11 @@ interface Waiter {
   timer: NodeJS.Timeout;
 }
 
+interface Idle {
+  resolve(): void;
+  timer: NodeJS.Timeout;
+}
+
 interface Queued {
   items: InboxItem[];
   leasedAt: number;
@@ -35,6 +40,7 @@ export class InboxDispatcher {
   private readonly waiters = new Map<string, Waiter>();
   private readonly queued = new Map<string, Queued>();
   private readonly wokenWhileBusy = new Set<string>();
+  private readonly idles = new Set<Idle>();
   private pollTimer: NodeJS.Timeout | null = null;
   private sweepTimer: NodeJS.Timeout | null = null;
   private polling = false;
@@ -67,6 +73,11 @@ export class InboxDispatcher {
       waiter.resolve([]);
       this.waiters.delete(instanceId);
     }
+    for (const idle of this.idles) {
+      clearTimeout(idle.timer);
+      idle.resolve();
+    }
+    this.idles.clear();
   }
 
   // One consumer per bot: a newer poll replaces the older one, which returns empty. After stop nothing waits.
@@ -91,7 +102,16 @@ export class InboxDispatcher {
   // For a bot the manager will not serve right now: keeps the plugin's long-poll cadence without leasing a row.
   idle(waitMs: number): Promise<void> {
     if (this.stopped) return Promise.resolve();
-    return new Promise((resolve) => setTimeout(resolve, waitMs).unref());
+    return new Promise((resolve) => {
+      const idle: Idle = {
+        resolve,
+        timer: setTimeout(() => {
+          this.idles.delete(idle);
+          resolve();
+        }, waitMs),
+      };
+      this.idles.add(idle);
+    });
   }
 
   // Called on NOTIFY: only a bot whose plugin is waiting here is worth a query, and only that bot is queried.

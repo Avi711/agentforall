@@ -753,8 +753,9 @@ route with a dashboard token, after its Meta-set two-step PIN was switched off i
 
 Twelfth change 2026-09-14 (review of the eleventh, plus the expired test token overnight). A reply refused for a dead
 token was left for redelivery on purpose, which turned every 60 s lease into a failed Meta call all night; now the
-orchestrator records the dead token on the first failure and `pull` idles instead of leasing rows until the reconnect
-clears it (`InboxDispatcher.idle`), so the customer's message waits in the inbox and Meta is not called. Plugin: a
+orchestrator records the dead token on the first failure and `pull` idles instead of leasing rows (`InboxDispatcher.idle`,
+released on stop) until the reconnect clears it, with one lease per `TOKEN_INVALID_IDLE_MS` (15 min) as the re-check
+that also bounds a wrong stamp; the customer's message waits in the inbox and Meta is not called. Plugin: a
 revoked relay token is reported to the gateway as `blocked` + `terminalDisconnect` (no auto-restart) and the snapshot
 falls back to the gateway's record once the loop is gone; failed polls report `recovering` with `lastDisconnect`; the
 status sink is guarded; an abort that lands during the queued setup still stops the loop; a pull that returns after a

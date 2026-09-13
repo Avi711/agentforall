@@ -47,6 +47,7 @@ import {
   OWNER_MESSAGE_MAX_CHARS,
   PROFILE_NAME_MAX_CHARS,
   SEND_RATE_PER_SECOND,
+  TOKEN_INVALID_IDLE_MS,
   isCustomerMessage,
   isHeldByOwner,
   isOwnerEcho,
@@ -385,8 +386,9 @@ export class WhatsappCloudManager {
 
   // Owner replies from the app are applied first, in order, and never reach the plugin; a failure leaves the batch for redelivery.
   async pull(instanceId: string, waitMs: number): Promise<InboundMessage[]> {
-    // A dead token answers nobody: leasing rows would turn every lease into a failed Meta call. The reconnect clears it.
-    if (this.healthCache.get(instanceId)?.health === "token_invalid") {
+    // A dead token answers nobody: leasing rows would turn every lease into a failed Meta call. A reconnect clears it.
+    const health = this.healthCache.get(instanceId);
+    if (health?.health === "token_invalid" && this.now().getTime() - health.at < TOKEN_INVALID_IDLE_MS) {
       await this.dispatcher.idle(waitMs);
       return [];
     }

@@ -31,6 +31,8 @@ export const SEND_RATE_PER_SECOND = 80;
 export const COEXISTENCE_SEND_RATE_PER_SECOND = 20;
 // After the owner answers a customer from the app the bot stays out for a day from that message (Meta's own handover lapse).
 export const OWNER_HOLD_MS = 24 * 60 * 60 * 1000;
+// How long a bot's polls idle after a dead-token failure before one lease re-checks; bounds a wrong stamp too.
+export const TOKEN_INVALID_IDLE_MS = 15 * 60 * 1000;
 // Telegram's message limit is 4096; the lead lines take the rest.
 export const OWNER_MESSAGE_MAX_CHARS = 3500;
 export const PROFILE_NAME_MAX_CHARS = 80;
