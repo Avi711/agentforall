@@ -108,7 +108,7 @@ async function startAccount(ctx, dispatch, fetchImpl) {
     );
   };
   ctx.abortSignal?.addEventListener("abort", onAbort, { once: true });
-  // An abort that landed while the setup was queued fires no event.
+  // An abort in the gap between the setup resolving and the listener being added fires no event.
   if (ctx.abortSignal?.aborted) onAbort();
   try {
     await loop.done;
