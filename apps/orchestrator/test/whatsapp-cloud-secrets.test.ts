@@ -44,6 +44,13 @@ test("a number kept in the WhatsApp Business app has no PIN, and that survives e
   assert.deepEqual(decryptConfig(stored, key), config);
 });
 
+test("a stored row with an encrypted PIN still passes the config schema", () => {
+  const stored = encryptConfig(configWith([makeWhatsappCloudChannel({ pin: "246810" })]), key);
+  const parsed = InstanceConfigSchema.safeParse(stored);
+
+  assert.equal(parsed.success, true, JSON.stringify(parsed.success ? null : parsed.error.issues));
+});
+
 test("a business number saved before coexistence existed still loads, as a plain API number", () => {
   const { coexistence: _added, ...saved } = makeWhatsappCloudChannel();
   const parsed = InstanceConfigSchema.safeParse({ ...configWith([]), channels: [saved] });

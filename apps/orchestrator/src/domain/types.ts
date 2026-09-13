@@ -160,7 +160,8 @@ export const InstanceConfigSchema: z.ZodType<InstanceConfig, z.ZodTypeDef, unkno
         displayPhoneNumber: z.string().min(1),
         verifiedName: z.string(),
         accessToken: z.string().min(1),
-        pin: z.string().regex(/^\d{6}$/).nullable(),
+        // Stored encrypted; the 6-digit shape is enforced at the connect route.
+        pin: z.string().min(1).nullable(),
         coexistence: z.boolean().default(false),
         relayToken: z.string().min(1),
         relayUrl: z.string().url(),
