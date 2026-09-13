@@ -68,6 +68,9 @@ export interface AgentBackupStream {
 const STARTUP_SETTLE_MS = 120_000;
 const RESTARTABLE_STATUSES: readonly InstanceStatus[] = ["running", "degraded", "unhealthy"];
 
+const skipped = (reason: string): SystemRestartOutcome => ({ restarted: false, reason, transient: true });
+const blocked = (reason: string): SystemRestartOutcome => ({ restarted: false, reason, transient: false });
+
 export interface InstanceDetails extends Instance {
   provisioningStage: ProvisioningStage | null;
   provisioningHistory: ProvisioningEvent[];
@@ -254,18 +257,22 @@ export class InstanceManager {
   async restartBySystem(id: string): Promise<SystemRestartOutcome> {
     return this.operationLock.run(id, async () => {
       const inst = await this.requireInstance(id);
-      if (!RESTARTABLE_STATUSES.includes(inst.status)) return { restarted: false, reason: `bot is ${inst.status}` };
-      if (!inst.containerId) return { restarted: false, reason: "bot has no container on record" };
+      if (!RESTARTABLE_STATUSES.includes(inst.status)) return skipped(`bot is ${inst.status}`);
+      if (!inst.containerId) return blocked("bot has no container on record");
       const state = await this.runtime.containerState(inst.containerId);
-      if (!state?.running) return { restarted: false, reason: "container is not running" };
-      if (isContainerBooting(state, Date.now())) return { restarted: false, reason: "container is booting" };
+      if (!state?.running) return skipped("container is not running");
+      if (isContainerBooting(state, Date.now())) return skipped("container is booting");
       if (!(await this.runtimes.get(inst.runtimeKind).isOnCurrentImage(inst.containerId))) {
-        return { restarted: false, reason: "container is on another image; recreate is a supervised step" };
+        return blocked("container is on another image; recreate is a supervised step");
       }
-      if (await this.gatewayAnswers(inst)) return { restarted: false, reason: "gateway answered" };
+      if (await this.gatewayAnswers(inst)) return skipped("gateway answered");
       await this.restartLocked(inst, { failureStatus: inst.status, injectCreds: false });
       return { restarted: true };
     });
+  }
+
+  isOperating(id: string): boolean {
+    return this.operationLock.isHeld(id);
   }
 
   private async gatewayAnswers(inst: Instance): Promise<boolean> {

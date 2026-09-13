@@ -115,10 +115,10 @@ export class Reconciler {
     const freshnessCutoff = new Date(Date.now() - RECONCILER_FRESHNESS_GRACE_MS);
 
     for (const inst of running) {
-      if (inst.updatedAt > freshnessCutoff) continue;
+      if (inst.updatedAt > freshnessCutoff || this.deps.manager.isOperating(inst.id)) continue;
 
-      const running = await this.resolveRunning(inst);
-      if (running === null) {
+      const containerRunning = await this.resolveRunning(inst);
+      if (containerRunning === null) {
         this.deps.logger.warn(
           { instanceId: inst.id },
           "container not found — marking error",
@@ -129,7 +129,7 @@ export class Reconciler {
         continue;
       }
 
-      if (!running) {
+      if (!containerRunning) {
         this.deps.logger.info(
           { instanceId: inst.id },
           "container stopped — updating status",
@@ -142,15 +142,15 @@ export class Reconciler {
   // The row's id can lag a crashed rebuild; the container name is the durable handle.
   private async resolveRunning(inst: Instance): Promise<boolean | null> {
     if (inst.containerId) {
-      const info = await this.deps.runtime.inspect(inst.containerId);
-      if (info) return info.State.Running;
+      const state = await this.deps.runtime.containerState(inst.containerId);
+      if (state) return state.running;
     }
     const byName = await this.deps.runtime.findContainerByName(inst.containerName);
     if (!byName) return null;
-    const info = await this.deps.runtime.inspect(byName);
-    if (!info) return null;
+    const state = await this.deps.runtime.containerState(byName);
+    if (!state) return null;
     await this.deps.repo.updateContainerId(inst.id, byName);
-    return info.State.Running;
+    return state.running;
   }
 
   private async expireStalePairings(): Promise<void> {

@@ -88,7 +88,8 @@ function createLogger() {
       if (msg) infos.push(msg);
     },
     warn: (_ctx: unknown, msg?: string) => {
-      if (msg) warnings.push(msg);
+      if (typeof _ctx === "string") warnings.push(_ctx);
+      else if (msg) warnings.push(msg);
     },
     error: () => {},
   } as never;
@@ -224,6 +225,62 @@ test("the minute tick repairs a row whose container id lags, and writes are spac
   clock.now += 30_000;
   await monitor.pollAll();
   assert.equal(repo.healthUpdates.length, 2, "written again once the minute is up");
+});
+
+test("a failed probe on a stopped container does not rewrite the same container id", async () => {
+  const repo = new FakeRepo([makeInstance({ hasWhatsappCreds: false })]);
+  const observer = new RecordingObserver();
+  const { monitor } = createMonitor(
+    repo,
+    { gateway: async () => ({ healthy: false, degraded: null }), whatsapp: async () => "connected" },
+    { now: 1_000 },
+    silentLogger,
+    { observer, runtime: fakeRuntime({ ...SETTLED, running: false }) },
+  );
+
+  await monitor.pollAll();
+
+  assert.deepEqual(observer.samples, [{ id: "instance-1", sample: "unknown" }]);
+  assert.deepEqual(repo.containerIdUpdates, []);
+});
+
+test("stop waits for the poll in flight and a second poll never overlaps it", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let probes = 0;
+  const { logger, warnings } = createLogger();
+  const { monitor } = createMonitor(
+    new FakeRepo([makeInstance({ hasWhatsappCreds: false })]),
+    {
+      gateway: async () => {
+        probes += 1;
+        await gate;
+        return { healthy: true, degraded: null };
+      },
+      whatsapp: async () => "connected",
+    },
+    { now: 1_000 },
+    logger,
+  );
+
+  const first = monitor.pollAll();
+  await monitor.pollAll();
+  assert.deepEqual(warnings, ["health monitor poll skipped; previous pass still running"]);
+
+  let stopped = false;
+  const stopping = monitor.stop().then(() => {
+    stopped = true;
+  });
+  await Promise.resolve();
+  assert.equal(stopped, false, "stop waits for the poll");
+
+  release();
+  await first;
+  await stopping;
+  assert.equal(stopped, true);
+  assert.equal(probes, 1, "only the first poll probed");
 });
 
 test("liveness observer gets down only when the gateway itself fails", async () => {

@@ -1,0 +1,113 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import type { FastifyBaseLogger } from "fastify";
+import { HealthMonitor } from "../src/services/health-monitor.js";
+import { AutoRestarter, type SystemRestartOutcome } from "../src/services/auto-restarter.js";
+import type { ContainerRuntime, ContainerState } from "../src/services/container-runtime.js";
+import type { AgentRuntimeRegistry } from "../src/services/agent-runtime/registry.js";
+import type { Instance } from "../src/domain/types.js";
+import { makeInstance } from "./helpers/fixtures.js";
+
+const FAILURE_THRESHOLD = 4;
+const SETTLED: ContainerState = { running: true, restarting: false, health: "healthy", startedAt: null };
+
+function harness(options: { gatewayUp?: () => boolean; state?: ContainerState } = {}) {
+  const inst = makeInstance([], { hasWhatsappCreds: false, lastSeenAt: null });
+  const restarts: string[] = [];
+  const clock = { now: 10_000_000 };
+  const logger = { info: () => {}, warn: () => {}, error: () => {} } as unknown as FastifyBaseLogger;
+
+  const repo = {
+    findByStatuses: async (): Promise<Instance[]> => [inst],
+    updateHealth: async () => {},
+    updatePairing: async () => {},
+    updateContainerId: async () => {},
+  };
+  const runtime = {
+    containerState: async () => options.state ?? SETTLED,
+    findContainerByName: async () => inst.containerId,
+  } as unknown as ContainerRuntime;
+  const adapters = {
+    get: () => ({
+      kind: "openclaw",
+      probeGateway: async () => ({ healthy: options.gatewayUp?.() ?? false, degraded: null }),
+    }),
+  } as unknown as AgentRuntimeRegistry;
+  const manager = {
+    restartBySystem: async (id: string): Promise<SystemRestartOutcome> => {
+      restarts.push(id);
+      return { restarted: true };
+    },
+  };
+
+  const restarter = new AutoRestarter(
+    manager,
+    { append: async () => {} },
+    logger,
+    { failureThreshold: FAILURE_THRESHOLD, cooldownMs: 600_000, maxRestartsPerWindow: 3, windowMs: 3_600_000 },
+    () => clock.now,
+  );
+  const monitor = new HealthMonitor(
+    repo as never,
+    runtime,
+    adapters,
+    logger,
+    {
+      pollIntervalMs: 15_000,
+      channelPollIntervalMs: 60_000,
+      channelStateMaxAgeMs: 600_000,
+      channelProbeMaxBackoffMs: 900_000,
+      degradedThreshold: 5,
+      unhealthyThreshold: 10,
+      requestTimeoutMs: 1_000,
+      channelProbeTimeoutMs: 1_000,
+      useDockerNetwork: false,
+      maxConcurrentChecks: 4,
+    },
+    () => clock.now,
+    restarter,
+  );
+
+  const poll = async (times = 1) => {
+    for (let i = 0; i < times; i++) {
+      await monitor.pollAll();
+      await restarter.settle();
+      clock.now += 15_000;
+    }
+  };
+  return { inst, poll, restarts };
+}
+
+test("four failed polls on a settled bot produce exactly one system restart", async () => {
+  const h = harness();
+
+  await h.poll(FAILURE_THRESHOLD - 1);
+  assert.deepEqual(h.restarts, []);
+
+  await h.poll();
+  assert.deepEqual(h.restarts, [h.inst.id]);
+
+  await h.poll(2);
+  assert.equal(h.restarts.length, 1, "cooldown holds across further failing polls");
+});
+
+test("a bot that answers again before the threshold is never restarted", async () => {
+  let up = false;
+  const h = harness({ gatewayUp: () => up });
+
+  await h.poll(FAILURE_THRESHOLD - 1);
+  up = true;
+  await h.poll();
+  up = false;
+  await h.poll(FAILURE_THRESHOLD - 1);
+
+  assert.deepEqual(h.restarts, []);
+});
+
+test("a container Docker still reports as starting is never restarted however long it fails", async () => {
+  const h = harness({ state: { ...SETTLED, health: "starting" } });
+
+  await h.poll(FAILURE_THRESHOLD * 3);
+
+  assert.deepEqual(h.restarts, []);
+});

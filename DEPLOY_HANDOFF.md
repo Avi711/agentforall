@@ -373,6 +373,10 @@ suspended when >50% of the fleet fails at once; `AUTO_RESTART_*` env, default on
 cap for new bots, `MemoryWatch` ("bot memory high" at 80 %), health monitor writes a healthy row once a minute and consults Docker
 once a minute per healthy bot, reconciler resolves containers by name before marking `error`. Phase 1 of the hosting plan is
 complete except the first deliberate VM reboot.
+2026-09-14 (later): orchestrator `orchestrator@sha256:1c3509d895d77e34880874622eed953a7d2ff6825a204fc18bc9119c3ecabe41` — final
+audit fixes: a restart the system cannot perform (other image, no container on record) spends budget and logs
+`instance.auto_restart_blocked`, so the exhausted alert still fires; cooldown independent of the budget window; reconciler skips
+rows under an operation lock (no false `stopped` during a restart); `startup.sh` never formats the data disk after bootstrap.
 TODO once the Cloud API is live: a business-only bot (no Baileys link) has no owner number, so the owner is a stranger
 on the business number. Show "המספר שלי" for it (`BotCard.tsx:528`, `OwnerIdentityDialog` `whatsappAvailable`) and store
 the number on the `whatsapp_cloud` channel instead of `withWhatsappOwnerNumber` adding a Baileys channel (`owner.ts:17`).

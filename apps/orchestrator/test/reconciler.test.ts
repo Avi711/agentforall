@@ -7,7 +7,11 @@ import { makeInstance } from "./helpers/fixtures.js";
 
 const OLD = new Date("2026-08-21T00:00:00.000Z");
 
-function harness(rows: Instance[], docker: { known: Record<string, boolean>; byName: string | null }) {
+function harness(
+  rows: Instance[],
+  docker: { known: Record<string, boolean>; byName: string | null },
+  operating: (id: string) => boolean = () => false,
+) {
   const statusUpdates: { id: string; status: InstanceStatus }[] = [];
   const containerIdUpdates: { id: string; containerId: string }[] = [];
   const repo = {
@@ -22,9 +26,14 @@ function harness(rows: Instance[], docker: { known: Record<string, boolean>; byN
     },
     updatePairing: async () => {},
   };
+  const byNameLookups = { count: 0 };
   const runtime = {
-    inspect: async (id: string) => (id in docker.known ? { State: { Running: docker.known[id] } } : null),
-    findContainerByName: async () => docker.byName,
+    containerState: async (id: string) =>
+      id in docker.known ? { running: docker.known[id], restarting: false, health: "none", startedAt: null } : null,
+    findContainerByName: async () => {
+      byNameLookups.count += 1;
+      return docker.byName;
+    },
     remove: async () => {},
     removeVolume: async () => {},
   };
@@ -32,13 +41,33 @@ function harness(rows: Instance[], docker: { known: Record<string, boolean>; byN
     repo: repo as never,
     runtime: runtime as never,
     runtimes: { get: () => ({ stateVolumeName: (id: string) => `oc-${id}-state` }) } as never,
-    manager: { resumeProvisioning: async () => undefined } as never,
+    manager: { resumeProvisioning: async () => undefined, isOperating: operating } as never,
     pairingManager: { expireStale: async () => {} } as never,
     logger: { info: () => {}, warn: () => {}, error: () => {} } as unknown as FastifyBaseLogger,
     pairingStaleThresholdMs: 900_000,
   });
-  return { reconciler, statusUpdates, containerIdUpdates };
+  return { reconciler, statusUpdates, containerIdUpdates, byNameLookups };
 }
+
+test("a known container that is not running marks the row stopped without a name lookup", async () => {
+  const row = makeInstance([], { containerId: "container-1", updatedAt: OLD });
+  const h = harness([row], { known: { "container-1": false }, byName: null });
+
+  await h.reconciler.run();
+
+  assert.deepEqual(h.statusUpdates, [{ id: row.id, status: "stopped" }]);
+  assert.equal(h.byNameLookups.count, 0);
+  assert.deepEqual(h.containerIdUpdates, []);
+});
+
+test("a row under an operation lock is left alone even when its container is down", async () => {
+  const row = makeInstance([], { containerId: "container-1", updatedAt: OLD });
+  const h = harness([row], { known: { "container-1": false }, byName: null }, (id) => id === row.id);
+
+  await h.reconciler.run();
+
+  assert.deepEqual(h.statusUpdates, []);
+});
 
 test("a running row whose container id lags is repaired by name instead of being marked error", async () => {
   const row = makeInstance([], { containerId: "stale", updatedAt: OLD });

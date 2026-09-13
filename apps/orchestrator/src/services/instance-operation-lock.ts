@@ -1,6 +1,10 @@
 export class InstanceOperationLock {
   private readonly locks = new Map<string, Promise<void>>();
 
+  isHeld(id: string): boolean {
+    return this.locks.has(id);
+  }
+
   async run<T>(id: string, fn: () => Promise<T>): Promise<T> {
     const previous = this.locks.get(id) ?? Promise.resolve();
     let release!: () => void;

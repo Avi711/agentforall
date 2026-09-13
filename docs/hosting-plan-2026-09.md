@@ -29,6 +29,8 @@ Sources: docs.cloud.google.com/kubernetes-engine/docs/how-to/node-auto-repair, k
 
 6. **Health monitor at scale — DONE 2026-09-14** (orchestrator `d2484033`). A healthy `running` row is written only when `last_seen_at` is older than 60 s (or on any status/failure change); Docker is consulted once a minute per healthy bot (repairing a lagging container id) and otherwise only to classify a failed probe. The reconciler resolves containers by name before marking a row `error`. Poll interval stays 15 s. At 1,000 bots: ~17 writes/s → ~1/s-equivalent per minute tick instead of ~70/s.
 
+Final audit 2026-09-14 (orchestrator `1c3509d8`): blocked restarts (other image, no container) spend budget and log `instance.auto_restart_blocked` so the exhausted alert still fires; cooldown no longer depends on the budget window; reconciler skips rows under an operation lock; `startup.sh` refuses to format the data disk once bootstrapped. Two independent reviews, 450 tests.
+
 ## 2. Multi-host (≈2 weeks, before a campaign that can bring hundreds)
 
 Design: one orchestrator VM (e2-small) + identical worker VMs, no public IP, egress via Cloud NAT. Workers run `docker-socket-proxy` + bots only. Orchestrator reaches each worker's proxy over the VPC through an mTLS terminator on `:2376`; VPC firewall allows source tag `orchestrator` only. Private Cloud DNS zone: `orchestrator.internal`, `worker-N.internal`. Terraform `worker_count` creates VM, DNS record, firewall membership, mTLS cert (private CA in Secret Manager, fetched by `startup.sh`).

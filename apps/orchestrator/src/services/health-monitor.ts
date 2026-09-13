@@ -56,7 +56,6 @@ interface ChannelStateEntry {
 
 export class HealthMonitor {
   private intervalHandle: ReturnType<typeof setInterval> | null = null;
-  private polling = false;
   private currentPoll: Promise<void> | null = null;
   private readonly channelStates = new Map<string, ChannelStateEntry>();
   private readonly degradedInstances = new Set<string>();
@@ -97,17 +96,15 @@ export class HealthMonitor {
   }
 
   async pollAll(): Promise<void> {
-    if (this.polling) {
+    if (this.currentPoll) {
       this.logger.warn("health monitor poll skipped; previous pass still running");
       return;
     }
-    this.polling = true;
     this.currentPoll = this.runPoll();
     try {
       await this.currentPoll;
     } finally {
       this.currentPoll = null;
-      this.polling = false;
     }
   }
 
@@ -365,7 +362,7 @@ export class HealthMonitor {
     if (!byName) return null;
     const state = await this.runtime.containerState(byName);
     if (!state) return null;
-    await this.repo.updateContainerId(instance.id, byName);
+    if (byName !== instance.containerId) await this.repo.updateContainerId(instance.id, byName);
     return { containerId: byName, state };
   }
 }

@@ -62,10 +62,10 @@ class FakeRuntime {
     return true;
   }
 
-  async restart(containerId: string): Promise<void> {
+  restart = async (containerId: string): Promise<void> => {
     if (this.restartError) throw this.restartError;
     this.restartedContainers.push(containerId);
-  }
+  };
 
   async start(containerId: string): Promise<void> {
     this.startedContainers.push(containerId);
@@ -130,8 +130,41 @@ test("leaves a bot alone when its gateway answers inside the lock", async () => 
   assert.deepEqual(await h.manager.restartBySystem(h.repo.instance.id), {
     restarted: false,
     reason: "gateway answered",
+    transient: true,
   });
   assert.deepEqual(h.runtime.restartedContainers, []);
+});
+
+test("a bot with no container on record is a blocked restart, not a transient skip", async () => {
+  const h = harness({ instance: { containerId: null } });
+
+  assert.deepEqual(await h.manager.restartBySystem(h.repo.instance.id), {
+    restarted: false,
+    reason: "bot has no container on record",
+    transient: false,
+  });
+  assert.equal(h.probes(), 0);
+});
+
+test("the reconciler can see a bot while a restart holds its lock", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const h = harness({ instance: { status: "unhealthy" } });
+  h.runtime.restart = async (containerId: string) => {
+    h.runtime.restartedContainers.push(containerId);
+    await gate;
+  };
+
+  const restart = h.manager.restartBySystem(h.repo.instance.id);
+  await Promise.resolve();
+  assert.equal(h.manager.isOperating(h.repo.instance.id), true);
+  assert.equal(h.manager.isOperating("someone-else"), false);
+
+  release();
+  await restart;
+  assert.equal(h.manager.isOperating(h.repo.instance.id), false);
 });
 
 test("leaves a booting or freshly started container alone without probing it", async () => {
@@ -145,6 +178,7 @@ test("leaves a booting or freshly started container alone without probing it", a
     assert.deepEqual(await h.manager.restartBySystem(h.repo.instance.id), {
       restarted: false,
       reason: "container is booting",
+      transient: true,
     });
     assert.equal(h.probes(), 0);
     assert.deepEqual(h.runtime.restartedContainers, []);
@@ -158,6 +192,7 @@ test("never migrates a container that is on another image", async () => {
 
   assert.equal(outcome.restarted, false);
   assert.match(outcome.restarted ? "" : outcome.reason, /another image/);
+  assert.equal(outcome.restarted ? null : outcome.transient, false);
   assert.equal(h.probes(), 0);
   assert.deepEqual(h.runtime.restartedContainers, []);
   assert.deepEqual(h.runtime.startedContainers, []);
@@ -168,6 +203,7 @@ test("leaves a stopped bot and a container Docker cannot find alone", async () =
   assert.deepEqual(await stopped.manager.restartBySystem(stopped.repo.instance.id), {
     restarted: false,
     reason: "bot is stopped",
+    transient: true,
   });
   assert.equal(stopped.probes(), 0);
   assert.equal(stopped.repo.instance.status, "stopped");
@@ -176,6 +212,7 @@ test("leaves a stopped bot and a container Docker cannot find alone", async () =
   assert.deepEqual(await gone.manager.restartBySystem(gone.repo.instance.id), {
     restarted: false,
     reason: "container is not running",
+    transient: true,
   });
   assert.equal(gone.probes(), 0);
 });

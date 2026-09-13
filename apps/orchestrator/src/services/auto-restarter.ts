@@ -10,7 +10,10 @@ export interface AutoRestartConfig {
   windowMs: number;
 }
 
-export type SystemRestartOutcome = { restarted: true } | { restarted: false; reason: string };
+// A transient skip clears on its own (bot answered, container booting); a blocked one needs a deploy or a human.
+export type SystemRestartOutcome =
+  | { restarted: true }
+  | { restarted: false; reason: string; transient: boolean };
 
 export interface SystemRestarter {
   restartBySystem(id: string): Promise<SystemRestartOutcome>;
@@ -27,6 +30,7 @@ export interface RestartEventLog {
 export const AUTO_RESTART_EVENTS = {
   restarted: "instance.auto_restarted",
   failed: "instance.auto_restart_failed",
+  blocked: "instance.auto_restart_blocked",
   exhausted: "instance.auto_restart_exhausted",
 } as const;
 
@@ -98,9 +102,9 @@ export class AutoRestarter implements LivenessObserver {
     if (state.consecutiveFailures < this.config.failureThreshold) return;
 
     const now = this.now();
-    state.restartsAt = state.restartsAt.filter((at) => now - at < this.config.windowMs);
     const last = state.restartsAt.at(-1);
     if (last !== undefined && now - last < this.config.cooldownMs) return;
+    state.restartsAt = state.restartsAt.filter((at) => now - at < this.config.windowMs);
     if (state.restartsAt.length >= this.config.maxRestartsPerWindow) {
       this.launch(this.notifyExhausted(inst, state));
       return;
@@ -128,14 +132,18 @@ export class AutoRestarter implements LivenessObserver {
     try {
       this.logger.warn({ instanceId: inst.id, ...payload }, "gateway unresponsive; restarting bot");
       const outcome = await this.manager.restartBySystem(inst.id);
-      if (!outcome.restarted) {
+      if (outcome.restarted) {
+        state.restartsAt.push(now);
+        await this.record(inst.id, AUTO_RESTART_EVENTS.restarted, payload);
+      } else if (outcome.transient) {
         this.logger.info({ instanceId: inst.id, reason: outcome.reason }, "auto restart skipped");
-        return;
+      } else {
+        // Spends budget like a failure: a bot the system cannot restart must reach the exhausted alert, not loop quietly.
+        state.restartsAt.push(now);
+        this.logger.warn({ instanceId: inst.id, reason: outcome.reason }, "auto restart blocked");
+        await this.record(inst.id, AUTO_RESTART_EVENTS.blocked, { ...payload, reason: outcome.reason });
       }
-      state.restartsAt.push(now);
-      await this.record(inst.id, AUTO_RESTART_EVENTS.restarted, payload);
     } catch (err) {
-      // A failed attempt spends budget too, otherwise a bot that cannot restart is retried forever.
       state.restartsAt.push(now);
       this.logger.error({ instanceId: inst.id, err }, "auto restart failed");
       await this.record(inst.id, AUTO_RESTART_EVENTS.failed, { ...payload, error: errorMessage(err) });

@@ -95,7 +95,7 @@ resource "google_logging_project_exclusion" "orchestrator_info" {
   filter      = "logName=\"projects/${var.project_id}/logs/gcplogs-docker-driver\" AND jsonPayload.container.name=\"/orchestrator\" AND jsonPayload.message:\"\\\"level\\\":30,\""
 }
 
-# The orchestrator logs these at error level; they mean a bot needs a human.
+# Matched on message text; each line means a bot needs a human.
 resource "google_monitoring_alert_policy" "orchestrator_errors" {
   display_name          = "agent-forall orchestrator needs attention"
   combiner              = "OR"

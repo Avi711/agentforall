@@ -23,7 +23,11 @@ interface Recorded {
 }
 
 function harness(
-  options: { restart?: (id: string) => Promise<SystemRestartOutcome>; append?: () => Promise<void> } = {},
+  options: {
+    restart?: (id: string) => Promise<SystemRestartOutcome>;
+    append?: () => Promise<void>;
+    config?: typeof CONFIG;
+  } = {},
 ) {
   const restarts: string[] = [];
   const events: Recorded[] = [];
@@ -57,7 +61,7 @@ function harness(
     },
   } as never;
 
-  const restarter = new AutoRestarter(manager, eventLog, logger, CONFIG, () => clock.now);
+  const restarter = new AutoRestarter(manager, eventLog, logger, options.config ?? CONFIG, () => clock.now);
   const inst = makeInstance([]);
   const report = (sample: LivenessSample, instance: Instance = inst): LivenessReport[] => [
     { instance, sample },
@@ -150,8 +154,8 @@ test("budget frees up once the window has passed", async () => {
   assert.equal(h.events.filter((e) => e.eventType === AUTO_RESTART_EVENTS.exhausted).length, 1);
 });
 
-test("a restart the manager declined spends no budget", async () => {
-  const h = harness({ restart: async () => ({ restarted: false, reason: "gateway answered" }) });
+test("a restart the manager declined for a passing reason spends no budget", async () => {
+  const h = harness({ restart: async () => ({ restarted: false, reason: "gateway answered", transient: true }) });
 
   await h.observe("down", 3);
   await h.observe("down", 3);
@@ -159,6 +163,43 @@ test("a restart the manager declined spends no budget", async () => {
   assert.equal(h.restarts.length, 2, "asked again after the failure count rebuilt");
   assert.deepEqual(h.events, []);
   assert.ok(h.infos.includes("auto restart skipped"));
+});
+
+test("a restart the system cannot perform spends budget and ends in the exhausted alert", async () => {
+  const h = harness({
+    restart: async () => ({ restarted: false, reason: "container is on another image", transient: false }),
+  });
+
+  await h.observe("down", 3);
+  assert.deepEqual(h.warnings, ["gateway unresponsive; restarting bot", "auto restart blocked"]);
+  assert.deepEqual(h.events.map((e) => e.eventType), [AUTO_RESTART_EVENTS.blocked]);
+  assert.equal(h.events[0]?.payload?.reason, "container is on another image");
+
+  h.clock.now += CONFIG.cooldownMs - 1;
+  await h.observe("down", 3);
+  assert.equal(h.restarts.length, 1, "not asked again inside the cooldown");
+
+  for (let i = 1; i <= CONFIG.maxRestartsPerWindow; i++) {
+    h.clock.now += CONFIG.cooldownMs;
+    await h.observe("down", 3);
+  }
+  assert.equal(h.restarts.length, CONFIG.maxRestartsPerWindow);
+  assert.deepEqual(h.events.map((e) => e.eventType).slice(-1), [AUTO_RESTART_EVENTS.exhausted]);
+  assert.equal(h.events.filter((e) => e.eventType === AUTO_RESTART_EVENTS.blocked).length, 3);
+  assert.deepEqual(h.errors, ["auto restart budget exhausted; bot needs manual attention"]);
+});
+
+test("the cooldown holds even when it is longer than the budget window", async () => {
+  const h = harness({ config: { ...CONFIG, cooldownMs: 2 * CONFIG.windowMs } });
+
+  await h.observe("down", 3);
+  h.clock.now += CONFIG.windowMs + 1;
+  await h.observe("down", 3);
+  assert.equal(h.restarts.length, 1);
+
+  h.clock.now += CONFIG.windowMs;
+  await h.observe("down", 3);
+  assert.equal(h.restarts.length, 2);
 });
 
 test("a failed restart is recorded, spends budget and does not throw", async () => {

@@ -29,6 +29,11 @@ DATA_DEV="/dev/disk/by-id/google-agent-forall-data"
 DATA_MOUNT="/mnt/docker"
 if [ -e "$DATA_DEV" ]; then
   if ! blkid "$DATA_DEV" >/dev/null 2>&1; then
+    # Only a never-bootstrapped VM may format; afterwards a blank data disk is a fault, not a fresh start.
+    if [ -f "$BOOTSTRAP_SENTINEL" ]; then
+      echo "error: data disk $DATA_DEV has no filesystem after bootstrap; refusing to format it"
+      exit 1
+    fi
     mkfs.ext4 -m 0 -E lazy_itable_init=0,lazy_journal_init=0,discard "$DATA_DEV"
   fi
   mkdir -p "$DATA_MOUNT"
