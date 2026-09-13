@@ -100,8 +100,9 @@ export interface ResourceLimits {
   cpuShares: number;
 }
 
+// Bots run at ~1 GB; 3 GB leaves room for a browser burst while a leak cannot eat the host (measured 2026-09-12).
 export const DEFAULT_RESOURCE_LIMITS: ResourceLimits = {
-  memoryMb: 4096,
+  memoryMb: 3072,
   cpuShares: 512,
 };
 

@@ -134,6 +134,8 @@ const AppConfigSchema = z.object({
   autoRestartCooldownMs: z.coerce.number().int().min(60_000).default(600_000),
   autoRestartMaxPerWindow: z.coerce.number().int().min(1).default(3),
   autoRestartWindowMs: z.coerce.number().int().min(600_000).default(3_600_000),
+  memoryWatchIntervalMs: z.coerce.number().int().min(60_000).default(300_000),
+  memoryWatchWarnFraction: z.coerce.number().min(0.1).max(1).default(0.8),
 
   shutdownTimeoutMs: z.coerce.number().int().min(1000).default(10_000),
 
@@ -296,6 +298,8 @@ export function loadConfig(): AppConfig {
     autoRestartCooldownMs: process.env.AUTO_RESTART_COOLDOWN_MS,
     autoRestartMaxPerWindow: process.env.AUTO_RESTART_MAX_PER_WINDOW,
     autoRestartWindowMs: process.env.AUTO_RESTART_WINDOW_MS,
+    memoryWatchIntervalMs: process.env.MEMORY_WATCH_INTERVAL_MS,
+    memoryWatchWarnFraction: process.env.MEMORY_WATCH_WARN_FRACTION,
     shutdownTimeoutMs: process.env.SHUTDOWN_TIMEOUT_MS,
     reconcileOnStartup: process.env.RECONCILE_ON_STARTUP,
     reconcileIntervalMs: process.env.RECONCILE_INTERVAL_MS,

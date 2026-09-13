@@ -29,6 +29,7 @@ import { PortAllocator } from "./services/port-allocator.js";
 import { InstanceManager } from "./services/instance-manager.js";
 import { HealthMonitor } from "./services/health-monitor.js";
 import { AutoRestarter } from "./services/auto-restarter.js";
+import { MemoryWatch } from "./services/memory-watch.js";
 import { Reconciler } from "./services/reconciler.js";
 import { EventRepository } from "./storage/event-repository.js";
 import { HealthService } from "./services/health-service.js";
@@ -395,6 +396,11 @@ async function main(): Promise<void> {
     autoRestarter,
   );
   healthMonitor.start();
+  const memoryWatch = new MemoryWatch(repo, runtime, log, {
+    intervalMs: config.memoryWatchIntervalMs,
+    warnFraction: config.memoryWatchWarnFraction,
+  });
+  memoryWatch.start();
 
   // Skip tick if a run is in flight, so overlapping intervals don't race on the same rows.
   let reconciling = false;
@@ -432,6 +438,7 @@ async function main(): Promise<void> {
     }
 
     await healthMonitor.stop();
+    await memoryWatch.stop();
     telegramLinker?.stop();
     await inboxListener?.stop();
     clearInterval(reconcileInterval);

@@ -169,7 +169,7 @@ Deployment order for this batch:
 
 - **Production is LIVE and HEALTHY.** Vercel + GCP VM + Supabase + Caddy TLS. `https://api.agentforall.co.il/health` → 200.
 - **VM:** `agent-forall` in `europe-west4-a`, **`e2-highmem-4`** (4 vCPU / 32 GB RAM), static IP `34.90.58.155`. Two disks: 50 GB boot (`autoDelete=true`) + 80 GB `agent-forall-data` (`autoDelete=false`, Docker `data-root` at `/mnt/docker`). Destroy-guarded — see open issue 3 before any `terraform apply`.
-- **Headroom (5 days to 2026-08-29):** CPU p50 6.3% / peak 63.6%; RAM p50 16.1% / peak 78.0% (~24 GB). 11 tenants idle at 300–730 MB each against 4 GB caps = 44 GB committed on 31 GB. Levers: `DEFAULT_RESOURCE_LIMITS.memoryMb` (4096) and `shmSizeBytes` (2 GB, `openclaw/adapter.ts`) — both fixed at create, so existing tenants need a recreate.
+- **Headroom (5 days to 2026-08-29):** CPU p50 6.3% / peak 63.6%; RAM p50 16.1% / peak 78.0% (~24 GB). 11 tenants idle at 300–730 MB each against 4 GB caps = 44 GB committed on 31 GB. Levers: `DEFAULT_RESOURCE_LIMITS.memoryMb` (4096 then; 3072 since 2026-09-14) and `shmSizeBytes` (2 GB, `openclaw/adapter.ts`) — both fixed at create, so existing tenants need a recreate.
 - **Bot status:** **PARTIALLY working.** The 1st message after pair gets eaten by Baileys 408 + channel-exit storm; the 2nd and 3rd messages reply in 35-41s on prod (vs 14-19s local). User decided to switch from Gemini → OpenAI to address this. (See "Open issues" below for verified-real root cause.)
 - **Last infra work (2026-08-29):** LiteLLM Cloud Run 2 vCPU/4 GiB → 1 vCPU/3 GiB (~₪160/mo); `prevent_destroy` + `deletionProtection` on the VM; tenant volumes migrated to a dedicated `agent-forall-data` disk (~25 s downtime, 12/12 containers healthy after).
 - **First task next session:** resolve open issue 3 (startup-script drift blocks every `terraform apply`), then `terraform import` the two alert policies and the `agent-forall-data` disk so state matches reality.
@@ -697,7 +697,7 @@ CREATE INDEX "idx_instances_host_status" ON "instances" USING btree ("host_id","
 - `e2-highmem-8` (8 vCPU/64 GB): ~20-25 active tenants, ~$285/mo
 - Multi-VM split: at >30 active tenants, add a second VM (host-scoping is already in place)
 
-Per-tenant resource cap: 4 GB RAM ceiling (`DEFAULT_RESOURCE_LIMITS` in `apps/orchestrator/src/domain/types.ts`). Not reservation — actual usage typically <1 GB.
+Per-tenant resource cap: 3 GB RAM ceiling for bots created from 2026-09-14 (`DEFAULT_RESOURCE_LIMITS` in `apps/orchestrator/src/domain/types.ts`; older bots keep the 4 GB stored in their config, API allows up to 4096 per bot). Not reservation — actual usage typically <1 GB. The orchestrator's memory watch warns `bot memory high` at 80 % of a bot's limit (alerted).
 
 ---
 

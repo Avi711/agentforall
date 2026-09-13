@@ -106,6 +106,11 @@ export interface ContainerState {
   startedAt: Date | null;
 }
 
+export interface ContainerMemory {
+  usedBytes: number;
+  limitBytes: number;
+}
+
 // Boots can outlast Docker's start period (doctor migrations run ~2 min), so age counts as booting too.
 export const BOOT_GRACE_MS = 180_000;
 
@@ -407,6 +412,22 @@ export class ContainerRuntime {
     return Boolean(info?.State.Running);
   }
 
+  // Like `docker stats`: usage minus droppable page cache (v1 total_inactive_file, v2 inactive_file); unlimited = host total.
+  async memoryUsage(containerId: string): Promise<ContainerMemory | null> {
+    let stats: Docker.ContainerStats;
+    try {
+      stats = await this.docker.getContainer(containerId).stats({ stream: false, "one-shot": true });
+    } catch (err: unknown) {
+      if (isDockerNotFound(err)) return null;
+      throw err;
+    }
+    const memory = stats.memory_stats;
+    if (typeof memory?.usage !== "number" || typeof memory.limit !== "number") return null;
+    const cache =
+      numberField(memory.stats, "total_inactive_file") ?? numberField(memory.stats, "inactive_file") ?? 0;
+    return { usedBytes: Math.max(0, memory.usage - cache), limitBytes: memory.limit };
+  }
+
   async containerState(containerId: string): Promise<ContainerState | null> {
     const info = await this.inspect(containerId);
     if (!info) return null;
@@ -663,6 +684,12 @@ function captureBoundedWritable(chunks: Buffer[], maxBytes: number): Writable {
       callback();
     },
   });
+}
+
+function numberField(source: unknown, key: string): number | null {
+  if (typeof source !== "object" || source === null) return null;
+  const value = (source as Record<string, unknown>)[key];
+  return typeof value === "number" ? value : null;
 }
 
 // Docker reports a zero timestamp for a container that never started.

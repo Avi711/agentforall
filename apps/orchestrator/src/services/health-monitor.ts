@@ -4,6 +4,7 @@ import type { Instance, InstanceStatus } from "../domain/types.js";
 import { isContainerBooting, type ContainerRuntime, type ContainerState } from "./container-runtime.js";
 import type { AgentRuntimeRegistry } from "./agent-runtime/registry.js";
 import type { AgentRuntimeAdapter, WhatsappLinkState } from "./agent-runtime/types.js";
+import { mapWithConcurrency } from "./concurrency.js";
 
 interface HealthMonitorConfig {
   pollIntervalMs: number;
@@ -369,32 +370,4 @@ function effectiveState(
   if (entry.establishedAt === 0) return "unknown";
   if (now - entry.establishedAt > maxAgeMs) return "unknown";
   return entry.state;
-}
-
-async function mapWithConcurrency<T, R>(
-  items: readonly T[],
-  concurrency: number,
-  fn: (item: T) => Promise<R>,
-): Promise<PromiseSettledResult<R>[]> {
-  const results: PromiseSettledResult<R>[] = new Array(items.length);
-  let nextIndex = 0;
-
-  async function worker(): Promise<void> {
-    while (nextIndex < items.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      try {
-        results[index] = {
-          status: "fulfilled",
-          value: await fn(items[index]!),
-        };
-      } catch (reason) {
-        results[index] = { status: "rejected", reason };
-      }
-    }
-  }
-
-  const workerCount = Math.min(Math.max(1, concurrency), items.length);
-  await Promise.all(Array.from({ length: workerCount }, () => worker()));
-  return results;
 }
