@@ -59,6 +59,8 @@ export const metadata: Metadata = {
   alternates: {
     canonical: siteUrl,
   },
+  // Meta Business Manager domain ownership (portfolio 1586169975794890).
+  verification: { other: { "facebook-domain-verification": "hylbvr9v4mxyz7o1os15lvglianxtu" } },
 };
 
 export const viewport: Viewport = {
