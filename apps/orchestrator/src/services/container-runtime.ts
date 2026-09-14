@@ -39,6 +39,7 @@ export interface OneOffResult {
 }
 
 export interface VolumeMount {
+  // A volume name, or an absolute host path (Docker treats a leading "/" as a bind).
   name: string;
   containerPath: string;
   readOnly?: boolean;

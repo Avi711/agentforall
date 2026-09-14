@@ -146,6 +146,8 @@ locals {
     "default-provider-api-key",
     "litellm-master-key",
     "composio-api-key",
+    "caddy-internal-ca-cert",
+    "caddy-internal-ca-key",
   ]
 }
 

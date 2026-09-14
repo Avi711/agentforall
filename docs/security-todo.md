@@ -15,6 +15,11 @@ Verified from inside a bot: `169.254.169.254` answered with the VM service accou
 
 ## Easy (1-2 days each)
 
+### S-14. Caddy on tenant-net also serves the public site to bots
+- **Risk:** since 2026-09-14 Caddy sits on `tenant-net` (alias `orchestrator.internal`); a bot can send Host `api.agentforall.co.il` to it and reach `/api/v1/*` — the same authenticated surface `orchestrator:3000` exposes to bots today, so no regression yet.
+- **Fix:** before the orchestrator leaves `tenant-net`: `@private remote_ip private_ranges` → `respond @private 404` on the public site (check the VM's own ops curls first: they arrive as the VM's private IP).
+- **Files:** `infra/startup.sh` (Caddyfile).
+
 ### S-1. Per-tenant rate limit on pair endpoints
 - **Risk:** one user spamming `POST /api/v1/instances/:id/pair` can exhaust the
   `PORT_RANGE_START..PORT_RANGE_END` pool and DoS new pairings.

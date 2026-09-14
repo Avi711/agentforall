@@ -174,6 +174,12 @@ if got != want:
     # The gateway's own startup state, independent of channel links.
     sudo docker exec "$NEW" curl -fsS http://127.0.0.1:18789/startupz >/dev/null \
       || { echo "  /startupz not 200" >&2; exit 1; }
+    # A bind of a missing host path is a directory, which Node would ignore: prove the relay trusts our CA.
+    sudo docker exec "$NEW" test -d /etc/agent-forall/ca.crt       && { echo "  /etc/agent-forall/ca.crt is a directory: the host CA file is missing" >&2; exit 1; }
+    if sudo docker exec "$NEW" test -f /etc/agent-forall/ca.crt; then
+      [ "$(sudo docker exec "$NEW" curl -s -m 10 --cacert /etc/agent-forall/ca.crt -o /dev/null -w '%{http_code}' "https://orchestrator.internal/api/v1/mcp/$ID")" = "401" ] \
+        || { echo "  relay via orchestrator.internal not reachable with the tenant CA" >&2; exit 1; }
+    fi
     # Migration state is proven by the boot (/startupz) and a valid config. Doctor's findings are the
     # tenant's own policy audit (open DMs, unreachable MCP servers, plaintext tokens): shown, not
     # fatal; doctor may exit non-zero on warnings alone, hence the || true on its exit code only.

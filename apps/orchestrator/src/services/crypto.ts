@@ -6,10 +6,8 @@ const KEY_LENGTH = 32;
 const IV_LENGTH = 12;
 const TAG_LENGTH = 16;
 
-// String envelope: `vN:` + base64(iv || ct || tag). Legacy un-prefixed accepted
-// on decrypt. Binary envelope: [version | iv | ct | tag]. AEAD AES-256-GCM, 96-bit random IV.
+// Envelope: `vN:` + base64(iv || ct || tag). Legacy un-prefixed accepted on decrypt. AEAD AES-256-GCM, 96-bit random IV.
 const VERSION_PREFIX = "v1:";
-const BINARY_VERSION = 0x01;
 
 export class CryptoError extends Error {
   constructor(reason: string) {
@@ -53,33 +51,6 @@ export function decrypt(ciphertext: string, key: Buffer): string {
   const decipher = createDecipheriv(ALGORITHM, key, iv);
   decipher.setAuthTag(tag);
   return decipher.update(body, undefined, "utf8") + decipher.final("utf8");
-}
-
-// Binary form for bytea blobs — skips the base64 round-trip the string form does.
-export function encryptBytes(plaintext: Buffer, key: Buffer): Buffer {
-  assertValidEncryptionKey(key);
-  const iv = randomBytes(IV_LENGTH);
-  const cipher = createCipheriv(ALGORITHM, key, iv);
-  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return Buffer.concat([Buffer.from([BINARY_VERSION]), iv, ciphertext, tag]);
-}
-
-export function decryptBytes(envelope: Buffer, key: Buffer): Buffer {
-  assertValidEncryptionKey(key);
-  if (envelope.length < 1 + IV_LENGTH + TAG_LENGTH) {
-    throw new CryptoError("envelope shorter than header+iv+tag");
-  }
-  const version = envelope[0];
-  if (version !== BINARY_VERSION) {
-    throw new CryptoError(`unsupported binary envelope version ${version}`);
-  }
-  const iv = envelope.subarray(1, 1 + IV_LENGTH);
-  const tag = envelope.subarray(envelope.length - TAG_LENGTH);
-  const body = envelope.subarray(1 + IV_LENGTH, envelope.length - TAG_LENGTH);
-  const decipher = createDecipheriv(ALGORITHM, key, iv);
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(body), decipher.final()]);
 }
 
 export function encryptConfig(

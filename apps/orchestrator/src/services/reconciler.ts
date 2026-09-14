@@ -72,7 +72,7 @@ export class Reconciler {
       // clears them before removal, but a reconciler-completed destroy may
       // cover paths (old rows, direct-to-DB writes) where that didn't happen.
       await this.deps.repo.updatePairing(inst.id, {
-        whatsappCreds: null,
+        whatsappPaired: false,
         whatsappAccountId: null,
         pairingStatus: "none",
       });

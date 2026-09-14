@@ -16,6 +16,7 @@ import type { PairingConfig } from "../config.js";
 import { PairingSessionRegistry } from "./pairing-session-registry.js";
 import type { PairingSidecarClient } from "./pairing-sidecar-client.js";
 import { PAIRING_USER, tmpfsOptions } from "./runtime-users.js";
+import { withTenantCa } from "./tenant-ca.js";
 import { findWhatsappChannel } from "../domain/channels.js";
 
 const SIDECAR_TMPFS_SIZE_MB = 16;
@@ -104,7 +105,7 @@ export class PairingManager {
       await this.runtime.removeIfExists(sidecarName);
 
       // tmpfs session dir ג€” sidecar tars and POSTs creds on success; nothing on host disk.
-      const sidecarId = await this.runtime.createSidecar({
+      const sidecarId = await this.runtime.createSidecar(withTenantCa({
         name: sidecarName,
         image: this.pairing.image,
         envVars: this.buildSidecarEnv(instance.id, authToken),
@@ -124,7 +125,7 @@ export class PairingManager {
         ...(this.pairing.publishSidecarPort
           ? { publishPort: this.pairing.port }
           : {}),
-      });
+      }, this.pairing.tenantCaCertPath));
 
       try {
         await this.runtime.start(sidecarId);
@@ -236,7 +237,7 @@ export class PairingManager {
       throw new InvalidStateError(instance.status, "pair_complete");
     }
 
-    const applied = await this.persistPairedState(instance.id, credsTarGz, accountId);
+    const applied = await this.persistPairedState(instance.id, accountId);
     if (!applied) {
       this.logger.warn(
         { instanceId: instance.id },
@@ -282,16 +283,12 @@ export class PairingManager {
     await this.completePairing(inst, credsTarGz, accountId);
   }
 
-  // CAS awaiting_* ג†’ paired with creds in one write; false on concurrent loss.
-  private persistPairedState(
-    instanceId: string,
-    creds: Buffer,
-    accountId: string | null,
-  ): Promise<boolean> {
+  // CAS awaiting_* → paired in one write; false on concurrent loss.
+  private persistPairedState(instanceId: string, accountId: string | null): Promise<boolean> {
     return this.repo.updatePairing(
       instanceId,
       {
-        whatsappCreds: creds,
+        whatsappPaired: true,
         whatsappAccountId: accountId,
         pairingStatus: "paired",
       },
@@ -332,7 +329,7 @@ export class PairingManager {
     } catch (err) {
       if (!injected) {
         await this.repo.updatePairing(instance.id, {
-          whatsappCreds: null,
+          whatsappPaired: false,
           whatsappAccountId: null,
           pairingStatus: "none",
         });

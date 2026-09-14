@@ -265,12 +265,12 @@ function harness(overrides: Overrides) {
     findById: async (id: string) => (id === instance.id ? instance : null),
     updatePairing: async (
       _id: string,
-      patch: { pairingStatus?: Instance["pairingStatus"]; whatsappCreds?: Buffer | null; whatsappAccountId?: string | null },
+      patch: { pairingStatus?: Instance["pairingStatus"]; whatsappPaired?: boolean; whatsappAccountId?: string | null },
     ) => {
       instance = {
         ...instance,
         ...(patch.pairingStatus !== undefined ? { pairingStatus: patch.pairingStatus } : {}),
-        ...(patch.whatsappCreds !== undefined ? { hasWhatsappCreds: patch.whatsappCreds !== null } : {}),
+        ...(patch.whatsappPaired !== undefined ? { hasWhatsappCreds: patch.whatsappPaired } : {}),
         ...(patch.whatsappAccountId !== undefined ? { whatsappAccountId: patch.whatsappAccountId } : {}),
       };
       return true;

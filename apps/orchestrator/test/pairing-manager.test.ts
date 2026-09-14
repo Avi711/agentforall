@@ -355,7 +355,7 @@ test("completePairing undoes the pairing when the session cannot be written into
   await settle(h, "pair.inject_failed");
 
   assert.deepEqual(h.calls, ["inject"]);
-  assert.deepEqual(h.pairingPatches.at(-1), { whatsappCreds: null, whatsappAccountId: null, pairingStatus: "none" });
+  assert.deepEqual(h.pairingPatches.at(-1), { whatsappPaired: false, whatsappAccountId: null, pairingStatus: "none" });
   assert.ok(!h.events.includes("pair.ready"));
 });
 

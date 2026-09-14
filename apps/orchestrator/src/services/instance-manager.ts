@@ -49,6 +49,7 @@ import {
   withWhatsappOwnerNumber,
 } from "../domain/channels.js";
 import { freshRelayToken } from "./relay.js";
+import { withTenantCa } from "./tenant-ca.js";
 
 export interface AgentBackupRestoreStorage {
   openObjectStream(
@@ -454,7 +455,7 @@ export class InstanceManager {
 
     // Failed container removal must still honor "delete everything".
     await this.repo.updatePairing(id, {
-      whatsappCreds: null,
+      whatsappPaired: false,
       whatsappAccountId: null,
       pairingStatus: "none",
     });
@@ -676,7 +677,7 @@ export class InstanceManager {
         if (!cleared) throw new UpstreamUnavailableError("whatsapp logout");
       }
       await this.repo.updatePairing(id, {
-        whatsappCreds: null,
+        whatsappPaired: false,
         whatsappAccountId: null,
         pairingStatus: "none",
       });
@@ -863,7 +864,7 @@ export class InstanceManager {
     }
 
     await this.runtime.ensureVolumeExists(adapter.stateVolumeName(inst.id));
-    return this.runtime.create(await adapter.buildContainerOptions(inst));
+    return this.runtime.create(withTenantCa(await adapter.buildContainerOptions(inst), this.appConfig.tenantCaCertPath));
   }
 
   private async ensureContainerStarted(containerId: string): Promise<void> {

@@ -4,7 +4,6 @@ import { instances } from "@agent-forall/db";
 import {
   encrypt,
   decrypt,
-  encryptBytes,
   encryptConfig,
   decryptConfig,
 } from "../services/crypto.js";
@@ -26,7 +25,7 @@ const HEALTH_STATUSES: InstanceStatus[] = ["running", "degraded", "unhealthy"];
 export interface PairingUpdate {
   pairingStatus?: PairingStatus;
   whatsappAccountId?: string | null;
-  whatsappCreds?: Buffer | null;
+  whatsappPaired?: boolean;
   lastSeenAt?: Date | null;
 }
 
@@ -326,12 +325,7 @@ export class InstanceRepository {
     if (patch.pairingStatus !== undefined) set.pairingStatus = patch.pairingStatus;
     if (patch.whatsappAccountId !== undefined)
       set.whatsappAccountId = patch.whatsappAccountId;
-    if (patch.whatsappCreds !== undefined) {
-      set.whatsappCreds =
-        patch.whatsappCreds === null
-          ? null
-          : encryptBytes(patch.whatsappCreds, this.encryptionKey);
-    }
+    if (patch.whatsappPaired !== undefined) set.whatsappPaired = patch.whatsappPaired;
     if (patch.lastSeenAt !== undefined) set.lastSeenAt = patch.lastSeenAt;
 
     const conditions = [eq(instances.id, id), this.ownedByHost()];
@@ -428,7 +422,7 @@ export class InstanceRepository {
       errorMessage: row.errorMessage,
       pairingStatus: row.pairingStatus as PairingStatus,
       whatsappAccountId: row.whatsappAccountId,
-      hasWhatsappCreds: Boolean(row.whatsappCreds),
+      hasWhatsappCreds: row.whatsappPaired,
       lastSeenAt: row.lastSeenAt,
       backupImport: {
         status: row.backupImportStatus,

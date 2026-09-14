@@ -6,9 +6,9 @@ import {
   jsonb,
   timestamp,
   text,
-  customType,
   index,
   uniqueIndex,
+  boolean,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { user } from "./auth.js";
@@ -40,12 +40,6 @@ export const BACKUP_IMPORT_STATUSES = [
 ] as const;
 
 export const AGENT_RUNTIME_KINDS = ["openclaw", "hermes"] as const;
-
-const bytea = customType<{ data: Buffer; notNull: false; default: false }>({
-  dataType() {
-    return "bytea";
-  },
-});
 
 export const instances = pgTable(
   "instances",
@@ -80,7 +74,7 @@ export const instances = pgTable(
       .notNull()
       .default("none"),
     whatsappAccountId: varchar("whatsapp_account_id", { length: 64 }),
-    whatsappCreds: bytea("whatsapp_creds"),
+    whatsappPaired: boolean("whatsapp_paired").notNull().default(false),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
 
     backupImportStatus: varchar("backup_import_status", {

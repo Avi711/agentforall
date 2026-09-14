@@ -289,7 +289,7 @@ Pattern: secrets created once with `gcloud secrets create`; values populated via
 | Secret | Purpose |
 |---|---|
 | `database-url` | Supabase pooler connection string |
-| `encryption-key` | 64-hex-chars; encrypts `instances.gateway_token` + `instances.whatsapp_creds`. ⚠️ Rotation requires re-encrypting all rows. |
+| `encryption-key` | 64-hex-chars; encrypts `instances.gateway_token`. ⚠️ Rotation requires re-encrypting all rows. |
 | `dashboard-service-token` | bearer token Vercel uses to call orchestrator. Matches Vercel env `ORCHESTRATOR_SERVICE_TOKEN`. |
 | `default-provider-api-key` | LLM provider API key (currently Gemini, switching to OpenAI) |
 | `composio-api-key` | Composio project API key for integrations. Never enters a tenant container (see `docs/integrations.md`). Create before deploying the integrations orchestrator image; `startup.sh` reads it on every boot. |
@@ -388,6 +388,37 @@ is wired (`ExecStartPost`); `tenant-net` is external to compose (created by star
 live: bot timeout, Caddy blocked, orchestrator 200, bot DNS ok. Rollout incident: a compose network-config change on `tenant-net`/`control-net` triggered a network
 recreate, the proxy lost its alias, API down ~10 min, bots unaffected; fixed by `--force-recreate docker-socket-proxy`. `control-net`
 now sits on `172.18.0.0/16`. Never change a compose network's config while containers are attached.
+2026-09-14 (Supabase egress incident): the Free-plan org showed 47.9 GB / 5 GB egress 40 h into the cycle (~23 GB/day) and Supabase
+restricted the project (402 on its API; direct Postgres kept answering). Cause: every instance read did `select()` of all columns,
+including `whatsapp_creds` (~840 KB per paired bot, 2 bots since the 2026-09-07 re-pairing), and the health monitor reads all active rows
+every 15 s (plus reconciler, memory watch, findById per API/relay call). Fix: orchestrator `orchestrator@sha256:b247ca1fcc8f8f66ebe23469a5bf6cbcaacc1d083e3e3b179034a5e0b131c3ba`
+projects every column except the archive and computes `hasWhatsappCreds` in SQL; per poll ~20 KB instead of ~1.7 MB. Deployed 22:35 UTC.
+Supabase's per-day chart: ~11 GB/day since at least 15 Aug (one archive), ~23 GB/day from 8 Sep (second archive) — every cycle was over
+the 5 GB quota; enforcement only came now. Check the chart on 2026-09-16: the bar for 15 Sep must be well under 1 GB.
+Open: plan decision (Free → Pro), an egress signal we can alert on. `whatsapp_creds` dropped the same night (below).
+2026-09-15 (whatsapp_paired, step 1): boolean `whatsapp_paired` replaces every use of the archive column. Order: `db:migrate` (0015 adds +
+backfills; the running image is unaffected) → deploy the image → run once, scoped: `UPDATE instances SET whatsapp_paired = true WHERE
+whatsapp_creds IS NOT NULL AND pairing_status = 'paired' AND NOT whatsapp_paired;` (covers a pairing completed between backfill and deploy;
+never re-run the unscoped backfill, the new code does not null the archive). No rollback past this image once a pairing changed. Step 2 drops
+`whatsapp_creds` (migration with the DROP only) and the `bytea` type.
+Step 1 DEPLOYED 2026-09-14 23:03 UTC: 0015 applied (2 rows backfilled = the 2 archives), orchestrator `orchestrator@sha256:f874b60f95999f135baad04004b727dafe70c8cd9e6e7fd29990f4f49fdf0361`
+healthy, scoped post-deploy UPDATE run (0 rows: nothing paired in the window).
+Step 2 DONE 2026-09-14 23:10 UTC: 0016 dropped `whatsapp_creds` (table 3 MB), schema + repository back to plain selects, orchestrator
+`orchestrator@sha256:1e0b6e70351a04796de186ccb251f4c0fca243ca71518fd5b85e0a83c1453234`. Rollback floor for the orchestrator is now this image.
+2026-09-14 (orchestrator.internal, pass 0): Caddy now serves `https://orchestrator.internal` (internal CA `agentforall`, root+key from
+Secret Manager `caddy-internal-ca-{cert,key}` into `/var/lib/agent-forall/ca`, allowlist = the three relay paths, everything else 404)
+and joins `tenant-net` with that alias — same-host bots cannot reach the VM IP on 443 (Docker bridge isolation, measured), workers will
+use private DNS later. Both Caddy sites proxy to `172.16.0.10:3000`. Orchestrator `orchestrator@sha256:d023982a850b3a428055b9ae3c2cce70b533cdb1b8640b2c2633a8a857e1fbff`
+mounts `root.crt` read-only into every bot and pairing sidecar with `NODE_EXTRA_CA_CERTS` when `TENANT_CA_CERT_PATH` is set (set on the VM).
+Verified: bot → alias 404 on /health (TLS ok), host with CA → relay paths 401/401/400, `/api/v1/instances` 404, public site unchanged.
+Found right after (the user asked): Caddy also answered the internal site on the public IP when the client sent SNI `orchestrator.internal`
+(relay path → 401 from the internet). The `@relay` matcher now requires `remote_ip private_ranges`; internet → 404, bots/host → 401.
+Pass 1 pending: `recreate-tenants.sh --force` so every bot carries the CA (still on http). Pass 2: `ORCHESTRATOR_INTERNAL_URL=https://orchestrator.internal`
+in `.env.runtime` + orchestrator restart; bots switch on their next config write. Before the orchestrator ever leaves `tenant-net`, every
+`openclaw.json` must show the https URL. `recreate-tenants.sh` now asserts the relay is reachable through the CA per bot.
+2026-09-14 (Caddy): the public site now 404s `/internal/*` (sidecar callbacks travel over tenant-net only); `/api/v1/admin/*` stays
+public because the dashboard's admin panel calls it with the service token. Applied by editing the VM's Caddyfile + `compose restart caddy`
+(~3 s): `sed -i` on a bind-mounted file swaps the inode, so `caddy reload` kept serving the old file until the container was restarted.
 2026-09-14 (Phase 2 step 2, slice 2): orchestrator `orchestrator@sha256:f8ff32b18d5276c9bae060da28823717d5c559a7accfb98e576e35880898bc1a`
 (Cloud Build `2c7f659e`), healthy. Relay URLs (MCP server, WhatsApp Cloud account) are derived from `ORCHESTRATOR_INTERNAL_URL`
 each time a bot's config is rendered; `relayUrl` left the instance config and the channel config. Migration `0014_drop_stored_relay_urls`

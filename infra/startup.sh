@@ -187,6 +187,12 @@ DASHBOARD_SERVICE_TOKEN=$(gcloud secrets versions access latest --secret=dashboa
 DEFAULT_PROVIDER_API_KEY=$(gcloud secrets versions access latest --secret=default-provider-api-key --project=${project_id})
 LITELLM_MASTER_KEY=$(gcloud secrets versions access latest --secret=litellm-master-key --project=${project_id})
 COMPOSIO_API_KEY=$(gcloud secrets versions access latest --secret=composio-api-key --project=${project_id})
+CA_DIR=/var/lib/agent-forall/ca
+install -d -m 0755 "$CA_DIR"
+gcloud secrets versions access latest --secret=caddy-internal-ca-cert --project=${project_id} > "$CA_DIR/root.crt.tmp"
+chmod 0644 "$CA_DIR/root.crt.tmp" && mv "$CA_DIR/root.crt.tmp" "$CA_DIR/root.crt"
+(umask 077; gcloud secrets versions access latest --secret=caddy-internal-ca-key --project=${project_id} > "$CA_DIR/root.key.tmp")
+mv "$CA_DIR/root.key.tmp" "$CA_DIR/root.key"
 LITELLM_GATEWAY_URL="${litellm_gateway_url}"
 DEFAULT_PROVIDER_BASE_URL="$LITELLM_GATEWAY_URL/v1"
 
@@ -231,6 +237,7 @@ PAIRING_REQUEST_TIMEOUT_MS=5000
 PAIRING_STALE_THRESHOLD_MS=900000
 PAIRING_LOG_LEVEL=info
 ORCHESTRATOR_INTERNAL_URL=http://orchestrator:3000
+TENANT_CA_CERT_PATH=$CA_DIR/root.crt
 DEFAULT_PROVIDER_NAME=litellm
 DEFAULT_PROVIDER_ID=litellm
 DEFAULT_PROVIDER_API_KEY=$DEFAULT_PROVIDER_API_KEY
@@ -270,6 +277,7 @@ else
   set_runtime_env SERVICE_TOKENS "$DASHBOARD_SERVICE_TOKEN"
   set_runtime_env DEFAULT_PROVIDER_API_KEY "$DEFAULT_PROVIDER_API_KEY"
   set_runtime_env DEFAULT_PROVIDER_NAME litellm
+  set_runtime_env TENANT_CA_CERT_PATH "$CA_DIR/root.crt"
   set_runtime_env DEFAULT_PROVIDER_MODEL gemini-agentforall
   set_runtime_env DEFAULT_PROVIDER_ID litellm
   set_runtime_env AGENT_RUNTIME_KIND "$AGENT_RUNTIME_KIND"
@@ -319,6 +327,7 @@ services:
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - /var/lib/agent-forall/ca:/ca:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
@@ -327,7 +336,9 @@ services:
     cap_drop: [ALL]
     cap_add: [NET_BIND_SERVICE]
     networks:
-      - frontend
+      frontend:
+      tenant-net:
+        aliases: [orchestrator.internal]
     deploy:
       resources:
         limits:
@@ -424,16 +435,56 @@ networks:
 COMPOSEEOF
 
 # ── Caddyfile ──
+# Bots and pairing sidecars reach the orchestrator through the internal site only: the relay paths,
+# over TLS from our own CA (root seeded from Secret Manager so every host signs with the same root).
+cat > Caddyfile <<CADDYEOF
+{
+  skip_install_trust
+  pki {
+    ca agentforall {
+      name "agent-forall internal"
+      root {
+        format pem_file
+        cert /ca/root.crt
+        key /ca/root.key
+      }
+    }
+  }
+}
+
+https://orchestrator.internal {
+  tls {
+    issuer internal {
+      ca agentforall
+    }
+  }
+  # Caddy answers on the public IP too: the internal site exists only for private sources.
+  @relay {
+    path /api/v1/mcp/* /api/v1/whatsapp-cloud/* /internal/*
+    remote_ip private_ranges
+  }
+  handle @relay {
+    reverse_proxy $ORCHESTRATOR_FRONTEND_IP:3000
+  }
+  handle {
+    respond 404
+  }
+}
+CADDYEOF
+
 if [ -n "$DOMAIN" ]; then
-  cat > Caddyfile <<CADDYEOF
+  cat >> Caddyfile <<CADDYEOF
+
 $DOMAIN {
-  # The MCP relay is for tenant containers on tenant-net only; never expose it publicly.
+  # Relay and sidecar paths are for containers on the internal site only; never expose them publicly.
   @mcp path /api/v1/mcp/*
   respond @mcp 404
   @wacloud path /api/v1/whatsapp-cloud/*
   respond @wacloud 404
+  @internal path /internal/*
+  respond @internal 404
 
-  reverse_proxy orchestrator:3000
+  reverse_proxy $ORCHESTRATOR_FRONTEND_IP:3000
 
   request_body {
     max_size 1MB
@@ -452,15 +503,17 @@ $DOMAIN {
 }
 CADDYEOF
 else
-  cat > Caddyfile <<'CADDYEOF'
+  cat >> Caddyfile <<CADDYEOF
+
 :80 {
-  # The MCP relay is for tenant containers on tenant-net only; never expose it publicly.
   @mcp path /api/v1/mcp/*
   respond @mcp 404
   @wacloud path /api/v1/whatsapp-cloud/*
   respond @wacloud 404
+  @internal path /internal/*
+  respond @internal 404
 
-  reverse_proxy orchestrator:3000
+  reverse_proxy $ORCHESTRATOR_FRONTEND_IP:3000
 
   request_body {
     max_size 1MB

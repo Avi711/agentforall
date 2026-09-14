@@ -180,6 +180,7 @@ const AppConfigSchema = z.object({
     .string()
     .url()
     .default("http://orchestrator:3000"),
+  tenantCaCertPath: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
 
   // LLM defaults — applied when a create-bot request omits `provider`.
   // The web dashboard never sends provider, so all bots inherit these.
@@ -249,6 +250,7 @@ export interface PairingConfig {
   staleThresholdMs: number;
   logLevel: string;
   orchestratorInternalUrl: string;
+  tenantCaCertPath?: string;
   /** Dev only: orchestrator runs on host and can't use Docker DNS, so sidecar publishes a 127.0.0.1 port. */
   publishSidecarPort: boolean;
   useDockerNetwork: boolean;
@@ -263,6 +265,7 @@ export function extractPairingConfig(config: AppConfig): PairingConfig {
     staleThresholdMs: config.pairingStaleThresholdMs,
     logLevel: config.pairingLogLevel,
     orchestratorInternalUrl: config.orchestratorInternalUrl,
+    tenantCaCertPath: config.tenantCaCertPath,
     publishSidecarPort: config.nodeEnv === "development",
     useDockerNetwork: config.useDockerNetwork,
   };
@@ -323,6 +326,7 @@ export function loadConfig(): AppConfig {
     pairingStaleThresholdMs: process.env.PAIRING_STALE_THRESHOLD_MS,
     pairingLogLevel: process.env.PAIRING_LOG_LEVEL,
     orchestratorInternalUrl: process.env.ORCHESTRATOR_INTERNAL_URL,
+    tenantCaCertPath: process.env.TENANT_CA_CERT_PATH,
     defaultProviderName: process.env.DEFAULT_PROVIDER_NAME,
     defaultProviderId: process.env.DEFAULT_PROVIDER_ID,
     defaultProviderApiKey: process.env.DEFAULT_PROVIDER_API_KEY,
