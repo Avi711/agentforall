@@ -99,7 +99,7 @@ Verified from inside a bot: `169.254.169.254` answered with the VM service accou
 
 ### S-8b. Failed-auth requests are never rate limited (found 2026-09-13 review)
 - **Risk:** `server.ts` registers the auth hook before rate-limit on purpose (the limiter keys on the authenticated user), so a rejected bearer throws before any limiter runs. Token brute force from `tenant-net` or the internet is unthrottled. `trustProxy: true` also lets a tenant hitting `orchestrator:3000` directly spoof `X-Forwarded-For`.
-- **Fix:** a second, pre-auth limiter keyed on `socket.remoteAddress` (like `relay-rate-limit.ts`) with a low budget for 401s; keep the per-user limiter as is.
+- **Fix:** a second, pre-auth limiter keyed on `socket.remoteAddress` with a low budget for 401s; keep the per-user limiter as is. Since 2026-09-14 the relay limiter is keyed on the bot id in the URL (needed once every bot arrives via Caddy), so an unauthenticated peer can mint buckets with random ids, one bearer lookup each: the pre-auth limiter must cover the relay paths too.
 - **Files:** `apps/orchestrator/src/server.ts`, `plugins/auth.ts`.
 
 ### S-8a. Replace Docker-exec health probe with Gateway RPC

@@ -300,7 +300,7 @@ export class PairingManager {
   }
 
   // Creds go in and only the channel runtime starts, so the gateway keeps serving; a restart is the
-  // fallback, not the path. On failure the DB still holds the creds and the next boot re-injects.
+  // fallback, not the path. Nothing re-injects later: if the volume never got the session, the pairing is undone.
   private async activateWhatsapp(
     instance: Instance,
     containerId: string,
@@ -308,8 +308,10 @@ export class PairingManager {
   ): Promise<void> {
     const adapter = this.runtimes.get(instance.runtimeKind);
     let linked = false;
+    let injected = false;
     try {
       await adapter.injectWhatsappSession(containerId, creds);
+      injected = true;
       const started = await adapter.startWhatsappChannel(containerId);
       if (started.status === "started") {
         linked = await this.waitForLink(instance);
@@ -328,12 +330,19 @@ export class PairingManager {
         linked = await this.waitForLink(instance);
       }
     } catch (err) {
+      if (!injected) {
+        await this.repo.updatePairing(instance.id, {
+          whatsappCreds: null,
+          whatsappAccountId: null,
+          pairingStatus: "none",
+        });
+      }
       this.logger.error(
-        { instanceId: instance.id, err: errorMessage(err) },
+        { instanceId: instance.id, err: errorMessage(err), pairingUndone: !injected },
         "failed to activate whatsapp in main container",
       );
       await this.eventLog.append(instance.id, "pair.inject_failed", {
-        payload: { error: errorMessage(err) },
+        payload: { error: errorMessage(err), pairingUndone: !injected },
       });
       return;
     }

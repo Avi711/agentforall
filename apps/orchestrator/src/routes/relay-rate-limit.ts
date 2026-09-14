@@ -1,6 +1,10 @@
 import type { FastifyRequest } from "fastify";
+import { z } from "zod";
 
-// The socket peer alone: request.ip is forgeable via X-Forwarded-For, and a URL part would let a caller mint buckets.
+export const RelayParam = z.object({ instanceId: z.string().uuid() });
+
+// Per bot, not per peer: behind Caddy every bot arrives from the proxy's address.
 export function relayRateLimitKey(request: FastifyRequest): string {
-  return request.socket.remoteAddress ?? request.ip;
+  const params = RelayParam.safeParse(request.params);
+  return params.success ? params.data.instanceId : request.socket.remoteAddress ?? request.ip;
 }

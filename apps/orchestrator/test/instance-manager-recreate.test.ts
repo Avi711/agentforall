@@ -56,7 +56,7 @@ test("recreate migrates the stopped volume before removing the old container", a
   assert.deepEqual(runtime.removedContainers, ["container-1"]);
 });
 
-test("a migration failure keeps the old container and marks the bot error", async () => {
+test("a migration failure keeps the old container and returns the bot to stopped", async () => {
   const repo = new FakeRepo({ ...baseInstance });
   const runtime = new FakeRuntime();
   const manager = createManager(repo, runtime, {
@@ -70,7 +70,21 @@ test("a migration failure keeps the old container and marks the bot error", asyn
   assert.deepEqual(runtime.removedContainers, []);
   assert.deepEqual(runtime.createdContainers, []);
   assert.equal(repo.instance.containerId, "container-1");
-  assert.equal(repo.instance.status, "error");
+  assert.equal(repo.instance.status, "stopped");
+  assert.equal(repo.instance.errorMessage, "doctor exited 1");
+});
+
+test("a start failure after the new container exists leaves the bot stopped, not error", async () => {
+  const repo = new FakeRepo({ ...baseInstance });
+  const runtime = new FakeRuntime();
+  runtime.start = async () => {
+    throw new Error("start refused");
+  };
+  const manager = createManager(repo, runtime, adapter());
+
+  await assert.rejects(() => manager.recreate(baseInstance.id, baseInstance.userId), /start refused/);
+  assert.equal(repo.instance.containerId, "container-2");
+  assert.equal(repo.instance.status, "stopped");
 });
 
 // A crash between create and the config write leaves a container under the bot's name that the
@@ -340,24 +354,22 @@ test("start reuses a stopped container that is on the current image", async () =
   assert.deepEqual(runtime.startedContainers, ["container-1"]);
 });
 
-test("recreate injects whatsapp creds before start when paired", async () => {
-  const repo = new FakeRepo({ ...baseInstance, hasWhatsappCreds: true });
-  const runtime = new FakeRuntime();
+// The volume carries the live session with keys rotated since pairing; the DB copy would roll them back.
+test("neither recreate, start nor restart writes the pairing-time whatsapp creds over the volume", async () => {
+  const paired = { ...baseInstance, hasWhatsappCreds: true };
   const injected: string[] = [];
-  const manager = createManager(repo, runtime, {
+  const withSpy = () => ({
     ...adapter(),
     injectWhatsappSession: async (containerId: string) => {
       injected.push(containerId);
     },
   });
 
-  await manager.recreate(baseInstance.id, baseInstance.userId);
+  await createManager(new FakeRepo({ ...paired }), new FakeRuntime(), withSpy()).recreate(paired.id, paired.userId);
+  await createManager(new FakeRepo({ ...paired, status: "stopped" }), new FakeRuntime(), withSpy()).start(paired.id, paired.userId);
+  await createManager(new FakeRepo({ ...paired }), new FakeRuntime(), withSpy()).restart(paired.id, paired.userId);
 
-  assert.deepEqual(injected, ["container-2"]);
-  assert.ok(
-    runtime.startedContainers.length === 1,
-    "container started after creds injection",
-  );
+  assert.deepEqual(injected, []);
 });
 
 test("recreate marks error when the new container cannot be created", async () => {
@@ -410,7 +422,7 @@ class FakeRepo {
     options?: { expectedStatus?: Instance["status"]; errorMessage?: string },
   ): Promise<boolean> {
     if (options?.expectedStatus && options.expectedStatus !== this.instance.status) return false;
-    this.instance = { ...this.instance, status, errorMessage: options?.errorMessage ?? null };
+    this.instance = { ...this.instance, status, errorMessage: options?.errorMessage ?? this.instance.errorMessage };
     return true;
   }
 
@@ -423,9 +435,6 @@ class FakeRepo {
     this.instance = { ...this.instance, containerId };
   }
 
-  async getDecryptedWhatsappCreds(): Promise<Buffer | null> {
-    return this.instance.hasWhatsappCreds ? Buffer.from("creds") : null;
-  }
 }
 
 class FakeRuntime {
@@ -474,10 +483,10 @@ class FakeRuntime {
       : null;
   }
 
-  // Like Docker: a removed container frees its name.
+  // Like Docker: the bot's name follows the newest container created under it; a removed one frees it.
   async findContainerByName(): Promise<string | null> {
-    const byName = this.options.byName ?? null;
-    return byName && !this.removedContainers.includes(byName) ? byName : null;
+    const named = [this.options.byName ?? "container-1", ...this.createdContainers];
+    return named.reverse().find((id) => !this.removedContainers.includes(id)) ?? null;
   }
 
   async ensureVolumeExists(name: string): Promise<void> {

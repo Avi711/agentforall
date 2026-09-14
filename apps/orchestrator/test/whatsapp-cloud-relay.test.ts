@@ -205,12 +205,13 @@ test("read receipts, escalation and handoff reach the manager with validated bod
   assert.deepEqual(calls[1]?.args, [{ waId: CUSTOMER, summary: "מבקש הצעת מחיר", kind: "request" }]);
 });
 
-test("the relay rate limit is keyed by the socket peer alone: neither a forged X-Forwarded-For nor an invented bot id buys a new bucket", () => {
+test("the relay rate limit is keyed by the bot id, so bots behind one proxy address get their own buckets", () => {
   const request = (remoteAddress: string, ip: string, instanceId?: string) =>
     ({ ip, socket: { remoteAddress }, params: instanceId ? { instanceId } : {} }) as unknown as FastifyRequest;
-  assert.equal(relayRateLimitKey(request("10.0.0.5", "1.2.3.4", ID)), "10.0.0.5");
-  assert.equal(relayRateLimitKey(request("10.0.0.5", "5.6.7.8", "22222222-2222-4222-8222-222222222222")), "10.0.0.5");
-  assert.equal(relayRateLimitKey(request("10.0.0.6", "1.2.3.4", ID)), "10.0.0.6");
+  assert.equal(relayRateLimitKey(request("10.0.0.5", "1.2.3.4", ID)), ID);
+  assert.equal(relayRateLimitKey(request("10.0.0.5", "5.6.7.8", ID)), ID);
+  assert.equal(relayRateLimitKey(request("10.0.0.5", "1.2.3.4", "not-a-uuid")), "10.0.0.5");
+  assert.equal(relayRateLimitKey(request("10.0.0.6", "1.2.3.4")), "10.0.0.6");
 });
 
 test("an unauthenticated burst is rate limited before any bearer lookup", async () => {

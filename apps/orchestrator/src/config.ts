@@ -35,6 +35,12 @@ const booleanEnv = z
   .enum(["true", "false"])
   .transform((v) => v === "true");
 
+// "true", "false", or the proxies' comma-separated CIDR list, as Fastify takes it.
+const trustProxyEnv = z
+  .string()
+  .min(1)
+  .transform((v) => (v === "true" ? true : v === "false" ? false : v));
+
 const emptyToUndefined = (value: unknown): unknown =>
   value === "" ? undefined : value;
 
@@ -66,7 +72,7 @@ const AppConfigSchema = z.object({
   host: z.string().default("0.0.0.0"),
   port: z.coerce.number().int().min(1).max(65535).default(3000),
   nodeEnv: z.enum(["development", "production", "test"]).default("development"),
-  trustProxy: booleanEnv.default("true"),
+  trustProxy: trustProxyEnv.default("true"),
 
   databaseUrl: z.string().url(),
   encryptionKey: hex256,

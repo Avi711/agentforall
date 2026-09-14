@@ -5,7 +5,6 @@ import {
   encrypt,
   decrypt,
   encryptBytes,
-  decryptBytes,
   encryptConfig,
   decryptConfig,
 } from "../services/crypto.js";
@@ -184,22 +183,12 @@ export class InstanceRepository {
     return this.toDomainSafe(rows);
   }
 
-  async countByUserId(userId: string): Promise<number> {
-    const rows = await this.db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(instances)
-      .where(
-        and(this.ownedByHost(), eq(instances.userId, userId), this.isActive()),
-      );
-    return rows[0]?.count ?? 0;
-  }
-
   // Every live instance on this host, regardless of owner — admin reporting only.
   async findAllActive(): Promise<Instance[]> {
     const rows = await this.db
       .select()
       .from(instances)
-      .where(and(this.ownedByHost(), ne(instances.status, "destroyed")))
+      .where(and(this.ownedByHost(), this.isActive()))
       .orderBy(asc(instances.createdAt), asc(instances.id));
     return this.toDomainSafe(rows);
   }
@@ -237,12 +226,10 @@ export class InstanceRepository {
     return eq(instances.hostId, this.hostId);
   }
 
-  // Single definition of "active" — shared by quota count and port allocation.
+  // Single definition of "active" — shared by quota count and port allocation. An `error` row keeps
+  // its port: recreate can revive it.
   private isActive() {
-    return and(
-      ne(instances.status, "destroyed"),
-      ne(instances.status, "error"),
-    );
+    return ne(instances.status, "destroyed");
   }
 
   async updateStatus(
@@ -362,17 +349,6 @@ export class InstanceRepository {
       .returning({ id: instances.id });
 
     return result.length > 0;
-  }
-
-  async getDecryptedWhatsappCreds(id: string): Promise<Buffer | null> {
-    const rows = await this.db
-      .select({ creds: instances.whatsappCreds })
-      .from(instances)
-      .where(and(eq(instances.id, id), this.ownedByHost()))
-      .limit(1);
-    const row = rows[0];
-    if (!row?.creds) return null;
-    return decryptBytes(row.creds, this.encryptionKey);
   }
 
   async updateBackupImport(

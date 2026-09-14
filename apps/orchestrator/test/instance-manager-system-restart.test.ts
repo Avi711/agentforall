@@ -32,9 +32,6 @@ class FakeRepo {
     this.instance = { ...this.instance, containerId };
   }
 
-  async getDecryptedWhatsappCreds(): Promise<Buffer | null> {
-    return this.instance.hasWhatsappCreds ? Buffer.from("creds") : null;
-  }
 }
 
 class FakeRuntime {

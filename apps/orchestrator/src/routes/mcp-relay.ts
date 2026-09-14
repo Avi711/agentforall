@@ -1,15 +1,13 @@
 import { Readable } from "node:stream";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
-import { z } from "zod";
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { AuthenticationError, UpstreamUnavailableError } from "../domain/errors.js";
 import type { RelayTarget } from "../services/integrations/manager.js";
 import { extractBearer } from "./bearer.js";
-import { relayRateLimitKey } from "./relay-rate-limit.js";
+import { RelayParam, relayRateLimitKey } from "./relay-rate-limit.js";
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const RATE_LIMIT_PER_MINUTE = 600;
-const Param = z.object({ instanceId: z.string().uuid() });
 
 // MCP streamable-http needs exactly these to cross the relay; everything else stays on our side.
 const FORWARDED_REQUEST_HEADERS = [
@@ -63,7 +61,7 @@ export const mcpRelayRoutes: FastifyPluginAsync<McpRelayDeps> = async (app, deps
     },
     // preHandler, not onRequest: the route-level rate limit hook must run before the bearer lookup.
     preHandler: async (request) => {
-      const { instanceId } = Param.parse(request.params);
+      const { instanceId } = RelayParam.parse(request.params);
       const bearer = extractBearer(request.headers.authorization);
       if (!bearer) throw new AuthenticationError();
       targets.set(request, await deps.resolveRelay(instanceId, bearer));

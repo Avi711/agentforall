@@ -15,11 +15,10 @@ import {
 } from "../domain/whatsapp-cloud.js";
 import type { RelayContext, WhatsappCloudManager } from "../services/whatsapp-cloud/manager.js";
 import { extractBearer } from "./bearer.js";
-import { relayRateLimitKey } from "./relay-rate-limit.js";
+import { RelayParam, relayRateLimitKey } from "./relay-rate-limit.js";
 
-const Param = z.object({ instanceId: z.string().uuid() });
-const WaIdParam = Param.extend({ waId: z.string().regex(WA_ID_PATTERN) });
-const MediaParam = Param.extend({ mediaId: z.string().regex(/^\d{1,64}$/) });
+const WaIdParam = RelayParam.extend({ waId: z.string().regex(WA_ID_PATTERN) });
+const MediaParam = RelayParam.extend({ mediaId: z.string().regex(/^\d{1,64}$/) });
 const InboxQuery = z.object({ wait: z.coerce.number().int().min(0).max(INBOX_MAX_WAIT_MS).default(INBOX_MAX_WAIT_MS) });
 const AckBody = z.object({ ids: z.array(z.string().regex(/^\d{1,19}$/)).min(1).max(200) }).strict();
 const SendBody = z
@@ -50,7 +49,7 @@ export const whatsappCloudRelayRoutes: FastifyPluginAsync<WhatsappCloudRelayDeps
 
   // preHandler, not onRequest: the route-level rate limit hook must run before the bearer lookup.
   app.addHook("preHandler", async (request) => {
-    const { instanceId } = Param.parse(request.params);
+    const { instanceId } = RelayParam.parse(request.params);
     const bearer = extractBearer(request.headers.authorization);
     if (!bearer) throw new AuthenticationError();
     contexts.set(request, await deps.manager.resolveRelay(instanceId, bearer));

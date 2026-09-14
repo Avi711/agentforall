@@ -265,6 +265,7 @@ function sleep(ms: number): Promise<void> {
 interface ActivationHarness {
   calls: string[];
   events: string[];
+  pairingPatches: Record<string, unknown>[];
   restarts: number;
   manager: PairingManager;
 }
@@ -273,16 +274,19 @@ function activationHarness(opts: {
   startStatus?: "started" | "unavailable";
   linkStates?: ("connected" | "disconnected")[];
   sendOk?: boolean;
+  failing?: "inject" | "restart";
 }): ActivationHarness {
   const calls: string[] = [];
   const events: string[] = [];
+  const pairingPatches: Record<string, unknown>[] = [];
   const states = [...(opts.linkStates ?? ["connected"])];
-  const harness: ActivationHarness = { calls, events, restarts: 0, manager: undefined as never };
+  const harness: ActivationHarness = { calls, events, pairingPatches, restarts: 0, manager: undefined as never };
 
   const adapter = {
     kind: "openclaw",
     injectWhatsappSession: async () => {
       calls.push("inject");
+      if (opts.failing === "inject") throw new Error("putArchive: no such container");
     },
     startWhatsappChannel: async () => {
       calls.push("start");
@@ -304,7 +308,10 @@ function activationHarness(opts: {
   } as unknown as AgentRuntimeAdapter;
 
   const repo = {
-    updatePairing: async () => true,
+    updatePairing: async (_id: string, patch: Record<string, unknown>) => {
+      pairingPatches.push(patch);
+      return true;
+    },
     findById: async () => instance,
   } as unknown as InstanceRepository;
 
@@ -312,6 +319,7 @@ function activationHarness(opts: {
     restart: async () => {
       harness.restarts += 1;
       calls.push("restart");
+      if (opts.failing === "restart") throw new Error("docker restart failed");
     },
     findContainerByName: async () => null,
     remove: async () => undefined,
@@ -336,9 +344,28 @@ const ownedInstance: Instance = {
   },
 };
 
-async function settle(harness: ActivationHarness): Promise<void> {
-  for (let i = 0; i < 200 && !harness.events.includes("pair.ready"); i++) await sleep(10);
+async function settle(harness: ActivationHarness, until = "pair.ready"): Promise<void> {
+  for (let i = 0; i < 200 && !harness.events.includes(until); i++) await sleep(10);
 }
+
+// Boot paths never re-inject from the DB, so a session that never reached the volume must not stay "paired".
+test("completePairing undoes the pairing when the session cannot be written into the container", async () => {
+  const h = activationHarness({ failing: "inject" });
+  await h.manager.completePairing(ownedInstance, Buffer.from("creds"), null);
+  await settle(h, "pair.inject_failed");
+
+  assert.deepEqual(h.calls, ["inject"]);
+  assert.deepEqual(h.pairingPatches.at(-1), { whatsappCreds: null, whatsappAccountId: null, pairingStatus: "none" });
+  assert.ok(!h.events.includes("pair.ready"));
+});
+
+test("a failure after the session was written keeps the pairing", async () => {
+  const h = activationHarness({ startStatus: "unavailable", failing: "restart" });
+  await h.manager.completePairing(ownedInstance, Buffer.from("creds"), null);
+  await settle(h, "pair.inject_failed");
+
+  assert.equal(h.pairingPatches.at(-1)?.pairingStatus, "paired");
+});
 
 test("completePairing links in place and the bot says hello, without a container restart", async () => {
   const h = activationHarness({});

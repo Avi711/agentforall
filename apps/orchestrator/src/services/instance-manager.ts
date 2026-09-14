@@ -226,9 +226,6 @@ export class InstanceManager {
 
     try {
       const { containerId } = await this.containerForBoot(inst);
-      if (inst.hasWhatsappCreds) {
-        await this.injectWhatsappCreds(id, containerId);
-      }
       await this.runtime.start(containerId);
     } catch (err) {
       await this.repo.updateStatus(id, inst.status, {
@@ -266,7 +263,7 @@ export class InstanceManager {
         return blocked("container is on another image; recreate is a supervised step");
       }
       if (await this.gatewayAnswers(inst)) return skipped("gateway answered");
-      await this.restartLocked(inst, { failureStatus: inst.status, injectCreds: false });
+      await this.restartLocked(inst, { failureStatus: inst.status });
       return { restarted: true };
     });
   }
@@ -286,7 +283,7 @@ export class InstanceManager {
 
   private async restartLocked(
     inst: Instance,
-    opts: { failureStatus: InstanceStatus; injectCreds: boolean } = { failureStatus: "error", injectCreds: true },
+    opts: { failureStatus: InstanceStatus } = { failureStatus: "error" },
   ): Promise<void> {
     const id = inst.id;
     if (!RESTARTABLE_STATUSES.includes(inst.status)) {
@@ -298,10 +295,6 @@ export class InstanceManager {
 
     try {
       const { containerId, rebuilt } = await this.containerForBoot(inst);
-      // The pairing-time credentials can be staler than the live session; a hang restart keeps the volume's copy.
-      if (opts.injectCreds && inst.hasWhatsappCreds) {
-        await this.injectWhatsappCreds(id, containerId);
-      }
       if (rebuilt) await this.runtime.start(containerId);
       else await this.restartContainer(containerId);
     } catch (err) {
@@ -334,7 +327,8 @@ export class InstanceManager {
     return this.operationLock.run(id, () => this.recreateLocked(id, userId));
   }
 
-  // Rebuilds the container from the currently configured runtime image; state volume persists.
+  // Rebuilds the container from the currently configured runtime image; the state volume persists and,
+  // once paired, owns the WhatsApp session: the pairing-time copy in the DB is never written over it.
   private async recreateLocked(id: string, userId: string): Promise<void> {
     const inst = await this.requireOwnedInstance(id, userId);
     if (!["running", "degraded", "unhealthy", "error"].includes(inst.status)) {
@@ -343,9 +337,6 @@ export class InstanceManager {
 
     try {
       const containerId = await this.recreateContainer(inst);
-      if (inst.hasWhatsappCreds) {
-        await this.injectWhatsappCreds(id, containerId);
-      }
       await this.runtime.start(containerId);
       // The migration can outlast the reconciler's patience (row marked stopped or error meanwhile);
       // the container is running now, so the row says so regardless.
@@ -358,7 +349,9 @@ export class InstanceManager {
         this.logger.warn({ instanceId: id }, "gateway not healthy after recreate");
       }
     } catch (err) {
-      await this.repo.updateStatus(id, "error", {
+      // Old or new, a container under the bot's name boots on the next start; unknown counts as none.
+      const bootable = await this.runtime.findContainerByName(inst.containerName).catch(() => null);
+      await this.repo.updateStatus(id, bootable ? "stopped" : "error", {
         errorMessage: errorMessage(err),
       });
       throw err;
@@ -445,8 +438,6 @@ export class InstanceManager {
     const inst = await this.requireOwnedInstance(id, userId);
     if (inst.status === "destroyed") return;
 
-    // `error` already released the gateway port; re-entering `destroying` would
-    // re-claim it and can collide with a newer instance, so clean up from `error` directly.
     if (inst.status !== "destroying" && inst.status !== "error") {
       this.assertTransition(inst.status, "destroying");
 
@@ -966,16 +957,6 @@ export class InstanceManager {
   private async refreshRuntimeConfig(inst: Instance): Promise<void> {
     if (!inst.containerId) return;
     await this.runtimes.get(inst.runtimeKind).writeConfig(inst.containerId, inst);
-  }
-
-  private async injectWhatsappCreds(
-    instanceId: string,
-    containerId: string,
-  ): Promise<void> {
-    const creds = await this.repo.getDecryptedWhatsappCreds(instanceId);
-    if (!creds) return;
-    const inst = await this.requireInstance(instanceId);
-    await this.runtimes.get(inst.runtimeKind).injectWhatsappSession(containerId, creds);
   }
 
   private async cleanupPartial(inst: Instance): Promise<void> {
