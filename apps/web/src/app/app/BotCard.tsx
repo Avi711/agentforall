@@ -16,16 +16,20 @@ import { ROW_ACTION_CLASS } from "./action-buttons";
 import type { ShowcaseApp } from "@/lib/integrations/catalog.he";
 import { WhatsappNumberConfirmDialog } from "./WhatsappNumberDialog";
 import type { CreditSummary } from "@/lib/billing/credits/service";
+import type { CreditsAction } from "@/lib/billing/service";
+import { CreditsActionLink, OUT_OF_CREDITS_LABEL } from "./credits-copy";
 
 type Channel = "whatsapp" | "telegram" | "whatsapp-cloud";
 
 export function BotCard({
   bot: initialBot,
   credits,
+  creditsAction,
   apps,
 }: {
   bot: BotSnapshot;
   credits: CreditSummary;
+  creditsAction: CreditsAction;
   apps: readonly ShowcaseApp[];
 }) {
   const { refreshing, refresh } = useRefresh();
@@ -46,7 +50,7 @@ export function BotCard({
   const [restartError, setRestartError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const state = resolveState(bot);
+  const state = resolveState(bot, credits);
   const whatsappConnected = bot.pairingStatus === "paired" && bot.hasWhatsappCreds;
 
   useEffect(() => {
@@ -266,7 +270,7 @@ export function BotCard({
 
           <ActivityLine bot={bot} />
 
-          <NextStep bot={bot} state={state} />
+          <NextStep bot={bot} state={state} action={creditsAction} />
 
           {downloadPending ? (
             <div
@@ -316,7 +320,7 @@ export function BotCard({
 
           <IntegrationsSection apps={apps} />
 
-          <CreditsSection credits={credits} />
+          <CreditsSection credits={credits} action={creditsAction} />
 
           {state.restart ? (
             <button
@@ -446,7 +450,18 @@ function ActivityLine({ bot }: { bot: BotSnapshot }) {
 }
 
 // The card is otherwise a status ledger; this answers "what do I do now?" in one line.
-function NextStep({ bot, state }: { bot: BotSnapshot; state: BotState }) {
+function NextStep({ bot, state, action }: { bot: BotSnapshot; state: BotState; action: CreditsAction }) {
+  if (state.cause === "credits") {
+    return (
+      <div className="mb-6 sm:mb-7 rounded-2xl border border-terra/20 bg-terra-pale px-4 py-4 sm:px-5">
+        <p className={`${SECTION_LABEL} mb-1`}>הצעד הבא</p>
+        <p className="text-sm text-terra-dark leading-relaxed">
+          {outOfCreditsStep(bot.displayName, action)}{" "}
+          <CreditsActionLink action={action} className="underline font-medium" />
+        </p>
+      </div>
+    );
+  }
   const text = nextStep(bot, state);
   if (!text) return null;
   return (
@@ -455,6 +470,11 @@ function NextStep({ bot, state }: { bot: BotSnapshot; state: BotState }) {
       <p className="text-sm text-espresso leading-relaxed">{text}</p>
     </div>
   );
+}
+
+function outOfCreditsStep(name: string, action: CreditsAction): string {
+  if (action === "contact") return `${name} יוכל לענות ברגע שיהיו קרדיטים. התשלומים ייפתחו בקרוב, ובינתיים נסדר את זה יחד.`;
+  return `כדי ש${name} יוכל לענות, ${action === "topup" ? "טענו קרדיטים" : "הצטרפו למנוי"}.`;
 }
 
 // Text only: the matching button already sits in the channel row right below, so it is never duplicated.
@@ -1238,6 +1258,7 @@ interface BotState {
   label: string;
   restart?: boolean;
   pulse?: boolean;
+  cause?: "credits";
 }
 
 function avatarTone(kind: BotState["kind"]): AvatarTone {
@@ -1246,8 +1267,8 @@ function avatarTone(kind: BotState["kind"]): AvatarTone {
   return "muted";
 }
 
-// Health of the agent itself; per-channel state lives in the channel rows.
-function resolveState(bot: BotSnapshot): BotState {
+// Infrastructure trouble outranks an empty ledger: a bot that is down needs a restart before it needs credits.
+function resolveState(bot: BotSnapshot, credits: CreditSummary): BotState {
   if (bot.status === "provisioning") {
     return { kind: "info", label: "מכין את הסוכן…", pulse: true };
   }
@@ -1259,6 +1280,9 @@ function resolveState(bot: BotSnapshot): BotState {
   }
   if (bot.status === "degraded") {
     return { kind: "warn", label: "חיבור לא יציב — מנסה להתאושש", pulse: true };
+  }
+  if (credits.balance.kind === "out") {
+    return { kind: "warn", label: `מושהה — ${OUT_OF_CREDITS_LABEL[credits.balance.reason]}`, cause: "credits" };
   }
   const whatsappConnected = bot.pairingStatus === "paired" && bot.hasWhatsappCreds;
   const telegramConnected = Boolean(bot.telegram?.linked);

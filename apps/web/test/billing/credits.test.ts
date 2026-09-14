@@ -208,16 +208,69 @@ describe("summary and cron", () => {
     const reads = h.llm.readCalls;
     const summary = await h.credits.summary(USER.id);
     assert.equal(h.llm.readCalls, reads);
-    assert.deepEqual({ consumed: summary.consumed, available: summary.available, lowBalance: summary.lowBalance, syncedAt: summary.syncedAt }, { consumed: 800, available: 200, lowBalance: true, syncedAt: NOW.toISOString() });
+    assert.deepEqual({ consumed: summary.consumed, available: summary.available, balance: summary.balance, syncedAt: summary.syncedAt }, { consumed: 800, available: 200, balance: { kind: "low" }, syncedAt: NOW.toISOString() });
   });
 
-  test("lowBalance flips exactly at the ratio and is off with no allowance", async () => {
+  test("balance flips to low exactly at the ratio and is none without a ledger", async () => {
     const h = creditHarness();
-    assert.equal((await h.credits.summary(USER.id)).lowBalance, false);
+    assert.deepEqual((await h.credits.summary(USER.id)).balance, { kind: "none" });
     h.grants.rows.push(grant({ credits: 1000, usedCredits: 1000 - 1000 * LOW_BALANCE_RATIO }));
-    assert.equal((await h.credits.summary(USER.id)).lowBalance, true);
+    assert.deepEqual((await h.credits.summary(USER.id)).balance, { kind: "low" });
     h.grants.rows[0]!.usedCredits -= 1;
-    assert.equal((await h.credits.summary(USER.id)).lowBalance, false);
+    assert.deepEqual((await h.credits.summary(USER.id)).balance, { kind: "ok" });
+  });
+
+  test("an expired, partly used trial with no other grant reads as trial ended, not 0 of 0", async () => {
+    let now = NOW;
+    const h = creditHarness({ now: () => now });
+    await h.credits.startTrial(USER.id);
+    h.grants.rows[0]!.usedCredits = 274;
+    now = new Date(NOW.getTime() + TRIAL_DAYS * DAY_MS + 1);
+    const summary = await h.credits.summary(USER.id);
+    assert.deepEqual(
+      { balance: summary.balance, trial: summary.trial, available: summary.available, allowance: summary.allowance, live: summary.grants.map((g) => g.live) },
+      { balance: { kind: "out", reason: "trial-ended" }, trial: { kind: "used" }, available: 0, allowance: 0, live: [false] },
+    );
+  });
+
+  test("a trial spent to zero before its expiry also reads as trial ended", async () => {
+    const h = creditHarness();
+    await h.credits.startTrial(USER.id);
+    h.grants.rows[0]!.usedCredits = TRIAL_CREDITS;
+    assert.deepEqual((await h.credits.summary(USER.id)).balance, { kind: "out", reason: "trial-ended" });
+  });
+
+  test("a plan grant that lapsed with credits unused reads as plan ended, even after a spent top-up", async () => {
+    let now = NOW;
+    const h = creditHarness({ now: () => now });
+    await h.credits.startTrial(USER.id);
+    await h.credits.grantPlanCredits(USER.id, 1000, new Date(NOW.getTime() + DAY_MS), "plan:mock:pay_1");
+    now = new Date(NOW.getTime() + TRIAL_DAYS * DAY_MS + 1);
+    assert.deepEqual((await h.credits.summary(USER.id)).balance, { kind: "out", reason: "plan-ended" });
+    await h.credits.grantTopup(USER.id, 100, "topup:mock:pay_2");
+    assert.deepEqual((await h.credits.summary(USER.id)).balance, { kind: "ok" });
+    h.grants.rows.find((g) => g.kind === "topup")!.usedCredits = 100;
+    assert.deepEqual((await h.credits.summary(USER.id)).balance, { kind: "out", reason: "plan-ended" });
+  });
+
+  test("a fully spent plan period reads as credits spent, judged by the latest plan grant", async () => {
+    const h = creditHarness();
+    await h.credits.grantPlanCredits(USER.id, 1000, new Date(NOW.getTime() - DAY_MS), "plan:mock:pay_1");
+    await h.credits.grantPlanCredits(USER.id, 1000, new Date(NOW.getTime() + 20 * DAY_MS), "plan:mock:pay_2");
+    h.grants.rows.find((g) => g.sourceRef === "plan:mock:pay_2")!.usedCredits = 1000;
+    assert.deepEqual((await h.credits.summary(USER.id)).balance, { kind: "out", reason: "credits-spent" });
+    h.grants.rows.find((g) => g.sourceRef === "plan:mock:pay_2")!.grantedAt = new Date(NOW.getTime() - 1);
+    assert.deepEqual((await h.credits.summary(USER.id)).balance, { kind: "out", reason: "plan-ended" });
+  });
+
+  test("an expired trial plus a spent top-up reads as credits spent", async () => {
+    let now = NOW;
+    const h = creditHarness({ now: () => now });
+    await h.credits.startTrial(USER.id);
+    await h.credits.grantTopup(USER.id, 100, "topup:mock:pay_1");
+    h.grants.rows.find((g) => g.kind === "topup")!.usedCredits = 100;
+    now = new Date(NOW.getTime() + TRIAL_DAYS * DAY_MS + 1);
+    assert.deepEqual((await h.credits.summary(USER.id)).balance, { kind: "out", reason: "credits-spent" });
   });
 
   test("syncAll covers every user with a credit history, including lapsed ones, and isolates failures", async () => {

@@ -7,6 +7,7 @@ import { DEFAULT_TOPUP_PRESET_ILS, creditsForTopupIls } from "@/lib/billing/pric
 import type { BillingStatus } from "@/lib/billing/service";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 import { startTopup } from "../billing/client";
+import { CreditsActionLink, OUT_OF_CREDITS_LABEL } from "../credits-copy";
 
 const GRANT_LABELS: Record<CreditGrantView["kind"], string> = {
   trial: "ניסיון",
@@ -19,7 +20,7 @@ export function CreditsCard({ status }: { status: BillingStatus }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { credits, topup } = status;
-  const canTopup = status.available && status.paid;
+  const canTopup = status.creditsAction === "topup";
   const hasLedger = credits.grants.length > 0;
   const liveGrants = credits.grants.filter((g) => g.live);
   const parsed = parseWholeIls(amount);
@@ -38,10 +39,15 @@ export function CreditsCard({ status }: { status: BillingStatus }) {
   }
 
   return (
-    <section className="relative bg-white rounded-[24px] border border-sand-light shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)] p-5 sm:p-10 overflow-hidden">
+    <section id="credits" className="relative scroll-mt-24 bg-white rounded-[24px] border border-sand-light shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)] p-5 sm:p-10 overflow-hidden">
       <span aria-hidden className="absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-sand-light to-transparent" />
       <p className="text-[11px] uppercase tracking-[0.22em] text-espresso-light/70 mb-2">קרדיטים</p>
-      {hasLedger ? (
+      {credits.balance.kind === "out" ? (
+        <>
+          <h2 className="font-display text-2xl text-terra-dark mb-1 leading-tight">{OUT_OF_CREDITS_LABEL[credits.balance.reason]}</h2>
+          <p className="text-sm text-espresso-light mb-6">{credits.stale ? "הנתונים מהעדכון האחרון" : "אין קרדיטים זמינים"}</p>
+        </>
+      ) : hasLedger ? (
         <>
           <h2 className="font-display text-2xl text-espresso mb-1 leading-tight" dir="ltr">
             {formatCredits(credits.available)}
@@ -68,11 +74,19 @@ export function CreditsCard({ status }: { status: BillingStatus }) {
             </div>
           ))}
         </dl>
-      ) : hasLedger ? (
-        <p className="text-sm text-espresso-light mb-6">אין קרדיטים פעילים כרגע.</p>
       ) : null}
 
-      {credits.lowBalance ? (
+      {credits.balance.kind === "out" ? (
+        <p role="status" className="mb-5 text-sm text-terra-dark bg-terra-pale border border-terra/20 rounded-lg p-4">
+          הסוכן לא עונה עד שיהיו קרדיטים.
+          {canTopup ? null : (
+            <>
+              {" "}
+              <CreditsActionLink action={status.creditsAction} className="underline font-medium" />
+            </>
+          )}
+        </p>
+      ) : credits.balance.kind === "low" ? (
         <p role="status" className="mb-5 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-4">
           הקרדיטים עומדים להיגמר. כשהם נגמרים הסוכן מפסיק לענות עד הטעינה הבאה.
         </p>
@@ -135,7 +149,9 @@ export function CreditsCard({ status }: { status: BillingStatus }) {
           </p>
         </div>
       ) : (
-        <p className="text-sm text-espresso-light">טעינת קרדיטים זמינה למנויים.</p>
+        <p className="text-sm text-espresso-light">
+          {status.creditsAction === "contact" ? "התשלומים ייפתחו בקרוב." : "טעינת קרדיטים זמינה למנויים."}
+        </p>
       )}
 
       {error ? (

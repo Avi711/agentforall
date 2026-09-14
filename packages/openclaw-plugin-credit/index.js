@@ -87,10 +87,10 @@ function errorText(err) {
 function outOfCreditText() {
   const url = process.env.AGENTFORALL_CREDIT_TOPUP_URL || DEFAULT_TOPUP_URL;
   return [
-    "נגמרה המכסה שלך לחודש הזה, אז אני לא יכול לענות כרגע.",
+    "נגמרו הקרדיטים של הסוכן, אז אני לא יכול לענות כרגע.",
     "",
-    `אפשר להוסיף מכסה או לשדרג כאן: ${url}`,
+    `מה קרה ואיך ממשיכים — כאן: ${url}`,
     "",
-    "ברגע שתוסיפו, אני חוזר לעבוד מיד.",
+    "ברגע שיהיו קרדיטים, אני חוזר לעבוד מיד.",
   ].join("\n");
 }

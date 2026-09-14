@@ -24,12 +24,21 @@ export interface CreditGrantView {
   live: boolean;
 }
 
+export type OutOfCreditsReason = "trial-ended" | "plan-ended" | "credits-spent";
+
+// `out` is the only state in which enforcement stops the bot; `none` means no ledger (uncapped bot).
+export type BalanceState =
+  | { kind: "none" }
+  | { kind: "ok" }
+  | { kind: "low" }
+  | { kind: "out"; reason: OutOfCreditsReason };
+
 export interface CreditSummary {
   available: number;
   allowance: number;
   consumed: number;
   unallocated: number;
-  lowBalance: boolean;
+  balance: BalanceState;
   trial: TrialState;
   grants: CreditGrantView[];
   syncedAt: string | null;
@@ -239,7 +248,7 @@ export class CreditService {
       allowance,
       consumed: cursors.reduce((sum, c) => sum + c.consumedCredits, 0),
       unallocated: cursors.reduce((sum, c) => sum + c.unallocatedCredits, 0),
-      lowBalance: allowance > 0 && available <= allowance * LOW_BALANCE_RATIO,
+      balance: balanceStateOf(grants, available, allowance),
       trial: trialStateOf(grants, now),
       grants: grants.map((g) => ({
         id: g.id,
@@ -260,6 +269,21 @@ function consumptionDelta(cursor: CreditUsageCursor | null, spend: BotSpend): nu
   if (!cursor) return creditsFromUsdCents(spend.spendUsdCents);
   const restarted = spend.spendUsdCents < cursor.lastSpendUsdCents;
   return creditsFromUsdCents(restarted ? spend.spendUsdCents : spend.spendUsdCents - cursor.lastSpendUsdCents);
+}
+
+function balanceStateOf(grants: readonly CreditGrant[], available: number, allowance: number): BalanceState {
+  if (grants.length === 0) return { kind: "none" };
+  if (allowance === 0) return { kind: "out", reason: outOfCreditsReason(grants) };
+  return available <= allowance * LOW_BALANCE_RATIO ? { kind: "low" } : { kind: "ok" };
+}
+
+// With every grant dead, a latest plan grant that still has credits can only have lapsed by time.
+function outOfCreditsReason(grants: readonly CreditGrant[]): OutOfCreditsReason {
+  if (grants.every((g) => g.kind === "trial")) return "trial-ended";
+  const latestPlan = grants
+    .filter((g) => g.kind === "plan")
+    .sort((a, b) => b.grantedAt.getTime() - a.grantedAt.getTime())[0];
+  return latestPlan && latestPlan.usedCredits < latestPlan.credits ? "plan-ended" : "credits-spent";
 }
 
 function trialStateOf(grants: readonly CreditGrant[], now: Date): TrialState {

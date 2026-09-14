@@ -160,7 +160,7 @@ describe("first payment", () => {
     assert.equal(h.llm.lastCeiling(BOT_ID), usdCentsFromCredits(2500));
     assert.deepEqual({ status: h.events.rows[0]?.status, userId: h.events.rows[0]?.userId }, { status: "processed", userId: USER.id });
     const status = await h.service.getStatus(USER);
-    assert.deepEqual({ paid: status.paid, plan: status.plan.code }, { paid: true, plan: "standard" });
+    assert.deepEqual({ paid: status.paid, plan: status.plan.code, action: status.creditsAction }, { paid: true, plan: "standard", action: "topup" });
   });
 
   test("a provider-reported period end is used as-is on creation", async () => {
@@ -717,15 +717,16 @@ describe("status and entitlement", () => {
     const relaxed = harness({ enforcement: false });
     relaxed.grants.rows.push(usedTrial());
     const open = await relaxed.service.getStatus(USER);
-    assert.deepEqual({ entitled: open.entitled, reason: open.reason, paid: open.paid, sub: open.subscription }, { entitled: true, reason: "enforcement_disabled", paid: false, sub: null });
+    assert.deepEqual({ entitled: open.entitled, reason: open.reason, paid: open.paid, action: open.creditsAction, sub: open.subscription }, { entitled: true, reason: "enforcement_disabled", paid: false, action: "subscribe", sub: null });
     assert.deepEqual(open.plans.map((p) => p.code), ["basic", "standard", "pro"]);
 
     const strict = harness({ enforcement: true });
     strict.grants.rows.push(usedTrial());
     const closed = await strict.service.getStatus(USER);
-    assert.deepEqual({ entitled: closed.entitled, reason: closed.reason }, { entitled: false, reason: "no_subscription" });
+    assert.deepEqual({ entitled: closed.entitled, reason: closed.reason, action: closed.creditsAction }, { entitled: false, reason: "no_subscription", action: "subscribe" });
     assert.equal(await strict.service.isEntitled({ ...USER, betaAccess: true }), true);
-    assert.equal((await harness({ providerAvailable: false }).service.getStatus(USER)).available, false);
+    const offline = await harness({ providerAvailable: false }).service.getStatus(USER);
+    assert.deepEqual({ available: offline.available, action: offline.creditsAction }, { available: false, action: "contact" });
   });
 
   test("refreshStatus falls back to the ledger when the gateway is unreachable", async () => {

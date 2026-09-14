@@ -111,7 +111,7 @@ export function UsersPanel({ reloadToken }: { reloadToken: number }) {
 
   const { data, stale, refreshing } = state;
   const { totals } = data;
-  const outOfCredits = data.users.filter((u) => u.credits !== null && u.credits.available === 0 && u.bots.length > 0).length;
+  const outOfCredits = data.users.filter((u) => u.credits !== null && u.credits.balance.kind === "out" && u.bots.length > 0).length;
   const attention = outOfCredits + totals.erroredBots;
   const attentionHint = [
     outOfCredits > 0 ? `${outOfCredits} out of credits` : null,
@@ -287,14 +287,14 @@ function BotCell({ bots }: { bots: AdminBot[] }) {
 function UsageCell({ user }: { user: AdminUser }) {
   if (user.credits) {
     const c = user.credits;
-    const out = c.available === 0;
+    const out = c.balance.kind === "out";
     return (
       <div>
         <span className={`text-sm tabular-nums ${out ? "font-medium text-terra" : "text-espresso"}`}>
           {out ? "Out of credits" : `${int(c.available)} of ${int(c.allowance)} credits`}
         </span>
         <span className="block text-xs text-espresso-light">{expiryOf(c)}</span>
-        <Meter remaining={c.available} total={c.allowance} low={c.lowBalance} label={`${int(c.available)} of ${int(c.allowance)} credits left`} />
+        <Meter remaining={c.available} total={c.allowance} low={c.balance.kind !== "ok"} label={`${int(c.available)} of ${int(c.allowance)} credits left`} />
       </div>
     );
   }
@@ -393,7 +393,7 @@ function CreditDetails({ user, onCredits }: { user: AdminUser; onCredits: (credi
       ) : (
         <>
           <p className="mt-2 text-sm text-espresso">
-            <span className={`font-medium tabular-nums ${c.available === 0 ? "text-terra" : ""}`}>{int(c.available)}</span>
+            <span className={`font-medium tabular-nums ${c.balance.kind === "out" ? "text-terra" : ""}`}>{int(c.available)}</span>
             <span className="text-espresso-light"> of {int(c.allowance)} left, {int(c.consumed)} used</span>
             {c.unallocated > 0 ? <span className="text-terra"> ({int(c.unallocated)} over)</span> : null}
           </p>

@@ -88,6 +88,8 @@ export interface BillingStatus {
   reason: EntitlementReason;
   // True when access comes from a paid subscription rather than trial/beta/enforcement-off.
   paid: boolean;
+  // What a user short on credits should do next: top-ups are for subscribers, and with no provider only support can help.
+  creditsAction: CreditsAction;
   plan: Plan;
   plans: readonly Plan[];
   subscription: SubscriptionView | null;
@@ -95,6 +97,8 @@ export interface BillingStatus {
   credits: CreditSummary;
   topup: TopupTerms;
 }
+
+export type CreditsAction = "topup" | "subscribe" | "contact";
 
 export type WebhookOutcome = "processed" | "duplicate" | "ignored";
 
@@ -715,13 +719,15 @@ export class BillingService {
     const entitlement = this.entitlementOf(user, subscription, trial);
     const owner = subscription ? this.providers.byName(subscription.provider) : null;
     const credits = trial === summary.trial ? summary : { ...summary, trial };
+    const paid = isPaidReason(entitlement.reason);
     return {
       provider: active.available ? active.name : null,
       available: active.available,
       enforcement: this.enforcement,
       entitled: entitlement.entitled,
       reason: entitlement.reason,
-      paid: isPaidReason(entitlement.reason),
+      paid,
+      creditsAction: !active.available ? "contact" : paid ? "topup" : "subscribe",
       plan: resolvePlan(subscription?.planCode ?? null),
       plans: PLAN_CATALOGUE,
       subscription: subscription ? toSubscriptionView(subscription) : null,

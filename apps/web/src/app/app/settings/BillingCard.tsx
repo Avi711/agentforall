@@ -7,6 +7,7 @@ import type { BillingStatus } from "@/lib/billing/service";
 import { formatDate, formatIls } from "@/lib/billing/format";
 import { SETTINGS_PATH, type CheckoutReturn } from "@/lib/billing/urls";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
+import { SITE_WHATSAPP_URL } from "@/lib/site";
 import { PlanPicker } from "../PlanPicker";
 import {
   BillingClientError,
@@ -62,7 +63,7 @@ export function BillingCard({
   const ending = sub?.cancelAtPeriodEnd || sub?.status === "canceled";
 
   return (
-    <section className="relative bg-white rounded-[24px] border border-sand-light shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)] p-5 sm:p-10 overflow-hidden">
+    <section id="billing" className="relative scroll-mt-24 bg-white rounded-[24px] border border-sand-light shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)] p-5 sm:p-10 overflow-hidden">
       <span aria-hidden className="absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-sand-light to-transparent" />
       <p className="text-[11px] uppercase tracking-[0.22em] text-espresso-light/70 mb-2">מנוי</p>
       <h2 className="font-display text-2xl text-espresso mb-6 leading-tight">התוכנית שלכם</h2>
@@ -79,7 +80,11 @@ export function BillingCard({
       {verification.outcome === "completed" ? <Notice tone="info">התשלום אושר. תודה!</Notice> : null}
       {verification.outcome === "timed_out" ? (
         <Notice tone="warn">
-          התשלום עדיין לא אושר אצלנו. אם חויבתם, הגישה תיפתח אוטומטית תוך דקות ספורות — ואם לא, דברו איתנו.
+          התשלום עדיין לא אושר אצלנו. אם חויבתם, הגישה תיפתח אוטומטית תוך דקות ספורות — ואם לא,{" "}
+          <a href={supportChat("היי, שילמתי אבל המנוי עדיין לא אושר")} target="_blank" rel="noopener noreferrer" className="underline">
+            דברו איתנו
+          </a>
+          .
         </Notice>
       ) : null}
       {checkoutResult === "failed" || verification.outcome === "failed" ? (
@@ -109,7 +114,13 @@ export function BillingCard({
               {pending === "checkout" ? "מעבירים לתשלום…" : "הצטרפות למנוי"}
             </PrimaryButton>
           ) : (
-            <p className="text-sm text-espresso-light">התשלומים ייפתחו בקרוב.</p>
+            <p className="text-sm text-espresso-light">
+              התשלומים ייפתחו בקרוב. עד אז,{" "}
+              <a href={supportChat("היי, אני רוצה להצטרף למנוי")} target="_blank" rel="noopener noreferrer" className="underline">
+                דברו איתנו
+              </a>{" "}
+              ונסדר את זה יחד.
+            </p>
           )
         ) : null}
 
@@ -201,6 +212,10 @@ export function BillingCard({
       ) : null}
     </section>
   );
+}
+
+function supportChat(text: string): string {
+  return `${SITE_WHATSAPP_URL}?text=${encodeURIComponent(text)}`;
 }
 
 type VerificationOutcome = "completed" | "failed" | "timed_out";
