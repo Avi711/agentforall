@@ -19,8 +19,8 @@ export function Hero() {
             </h1>
 
             <p className="mt-6 max-w-lg text-xl font-light leading-relaxed text-espresso-light sm:text-2xl lg:text-start">
-              ראיתם את כל הסרטונים על בוטים חכמים בוואטסאפ ונשמע לכם מסובך?
-              עכשיו אפשר להקים סוכן AI אישי על שרת פרטי, מוכן לשימוש, בכמה קליקים.
+              מזיז פגישות ביומן, מוציא חשבוניות לאקסל, עוקב אחרי מחיר הטיסה ומדבר עם הלקוחות של העסק.
+              נשמע מסובך? סוכן AI פרטי משלכם, על שרת פרטי, מוכן לשימוש בכמה קליקים. אתם כותבים הודעה, הוא מבצע.
             </p>
 
             <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row lg:justify-start">

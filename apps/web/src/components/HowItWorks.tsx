@@ -1,99 +1,59 @@
+const STEPS = [
+  {
+    title: "נכנסים עם Google ונותנים לסוכן שם",
+    body: "בלי טפסים ובלי כרטיס אשראי. שם אחד, וזהו.",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden className="h-6 w-6">
+        <circle cx="12" cy="8" r="4" />
+        <path d="M4 21a8 8 0 0 1 16 0" />
+      </svg>
+    ),
+  },
+  {
+    title: "תוך דקה הוא רץ על שרת פרטי משלכם",
+    body: "אנחנו מקימים אותו. אתם לא מתקינים כלום.",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden className="h-6 w-6">
+        <rect x="3" y="4" width="18" height="7" rx="2" />
+        <rect x="3" y="13" width="18" height="7" rx="2" />
+        <path d="M7 7.5h.01M7 16.5h.01" />
+      </svg>
+    ),
+  },
+  {
+    title: "מחברים טלגרם או וואטסאפ ושולחים הודעה",
+    body: "בטלגרם זה שתי לחיצות, בוואטסאפ סורקים קוד. ומכאן כותבים לו כמו לחבר.",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden className="h-6 w-6">
+        <path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l.9-4.4A8 8 0 1 1 20 12z" />
+      </svg>
+    ),
+  },
+] as const;
+
 export function HowItWorks() {
   return (
-    <section
-      id="how-it-works"
-      className="relative overflow-hidden bg-espresso px-5 py-16 sm:px-8 sm:py-20"
-    >
-      <div className="mx-auto max-w-6xl">
-        <div className="text-center">
-          <h2 className="font-display text-4xl font-black leading-[1.1] tracking-tight text-white sm:text-5xl">
-            איך זה עובד
+    <section id="how-it-works" aria-labelledby="how-it-works-title" className="py-16 sm:py-24">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6">
+        <header className="text-center mb-10 sm:mb-14">
+          <p className="text-xs uppercase tracking-[0.22em] text-espresso-light/80 mb-3">איך זה עובד</p>
+          <h2 id="how-it-works-title" className="font-display text-3xl sm:text-4xl text-espresso leading-tight">
+            מאפס לעוזר אישי משלכם, תוך דקות
           </h2>
-          <p className="mx-auto mt-4 max-w-md text-lg font-light text-white/50">
-            מאפס לעוזר אישי משלכם. תוך דקות.
-          </p>
-        </div>
+        </header>
 
-        <div className="mx-auto mt-14 grid max-w-5xl gap-16 sm:grid-cols-3 sm:gap-12">
-          {/* Step 01 */}
-          <div className="text-center" dir="rtl">
-            <span className="text-7xl font-black leading-none text-terra/80">01</span>
-            <h3 className="mt-5 text-xl font-bold text-white">
-              נרשמים ומספרים מה חשוב
-            </h3>
-            <p className="mt-3 text-sm leading-relaxed text-white/50">
-              בוחרים פלטפורמה ומספרים מה הכי חשוב — יומן, תקציב, תזכורות, או הכל ביחד.
-            </p>
-            {/* Preview: interest chips */}
-            <div className="mt-6 flex flex-wrap justify-center gap-2">
-              {["📅 יומן", "💰 תקציב", "⏰ תזכורות", "🔍 מחקר", "🤖 הכל!"].map((tag) => (
-                <span
-                  key={tag}
-                  className="rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-xs text-white/60"
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {/* Step 02 */}
-          <div className="text-center" dir="rtl">
-            <span className="text-7xl font-black leading-none text-terra/80">02</span>
-            <h3 className="mt-5 text-xl font-bold text-white">
-              אנחנו מקימים לכם סוכן
-            </h3>
-            <p className="mt-3 text-sm leading-relaxed text-white/50">
-              מפעילים סוכן AI פרטי על שרת מאובטח. אתם לא צריכים לעשות כלום.
-            </p>
-            {/* Preview: status checklist */}
-            <div className="mt-6 space-y-2.5 text-start">
-              {[
-                { label: "שרת פרטי מוקצה", done: true },
-                { label: "הצפנת AES-256 פעילה", done: true },
-                { label: "סוכן מותאם אישית", done: true },
-                { label: "חיבור וואטסאפ", done: false },
-              ].map((item) => (
-                <div key={item.label} className="flex items-center gap-2.5">
-                  <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] ${
-                    item.done ? "bg-terra/20 text-terra" : "border border-white/10 text-white/20"
-                  }`}>
-                    {item.done ? "✓" : ""}
-                  </div>
-                  <span className={`text-xs ${item.done ? "text-white/60" : "text-white/30"}`}>
-                    {item.label}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Step 03 */}
-          <div className="text-center" dir="rtl">
-            <span className="text-7xl font-black leading-none text-terra/80">03</span>
-            <h3 className="mt-5 text-xl font-bold text-white">
-              שולחים הודעה ומתחילים
-            </h3>
-            <p className="mt-3 text-sm leading-relaxed text-white/50">
-              סורקים QR עם המספר הייעודי של הסוכן — וזהו. שולחים הודעה כמו לחבר.{" "}
-              <a
-                href="/blog/dedicated-whatsapp-number"
-                className="text-terra-light underline underline-offset-4 hover:text-white"
-              >
-                איך מסדרים מספר ייעודי
-              </a>
-            </p>
-            {/* Preview: mini chat */}
-            <div className="mt-6 space-y-2">
-              <div className="mr-auto w-fit max-w-[85%] rounded-2xl rounded-br-sm bg-[#DCF8C6] px-3.5 py-2 text-start text-xs leading-relaxed text-black/80">
-                היי, אני רוצה שתנהל לי את היומן
+        <ol className="grid gap-4 sm:gap-6 sm:grid-cols-3">
+          {STEPS.map((step, i) => (
+            <li key={step.title} className="flex flex-col gap-4 rounded-[24px] border border-sand-light bg-white p-6 sm:p-8">
+              <div className="flex items-center justify-between">
+                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-sage-pale text-sage-dark">{step.icon}</span>
+                <span className="text-xs uppercase tracking-[0.18em] text-espresso-light/70">שלב {i + 1}</span>
               </div>
-              <div className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-bl-sm bg-white/10 px-3.5 py-2 text-start text-xs leading-relaxed text-white/70">
-                בוקר טוב! 🙌 ספר לי איך היומן שלך נראה ואני מתחיל לסדר.
-              </div>
-            </div>
-          </div>
-        </div>
+              <h3 className="font-display text-xl text-espresso leading-snug">{step.title}</h3>
+              <p className="text-sm leading-relaxed text-espresso-light">{step.body}</p>
+            </li>
+          ))}
+        </ol>
       </div>
     </section>
   );
