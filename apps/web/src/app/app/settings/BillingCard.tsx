@@ -69,7 +69,7 @@ export function BillingCard({
       <h2 className="font-display text-2xl text-espresso mb-6 leading-tight">התוכנית שלכם</h2>
 
       <dl className="divide-y divide-sand-light/70 mb-6">
-        <Row label="תוכנית" value={`${status.plan.name} · ${formatIls(status.plan.priceIls)} לחודש`} />
+        {sub ? <Row label="תוכנית" value={`${status.plan.name} · ${formatIls(status.plan.priceIls)} לחודש`} /> : null}
         <Row label="מצב" value={<StatusBadge status={status} verifying={verification.verifying} />} />
         {sub && periodEnd ? <Row label={ending ? "מסתיים ב" : "חיוב הבא"} value={periodEnd} /> : null}
       </dl>

@@ -1,3 +1,4 @@
+import { CATALOG_SIZE_LABEL } from "@/lib/integrations/catalog.he";
 import Link from "next/link";
 import { formatCredits, formatIls } from "@/lib/billing/format";
 import {
@@ -50,6 +51,7 @@ export function Pricing({ ctaHref = "/app" }: { ctaHref?: string }) {
                   <Perk>≈ {formatCredits(estimatedMessages(plan.includedCredits))} הודעות</Perk>
                   <Perk>סוכן פרטי משלכם, 24/7</Perk>
                   <Perk>וואטסאפ או טלגרם</Perk>
+                  <Perk>מתחבר למעל {CATALOG_SIZE_LABEL} אפליקציות</Perk>
                   <Perk>ביטול בכל רגע</Perk>
                   {plan.code === "pro" ? (
                     <Perk>

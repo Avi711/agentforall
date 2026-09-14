@@ -8,12 +8,19 @@ import { whatsappChatUrl } from "@/lib/site";
 import { startCheckout } from "./billing/client";
 import { SurfaceCard } from "./Marks";
 import { PlanPicker } from "./PlanPicker";
+import { CATALOG_SIZE_LABEL, LANDING_APPS } from "@/lib/integrations/catalog.he";
 
 const PERKS = [
   "סוכן AI פרטי משלכם, זמין 24/7 בוואטסאפ או בטלגרם",
-  "זיכרון, תזכורות, יומן ומשימות — בעברית",
+  "מבצע בפועל: מזיז פגישות, שולח הודעות, מכין קבצים ודוחות",
+  `מחובר לאפליקציות שלכם: Gmail, יומן Google, Drive, Notion, monday, Google Ads, Meta Ads ועוד מעל ${CATALOG_SIZE_LABEL}`,
+  "זיכרון, תזכורות, אוטומציות קבועות ומעקבי מחירים ותורים",
+  "מבין הודעות קוליות ועונה בעברית רהוטה",
   "ביטול בכל רגע, בלי התחייבות",
 ];
+
+const LOGO_SLUGS = ["gmail", "googlecalendar", "googledrive", "notion", "monday", "googleads", "metaads"];
+const LOGOS = LANDING_APPS.filter((app) => LOGO_SLUGS.includes(app.slug));
 
 export function SubscribeCard({ status }: { status: BillingStatus }) {
   const [plan, setPlan] = useState(status.plan.code);
@@ -44,6 +51,13 @@ export function SubscribeCard({ status }: { status: BillingStatus }) {
           </li>
         ))}
       </ul>
+
+      <div className="mb-6 flex flex-wrap items-center gap-2" aria-hidden>
+        {LOGOS.map((app) => (
+          <img key={app.slug} src={app.logo} alt="" width={24} height={24} className="h-6 w-6" />
+        ))}
+        <span dir="ltr" className="rounded-full bg-cream-dark px-2.5 py-0.5 text-xs text-espresso-light">{CATALOG_SIZE_LABEL}+</span>
+      </div>
 
       <div className="mb-6">
         <PlanPicker plans={status.plans} selected={plan} disabled={busy} onSelect={setPlan} />

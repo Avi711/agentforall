@@ -48,6 +48,21 @@ export const SHOWCASE_APPS: readonly ShowcaseApp[] = [
   { slug: "wix", name: "Wix", logo: "/apps/wix.webp" },
 ];
 
+// Landing strip: the six dashboard logos plus the ones Israeli SMBs ask about; logos are what the app shows.
+export const LANDING_APPS: readonly ShowcaseApp[] = [
+  ...SHOWCASE_APPS.slice(0, 5),
+  { slug: "googlesheets", name: "Google Sheets", logo: "/apps/googlesheets.svg" },
+  { slug: "outlook", name: "Outlook", logo: "/apps/outlook.svg" },
+  SHOWCASE_APPS[5]!,
+  { slug: "zoom", name: "Zoom", logo: "/apps/zoom.svg" },
+  { slug: "linkedin", name: "LinkedIn", logo: "/apps/linkedin.svg" },
+  { slug: "googleads", name: "Google Ads", logo: "/apps/googleads.svg" },
+  { slug: "metaads", name: "Meta Ads", logo: "/apps/metaads.svg" },
+];
+
+// Spelled "מעל 1,000" in copy: a leading "+" flips sides in RTL text.
+export const CATALOG_SIZE_LABEL = "1,000";
+
 export const FEATURED_SLUGS: readonly string[] = FEATURED_APPS.map((app) => app.slug);
 
 const BY_SLUG = new Map(FEATURED_APPS.map((app) => [app.slug, app]));
