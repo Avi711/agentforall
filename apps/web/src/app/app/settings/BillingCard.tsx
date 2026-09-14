@@ -7,7 +7,7 @@ import type { BillingStatus } from "@/lib/billing/service";
 import { formatDate, formatIls } from "@/lib/billing/format";
 import { SETTINGS_PATH, type CheckoutReturn } from "@/lib/billing/urls";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
-import { SITE_WHATSAPP_URL } from "@/lib/site";
+import { whatsappChatUrl } from "@/lib/site";
 import { PlanPicker } from "../PlanPicker";
 import {
   BillingClientError,
@@ -81,7 +81,7 @@ export function BillingCard({
       {verification.outcome === "timed_out" ? (
         <Notice tone="warn">
           התשלום עדיין לא אושר אצלנו. אם חויבתם, הגישה תיפתח אוטומטית תוך דקות ספורות — ואם לא,{" "}
-          <a href={supportChat("היי, שילמתי אבל המנוי עדיין לא אושר")} target="_blank" rel="noopener noreferrer" className="underline">
+          <a href={whatsappChatUrl("היי, שילמתי אבל המנוי עדיין לא אושר")} target="_blank" rel="noopener noreferrer" className="underline">
             דברו איתנו
           </a>
           .
@@ -116,7 +116,7 @@ export function BillingCard({
           ) : (
             <p className="text-sm text-espresso-light">
               התשלומים ייפתחו בקרוב. עד אז,{" "}
-              <a href={supportChat("היי, אני רוצה להצטרף למנוי")} target="_blank" rel="noopener noreferrer" className="underline">
+              <a href={whatsappChatUrl("היי, אני רוצה להצטרף למנוי")} target="_blank" rel="noopener noreferrer" className="underline">
                 דברו איתנו
               </a>{" "}
               ונסדר את זה יחד.
@@ -212,10 +212,6 @@ export function BillingCard({
       ) : null}
     </section>
   );
-}
-
-function supportChat(text: string): string {
-  return `${SITE_WHATSAPP_URL}?text=${encodeURIComponent(text)}`;
 }
 
 type VerificationOutcome = "completed" | "failed" | "timed_out";

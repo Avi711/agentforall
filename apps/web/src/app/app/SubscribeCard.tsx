@@ -4,6 +4,7 @@ import { useState } from "react";
 import { PendingLink } from "./Pending";
 import type { BillingStatus } from "@/lib/billing/service";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
+import { whatsappChatUrl } from "@/lib/site";
 import { startCheckout } from "./billing/client";
 import { SurfaceCard } from "./Marks";
 import { PlanPicker } from "./PlanPicker";
@@ -58,7 +59,12 @@ export function SubscribeCard({ status }: { status: BillingStatus }) {
           {busy ? "מעבירים לתשלום…" : "הצטרפות למנוי"}
         </button>
       ) : (
-        <p className="text-sm text-espresso-light">התשלומים ייפתחו בקרוב. נעדכן אתכם.</p>
+        <p className="text-sm text-espresso-light">
+          התשלומים ייפתחו בקרוב. רוצים להתחיל כבר עכשיו?{" "}
+          <a href={whatsappChatUrl("היי, אני רוצה להעלות סוכן")} target="_blank" rel="noopener noreferrer" className="underline hover:text-terra">
+            דברו איתנו בוואטסאפ
+          </a>
+        </p>
       )}
 
       {error ? (

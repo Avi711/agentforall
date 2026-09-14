@@ -4,6 +4,10 @@ export const SITE_URL = "https://agentforall.co.il";
 export const SITE_NAME = "Agent For All";
 export const SITE_PHONE = "+972-55-250-6938";
 export const SITE_WHATSAPP_URL = "https://wa.me/972552506938";
+
+export function whatsappChatUrl(text: string): string {
+  return `${SITE_WHATSAPP_URL}?text=${encodeURIComponent(text)}`;
+}
 export const PRICE_ILS_MONTHLY = String(PLANS.basic.priceIls);
 
 // Search/answer-engine terms. Hebrew spells WhatsApp several ways; all are real queries.
