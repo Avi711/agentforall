@@ -155,8 +155,8 @@ if [ "$DISK_USED" -ge 75 ]; then
   logger -p daemon.warning "agent-forall disk usage warning: root filesystem $${DISK_USED}% used"
 fi
 
-docker image prune -af --filter "until=168h" >/dev/null
-docker builder prune -af --filter "until=168h" >/dev/null
+docker image prune -af >/dev/null
+docker builder prune -af >/dev/null
 HOUSEKEEPINGEOF
 chmod 0755 /usr/local/sbin/agent-forall-docker-housekeeping
 

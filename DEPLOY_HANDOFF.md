@@ -390,8 +390,8 @@ recreate, the proxy lost its alias, API down ~10 min, bots unaffected; fixed by 
 now sits on `172.18.0.0/16`. Never change a compose network's config while containers are attached.
 2026-09-14 (disk): boot disk at 75 % — 25 GB of superseded image digests in `/var/lib/containerd` (Docker 29 keeps images
 there, outside `data-root`); the nightly `image prune` keeps anything built within 7 days, which with daily deploys is everything.
-One-time `docker image prune -af` → 36 GB → 17 GB used; Hermes image gone too (re-pulled on demand). Durable fix in the hosting plan
-(orchestrator removes unreferenced images after an image switch; containerd root on the data disk in the worker image).
+One-time `docker image prune -af` → 36 GB → 17 GB used; Hermes image gone too (re-pulled on demand). Nightly job now prunes every unused image (filter
+removed in startup.sh, applied via metadata + startup rerun); containerd root moves to the data disk with the Phase 2 worker image.
 TODO once the Cloud API is live: a business-only bot (no Baileys link) has no owner number, so the owner is a stranger
 on the business number. Show "המספר שלי" for it (`BotCard.tsx:528`, `OwnerIdentityDialog` `whatsappAvailable`) and store
 the number on the `whatsapp_cloud` channel instead of `withWhatsappOwnerNumber` adding a Baileys channel (`owner.ts:17`).
