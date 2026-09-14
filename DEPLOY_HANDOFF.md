@@ -381,6 +381,17 @@ rows under an operation lock (no false `stopped` during a restart); `startup.sh`
 2026-09-14: orchestrator `orchestrator@sha256:1dfc406aeb46d228036a2477f339a8a83a7d3807b3d3554ab0aae9df99623e58` — hosting plan
 Phase 2 step 1: `ContainerRuntime` is an interface (`services/container-runtime.ts`), Docker lives in `services/docker-container-runtime.ts`.
 Pure refactor, no behavior change.
+2026-09-14 (S-13): bots could reach the GCE metadata server (VM service-account token). `agent-forall-metadata-guard.service`
+(startup.sh; required by docker.service) drops container → 169.254.169.254 except the orchestrator at `172.16.0.10` on bridge
+`af-front` (frontend `172.16.0.0/24`, default route via `gw_priority: 100`) and DNS :53; `docker.service` fails unless `DOCKER-USER`
+is wired (`ExecStartPost`); `tenant-net` is external to compose (created by startup.sh); Caddy runs with `cap_drop: ALL`. Verified
+live: bot timeout, Caddy blocked, orchestrator 200, bot DNS ok. Rollout incident: a compose network-config change on `tenant-net`/`control-net` triggered a network
+recreate, the proxy lost its alias, API down ~10 min, bots unaffected; fixed by `--force-recreate docker-socket-proxy`. `control-net`
+now sits on `172.18.0.0/16`. Never change a compose network's config while containers are attached.
+2026-09-14 (disk): boot disk at 75 % — 25 GB of superseded image digests in `/var/lib/containerd` (Docker 29 keeps images
+there, outside `data-root`); the nightly `image prune` keeps anything built within 7 days, which with daily deploys is everything.
+One-time `docker image prune -af` → 36 GB → 17 GB used; Hermes image gone too (re-pulled on demand). Durable fix in the hosting plan
+(orchestrator removes unreferenced images after an image switch; containerd root on the data disk in the worker image).
 TODO once the Cloud API is live: a business-only bot (no Baileys link) has no owner number, so the owner is a stranger
 on the business number. Show "המספר שלי" for it (`BotCard.tsx:528`, `OwnerIdentityDialog` `whatsappAvailable`) and store
 the number on the `whatsapp_cloud` channel instead of `withWhatsappOwnerNumber` adding a Baileys channel (`owner.ts:17`).

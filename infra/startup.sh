@@ -49,7 +49,8 @@ if [ -e "$DATA_DEV" ]; then
 RequiresMountsFor=$DATA_MOUNT
 UNITEOF
   DAEMON_JSON='{
-  "data-root": "/mnt/docker"
+  "data-root": "/mnt/docker",
+  "firewall-backend": "iptables"
 }'
   if [ ! -f /etc/docker/daemon.json ] || [ "$(cat /etc/docker/daemon.json)" != "$DAEMON_JSON" ]; then
     printf '%s\n' "$DAEMON_JSON" > /etc/docker/daemon.json
@@ -59,6 +60,48 @@ else
   echo "error: data disk $DATA_DEV is not attached; refusing to run Docker off the boot disk"
   exit 1
 fi
+
+# ── Metadata guard: only the orchestrator (fixed IP on its own bridge, default route via gw_priority) may reach
+# 169.254.169.254, which is the VM's service account and also its DNS (:53 stays open); 172.16/24 is outside Docker's pool. ──
+FRONTEND_BRIDGE=af-front
+FRONTEND_SUBNET=172.16.0.0/24
+ORCHESTRATOR_FRONTEND_IP=172.16.0.10
+cat > /usr/local/sbin/agent-forall-metadata-guard <<GUARDEOF
+#!/bin/bash
+set -euo pipefail
+iptables-restore --noflush <<'RULES'
+*filter
+:DOCKER-USER - [0:0]
+-A DOCKER-USER -i $FRONTEND_BRIDGE -s $ORCHESTRATOR_FRONTEND_IP -d 169.254.169.254 -j RETURN
+-A DOCKER-USER -p udp --dport 53 -d 169.254.169.254 -j RETURN
+-A DOCKER-USER -p tcp --dport 53 -d 169.254.169.254 -j RETURN
+-A DOCKER-USER -d 169.254.169.254 -j DROP
+-A DOCKER-USER -j RETURN
+COMMIT
+RULES
+GUARDEOF
+chmod 755 /usr/local/sbin/agent-forall-metadata-guard
+cat > /etc/systemd/system/agent-forall-metadata-guard.service <<'UNITEOF'
+[Unit]
+Description=Block Docker containers from the GCE metadata server
+DefaultDependencies=no
+After=network-pre.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/agent-forall-metadata-guard
+UNITEOF
+# Requires, not Before: a failing guard must keep Docker down rather than start it with the hole open.
+cat > /etc/systemd/system/docker.service.d/metadata-guard.conf <<'UNITEOF'
+[Unit]
+Requires=agent-forall-metadata-guard.service
+After=agent-forall-metadata-guard.service
+
+[Service]
+ExecStartPost=/usr/sbin/iptables -C FORWARD -j DOCKER-USER
+UNITEOF
+systemctl daemon-reload
+systemctl start agent-forall-metadata-guard.service
 
 # ── Install Docker Engine + Compose plugin (first boot only) ──
 if ! command -v docker >/dev/null 2>&1; then
@@ -85,6 +128,8 @@ echo "Waiting for Docker..."
 for _ in $(seq 1 60); do docker info >/dev/null 2>&1 && break; sleep 2; done
 docker info >/dev/null 2>&1 || { echo "error: Docker did not come up within 120s (is $DATA_MOUNT mounted?)"; exit 1; }
 echo "Docker ready."
+# Owned by the orchestrator, shared by every bot: kept outside compose so a stack change can never recreate it.
+docker network inspect tenant-net >/dev/null 2>&1 || docker network create tenant-net
 
 if ! command -v cron >/dev/null 2>&1; then
   export DEBIAN_FRONTEND=noninteractive
@@ -128,6 +173,9 @@ cd "$DEPLOY_DIR"
 
 cat > .env <<COMPOSEENV
 ORCHESTRATOR_IMAGE=$ORCHESTRATOR_IMAGE
+FRONTEND_BRIDGE=$FRONTEND_BRIDGE
+FRONTEND_SUBNET=$FRONTEND_SUBNET
+ORCHESTRATOR_FRONTEND_IP=$ORCHESTRATOR_FRONTEND_IP
 COMPOSEENV
 chmod 600 .env
 
@@ -276,6 +324,8 @@ services:
     depends_on:
       orchestrator:
         condition: service_healthy
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
     networks:
       - frontend
     deploy:
@@ -301,9 +351,11 @@ services:
       docker-socket-proxy:
         condition: service_started
     networks:
-      - frontend
-      - tenant-net
-      - control-net
+      frontend:
+        ipv4_address: $${ORCHESTRATOR_FRONTEND_IP}
+        gw_priority: 100
+      tenant-net: {}
+      control-net: {}
     deploy:
       resources:
         limits:
@@ -359,9 +411,13 @@ volumes:
 networks:
   frontend:
     driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: $${FRONTEND_BRIDGE}
+    ipam:
+      config:
+        - subnet: $${FRONTEND_SUBNET}
   tenant-net:
-    driver: bridge
-    name: tenant-net
+    external: true
   control-net:
     driver: bridge
     internal: true
