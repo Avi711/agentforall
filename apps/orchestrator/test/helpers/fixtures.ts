@@ -5,6 +5,9 @@ import type {
   WhatsappCloudChannelConfig,
 } from "../../src/domain/types.js";
 import type { InstanceManager } from "../../src/services/instance-manager.js";
+import { relayUrlsFor } from "../../src/services/relay.js";
+
+export const RELAY_URLS = relayUrlsFor("11111111-1111-4111-8111-111111111111", "http://orchestrator:3000");
 
 // Stand-in for services that only read channels and rewrite them through updateChannels.
 export function fakeChannelManager(initial: Instance) {
@@ -48,7 +51,6 @@ export function makeWhatsappCloudChannel(
     pin: "246810",
     coexistence: false,
     relayToken: "cloud-relay-token",
-    relayUrl: "http://orchestrator:3000/api/v1/whatsapp-cloud/11111111-1111-4111-8111-111111111111",
     ...overrides,
   };
 }

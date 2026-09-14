@@ -70,7 +70,8 @@ import {
   type MetaGraphClient,
 } from "./graph-client.js";
 import type { InboxDispatcher } from "./inbox-dispatcher.js";
-import { freshPin, whatsappCloudBindingFor } from "./relay-binding.js";
+import { freshPin } from "./pin.js";
+import { freshRelayToken } from "../relay.js";
 import { TokenBuckets } from "./token-bucket.js";
 
 type Instances = Pick<InstanceManager, "get" | "updateChannels">;
@@ -109,10 +110,6 @@ type Graph = Pick<
 >;
 type OwnerMessenger = Pick<TelegramBotApi, "sendMessage">;
 export type OwnerMessengerFactory = (botToken: string) => OwnerMessenger;
-
-export interface WhatsappCloudManagerConfig {
-  orchestratorInternalUrl: string;
-}
 
 export interface RelayContext {
   instance: Instance;
@@ -176,7 +173,6 @@ export class WhatsappCloudManager {
     private readonly graph: Graph,
     private readonly dispatcher: Inbox,
     private readonly eventLog: EventLog,
-    private readonly config: WhatsappCloudManagerConfig,
     private readonly log: FastifyBaseLogger,
     private readonly ownerMessenger: OwnerMessengerFactory = (token) => new TelegramBotApi(token),
     private readonly now: () => Date = () => new Date(),
@@ -212,7 +208,6 @@ export class WhatsappCloudManager {
       throw new ConflictError("this WhatsApp number is already connected to a bot");
     }
     const pin = input.coexistence ? null : input.pin ?? known?.pin ?? freshPin();
-    const binding = whatsappCloudBindingFor(instanceId, this.config.orchestratorInternalUrl);
     const facts = await this.registerAtMeta(input, pin);
     // A stale row from an earlier number of this bot would otherwise collide on instance_id.
     await this.repo.releaseNumber(instanceId);
@@ -228,8 +223,7 @@ export class WhatsappCloudManager {
       accessToken: input.accessToken,
       pin,
       coexistence: input.coexistence === true,
-      relayToken: binding.relayToken,
-      relayUrl: binding.relayUrl,
+      relayToken: freshRelayToken(),
     };
     try {
       await this.instances.updateChannels(instanceId, userId, (channels) =>

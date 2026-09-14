@@ -5,7 +5,7 @@ import {
   generateRuntimePatchedOpenclawFiles,
 } from "../src/services/agent-runtime/openclaw/config.js";
 import type { ChannelConfig } from "../src/domain/types.js";
-import { configWith, makeWhatsappCloudChannel } from "./helpers/fixtures.js";
+import { RELAY_URLS, configWith, makeWhatsappCloudChannel } from "./helpers/fixtures.js";
 
 interface Rendered {
   channels: Record<string, Record<string, unknown> | undefined>;
@@ -20,7 +20,7 @@ const WHATSAPP_OWNED: ChannelConfig = { type: "whatsapp", dmAccess: "owner", own
 const CLOUD = makeWhatsappCloudChannel();
 
 function render(channels: ChannelConfig[]): { config: Rendered; dotEnv: string } {
-  const files = generateOpenclawFiles(configWith(channels), "gw-token");
+  const files = generateOpenclawFiles(configWith(channels), "gw-token", RELAY_URLS);
   return { config: JSON.parse(files.configJson) as Rendered, dotEnv: files.dotEnv };
 }
 
@@ -36,7 +36,7 @@ test("a business number renders the channel block with ids and the relay url but
         enabled: true,
         phoneNumberId: "2000",
         displayPhoneNumber: "+972501112233",
-        relayUrl: CLOUD.relayUrl,
+        relayUrl: RELAY_URLS.whatsappCloud,
       },
     },
   });
@@ -103,12 +103,12 @@ test("a bot without a business number renders no channel, but the plugin entry s
 });
 
 test("disconnecting the business number removes its block, plugin and policy from the live config", () => {
-  const live = JSON.parse(generateOpenclawFiles(configWith([TELEGRAM, CLOUD]), "gw-token").configJson) as Record<
+  const live = JSON.parse(generateOpenclawFiles(configWith([TELEGRAM, CLOUD]), "gw-token", RELAY_URLS).configJson) as Record<
     string,
     unknown
   >;
   (live as { plugins: { entries: Record<string, unknown> } }).plugins.entries["memory-core"] = { enabled: true };
-  const files = generateRuntimePatchedOpenclawFiles(JSON.stringify(live), configWith([TELEGRAM]), "gw-token");
+  const files = generateRuntimePatchedOpenclawFiles(JSON.stringify(live), configWith([TELEGRAM]), "gw-token", RELAY_URLS);
   const patched = JSON.parse(files.configJson) as Rendered;
 
   assert.equal(patched.channels.whatsapp_cloud, undefined);
@@ -123,7 +123,7 @@ test("connecting a business number to a live config keeps the tenant's other set
     channels: { telegram: { enabled: true, botToken: "tg-token", groups: { "-100": { requireMention: false } } } },
     messages: { custom: true },
   };
-  const files = generateRuntimePatchedOpenclawFiles(JSON.stringify(live), configWith([TELEGRAM, CLOUD]), "gw-token");
+  const files = generateRuntimePatchedOpenclawFiles(JSON.stringify(live), configWith([TELEGRAM, CLOUD]), "gw-token", RELAY_URLS);
   const patched = JSON.parse(files.configJson) as Rendered & { messages?: unknown };
 
   assert.deepEqual(patched.messages, { custom: true });

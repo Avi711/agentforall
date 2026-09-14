@@ -57,6 +57,7 @@ import { WhatsappCloudInboxListener, canListenOn } from "./storage/whatsapp-clou
 import { WhatsappCloudManager } from "./services/whatsapp-cloud/manager.js";
 import { whatsappCloudRoutes } from "./routes/whatsapp-cloud.js";
 import { whatsappCloudRelayRoutes } from "./routes/whatsapp-cloud-relay.js";
+import { MCP_RELAY_PATH, WHATSAPP_CLOUD_RELAY_PATH } from "./services/relay.js";
 import type { IntegrationCleanup } from "./services/instance-manager.js";
 
 const MAX_STARTUP_RETRIES = 10;
@@ -147,7 +148,7 @@ async function main(): Promise<void> {
   await runtime.ensureNetworkExists();
 
   const runtimeAdapters = new AgentRuntimeRegistry([
-    new OpenClawRuntimeAdapter(runtime, config.agentRuntimeImage),
+    new OpenClawRuntimeAdapter(runtime, config.agentRuntimeImage, config.orchestratorInternalUrl),
     new HermesRuntimeAdapter(runtime, config.hermesRuntimeImage),
   ]);
 
@@ -309,7 +310,7 @@ async function main(): Promise<void> {
   await app.register(integrationsRoutes, { prefix: "/api/v1", integrations });
   if (integrations) {
     await app.register(mcpRelayRoutes, {
-      prefix: "/api/v1/mcp",
+      prefix: MCP_RELAY_PATH,
       resolveRelay: (instanceId, bearer) => integrations.resolveRelay(instanceId, bearer),
       fetchImpl: createRelayFetch(),
     });
@@ -331,7 +332,6 @@ async function main(): Promise<void> {
     new MetaGraphClient(config.metaGraphBaseUrl, config.metaGraphApiVersion),
     inboxDispatcher,
     eventLog,
-    { orchestratorInternalUrl: config.orchestratorInternalUrl },
     log,
     undefined,
     undefined,
@@ -339,7 +339,7 @@ async function main(): Promise<void> {
   );
   destroyCleanups.push({ revokeAll: (inst) => whatsappCloud.cleanupForDestroy(inst) });
   await app.register(whatsappCloudRoutes, { prefix: "/api/v1/instances", manager: whatsappCloud });
-  await app.register(whatsappCloudRelayRoutes, { prefix: "/api/v1/whatsapp-cloud", manager: whatsappCloud });
+  await app.register(whatsappCloudRelayRoutes, { prefix: WHATSAPP_CLOUD_RELAY_PATH, manager: whatsappCloud });
   inboxDispatcher.start();
   const inboxListener = canListenOn(config.databaseUrl)
     ? WhatsappCloudInboxListener.forUrl(config.databaseUrl, (id) => inboxDispatcher.wake(id), log)

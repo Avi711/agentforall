@@ -77,7 +77,6 @@ export interface WhatsappCloudChannel {
   pin: string | null;
   coexistence: boolean;
   relayToken: string;
-  relayUrl: string;
 }
 
 export type WhatsappChannelConfig = Extract<ChannelConfig, { type: "whatsapp" }>;
@@ -109,7 +108,6 @@ export const DEFAULT_RESOURCE_LIMITS: ResourceLimits = {
 // What the container needs to reach the orchestrator's MCP relay; the provider behind it stays server-side.
 export interface IntegrationsBinding {
   relayToken: string;
-  relayUrl: string;
 }
 
 export interface InstanceConfig {
@@ -124,7 +122,7 @@ export interface InstanceConfig {
 // Runs on the stored row, before decryptConfig: secret fields are ciphertext here.
 export const InstanceConfigSchema: z.ZodType<InstanceConfig, z.ZodTypeDef, unknown> = z.object({
   integrations: z
-    .object({ relayToken: z.string().min(1), relayUrl: z.string().url() })
+    .object({ relayToken: z.string().min(1) })
     .optional(),
   displayName: z.string(),
   provider: z.object({
@@ -166,7 +164,6 @@ export const InstanceConfigSchema: z.ZodType<InstanceConfig, z.ZodTypeDef, unkno
         pin: z.string().min(1).nullable(),
         coexistence: z.boolean().default(false),
         relayToken: z.string().min(1),
-        relayUrl: z.string().url(),
       }),
     ]),
   ),

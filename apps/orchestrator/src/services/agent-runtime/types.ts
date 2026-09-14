@@ -1,5 +1,5 @@
 import type { Readable } from "node:stream";
-import type { AgentRuntimeKind, Instance, InstanceConfig } from "../../domain/types.js";
+import type { AgentRuntimeKind, Instance } from "../../domain/types.js";
 import type { ContainerCreateOptions, ArchiveStreamResult } from "../container-runtime.js";
 
 export type { AgentRuntimeKind };
@@ -53,7 +53,7 @@ export interface AgentRuntimeAdapter {
   containerName(instanceId: string): string;
   stateVolumeName(instanceId: string): string;
   buildContainerOptions(instance: Instance): Promise<ContainerCreateOptions>;
-  generateConfig(config: InstanceConfig, gatewayToken: string): RuntimeConfigFiles;
+  generateConfig(instance: Instance): RuntimeConfigFiles;
   // Writes config for the container's next boot. Callers that restart afterwards use this.
   writeConfig(containerId: string, instance: Instance): Promise<void>;
   // Applies config to a running runtime without restarting it, and reports what actually happened.

@@ -44,7 +44,7 @@ const STALE_STATUSES = new Set<IntegrationConnection["status"]>(["expired", "fai
 type Manager = Pick<InstanceManager, "get">;
 type Instances = Pick<InstanceRepository, "findById">;
 type EventLog = Pick<EventRepository, "append">;
-type Config = Pick<AppConfig, "orchestratorInternalUrl" | "dashboardOrigin">;
+type Config = Pick<AppConfig, "dashboardOrigin">;
 
 export interface RelayTarget {
   upstreamUrl: string;

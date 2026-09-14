@@ -388,6 +388,12 @@ is wired (`ExecStartPost`); `tenant-net` is external to compose (created by star
 live: bot timeout, Caddy blocked, orchestrator 200, bot DNS ok. Rollout incident: a compose network-config change on `tenant-net`/`control-net` triggered a network
 recreate, the proxy lost its alias, API down ~10 min, bots unaffected; fixed by `--force-recreate docker-socket-proxy`. `control-net`
 now sits on `172.18.0.0/16`. Never change a compose network's config while containers are attached.
+2026-09-14 (Phase 2 step 2, slice 2): orchestrator `orchestrator@sha256:f8ff32b18d5276c9bae060da28823717d5c559a7accfb98e576e35880898bc1a`
+(Cloud Build `2c7f659e`), healthy. Relay URLs (MCP server, WhatsApp Cloud account) are derived from `ORCHESTRATOR_INTERNAL_URL`
+each time a bot's config is rendered; `relayUrl` left the instance config and the channel config. Migration `0014_drop_stored_relay_urls`
+strips the dead keys from `instances.config` and must run AFTER this image is live (the previous schema required them); once it has
+run, do not roll the orchestrator back past `f8ff32b1`. Prod does not run migrations at boot (`startup migrations disabled` logged).
+0014 APPLIED 2026-09-14 21:45 UTC (user-approved): 0 `relayUrl` keys left, 23 relay tokens intact, channel arrays intact, orchestrator clean.
 2026-09-14 (Phase 2 step 2, slice 1): orchestrator `orchestrator@sha256:3f5118c48cc632d3b918876b9d3ef30f9f5d8e643dd41f16a565362db0c7a8b4`
 (Cloud Build `46106ced`), healthy, 172.16.0.10 on the frontend, 17 bots up. A failed `recreate` leaves the row `stopped` when a
 container still exists under the bot's name (else `error`); start/restart/recreate no longer write the pairing-time WhatsApp creds

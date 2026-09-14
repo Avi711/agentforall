@@ -10,6 +10,7 @@ test("OpenClaw adapter satisfies the agent runtime container contract", async ()
   const adapter = new OpenClawRuntimeAdapter(
     {} as ContainerRuntime,
     "openclaw-image",
+    "http://orchestrator:3000",
   );
 
   await assertAgentRuntimeContainerContract(adapter);
@@ -56,7 +57,7 @@ async function assertAgentRuntimeContainerContract(
   assert.equal(options.labels["agent-forall.runtime"], adapter.kind);
   assert.ok(options.volumeMounts?.length);
 
-  const files = adapter.generateConfig(instance.config, instance.gatewayToken);
+  const files = adapter.generateConfig(instance);
   assert.match(files.configJson, expected.configPattern);
   assert.match(files.dotEnv, expected.envPattern);
 }

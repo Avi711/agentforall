@@ -10,7 +10,7 @@ test("sanitized instances expose neither the relay token nor the relay url", () 
       provider: { name: "openai", apiKey: "secret", model: "gpt" },
       channels: [{ type: "whatsapp" }],
       resources: { memoryMb: 1024, cpuShares: 512 },
-      integrations: { relayToken: "relay-secret", relayUrl: "http://orchestrator:3000/api/v1/mcp/x" },
+      integrations: { relayToken: "relay-secret" },
     },
   });
 

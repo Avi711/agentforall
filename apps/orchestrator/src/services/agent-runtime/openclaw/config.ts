@@ -12,6 +12,7 @@ import type {
 import { findWhatsappCloudChannel } from "../../../domain/channels.js";
 import { ownerIdentityOf, ownerPeerIds } from "../../../domain/owner.js";
 import type { RuntimeConfigFiles } from "../types.js";
+import type { RelayUrls } from "../../relay.js";
 import {
   OPENCLAW_INTERNAL_PORT,
   OPENCLAW_USER,
@@ -102,9 +103,10 @@ const OPENCLAW_PROVIDER_PREFIX: Record<LlmProvider, string> = {
 export function generateOpenclawFiles(
   config: InstanceConfig,
   gatewayToken: string,
+  relay: RelayUrls,
 ): RuntimeConfigFiles {
   return {
-    configJson: generateOpenclawConfig(config, gatewayToken),
+    configJson: generateOpenclawConfig(config, gatewayToken, relay),
     dotEnv: generateOpenclawEnv(config, gatewayToken),
   };
 }
@@ -116,9 +118,10 @@ export function generateRuntimePatchedOpenclawFiles(
   existingConfigJson: string,
   config: InstanceConfig,
   gatewayToken: string,
+  relay: RelayUrls,
 ): RuntimeConfigFiles {
   const live = parseJsonRecord(existingConfigJson);
-  const generated = parseJsonRecord(generateOpenclawConfig(config, gatewayToken));
+  const generated = parseJsonRecord(generateOpenclawConfig(config, gatewayToken, relay));
   const patched = structuredClone(live);
   for (const path of ownedPaths(generated, live)) {
     setPath(patched, path, readPath(generated, path));
@@ -198,6 +201,7 @@ export function readOwnerAllowFrom(configJson: string): string[] {
 function generateOpenclawConfig(
   config: InstanceConfig,
   gatewayToken: string,
+  relay: RelayUrls,
 ): string {
   const provider = config.provider;
   validateProvider(provider);
@@ -205,7 +209,7 @@ function generateOpenclawConfig(
   const models = buildModelsConfig(provider);
   const business = findWhatsappCloudChannel(config.channels);
   const tools = buildToolsConfig(provider, business ? buildToolsBySender(config) : null);
-  const mcp = buildMcp(config);
+  const mcp = buildMcp(config, relay.mcp);
   const media = new Set(provider.media ?? []);
   const owner = ownerPeerIds(ownerIdentityOf(config.channels));
   const name = config.displayName.trim();
@@ -222,7 +226,7 @@ function generateOpenclawConfig(
       entries: { [MAIN_AGENT_ID]: name ? { identity: { name } } : {} },
     },
     ...(models ? { models } : {}),
-    channels: buildChannels(config.channels),
+    channels: buildChannels(config.channels, relay.whatsappCloud),
     ...(tools ? { tools } : {}),
     ...(mcp ? { mcp } : {}),
     plugins: buildPlugins(config.channels),
@@ -310,7 +314,7 @@ function buildPlugins(channels: InstanceConfig["channels"]): OpenclawConfig["plu
   };
 }
 
-function buildChannels(channels: InstanceConfig["channels"]): ChannelsConfig {
+function buildChannels(channels: InstanceConfig["channels"], whatsappCloudRelayUrl: string): ChannelsConfig {
   const block: ChannelsConfig = {};
 
   for (const ch of channels) {
@@ -376,7 +380,7 @@ function buildChannels(channels: InstanceConfig["channels"]): ChannelsConfig {
         };
         break;
       case "whatsapp_cloud":
-        block.whatsapp_cloud = buildWhatsappCloudChannel(ch);
+        block.whatsapp_cloud = buildWhatsappCloudChannel(ch, whatsappCloudRelayUrl);
         break;
     }
   }
@@ -385,7 +389,7 @@ function buildChannels(channels: InstanceConfig["channels"]): ChannelsConfig {
 }
 
 // Customers are always open; the owner's identity is what separates them, not the allowlist.
-function buildWhatsappCloudChannel(ch: WhatsappCloudChannelConfig): ChannelsConfig["whatsapp_cloud"] {
+function buildWhatsappCloudChannel(ch: WhatsappCloudChannelConfig, relayUrl: string): ChannelsConfig["whatsapp_cloud"] {
   return {
     enabled: true,
     dmPolicy: "open",
@@ -396,7 +400,7 @@ function buildWhatsappCloudChannel(ch: WhatsappCloudChannelConfig): ChannelsConf
         enabled: true,
         phoneNumberId: ch.phoneNumberId,
         displayPhoneNumber: ch.displayPhoneNumber,
-        relayUrl: ch.relayUrl,
+        relayUrl,
       },
     },
   };
@@ -480,13 +484,13 @@ function buildModelsConfig(provider: ProviderConfig): OpenclawConfig["models"] {
 }
 
 // The container talks only to the orchestrator's relay; the provider key never reaches it.
-function buildMcp(config: InstanceConfig): OpenclawConfig["mcp"] {
+function buildMcp(config: InstanceConfig, relayUrl: string): OpenclawConfig["mcp"] {
   if (!config.integrations) return undefined;
   return {
     servers: {
       [MCP_RELAY_SERVER_NAME]: {
         transport: "streamable-http",
-        url: config.integrations.relayUrl,
+        url: relayUrl,
         headers: { Authorization: `Bearer ${config.integrations.relayToken}` },
         requestTimeoutMs: 120_000,
         connectionTimeoutMs: 15_000,

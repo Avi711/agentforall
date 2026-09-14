@@ -22,7 +22,6 @@ test("every business-number secret is encrypted at rest and round-trips", () => 
   assert.match(channel.pin ?? "", /^v1:/);
   assert.match(channel.relayToken, /^v1:/);
   assert.equal(channel.displayPhoneNumber, "+972501112233");
-  assert.equal(channel.relayUrl, config.channels[0]?.type === "whatsapp_cloud" ? config.channels[0].relayUrl : "");
   assert.deepEqual(decryptConfig(stored, key), config);
 });
 
@@ -61,7 +60,7 @@ test("a stored row with every channel kind and the integrations relay passes the
       { type: "whatsapp", ownerNumber: "+972501234567", dmAccess: "owner" },
       makeWhatsappCloudChannel({ pin: "246810" }),
     ]),
-    integrations: { relayToken: "relay", relayUrl: "http://orchestrator:3000/api/v1/mcp/x" },
+    integrations: { relayToken: "relay" },
   };
   const parsed = InstanceConfigSchema.safeParse(encryptConfig(config, key));
 

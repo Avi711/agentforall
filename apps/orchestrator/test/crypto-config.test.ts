@@ -13,17 +13,16 @@ const base: InstanceConfig = {
   resources: { memoryMb: 1024, cpuShares: 512 },
 };
 
-test("relay token is encrypted at rest and round-trips; relay url stays readable", () => {
+test("relay token is encrypted at rest and round-trips", () => {
   const config: InstanceConfig = {
     ...base,
-    integrations: { relayToken: "relay-secret", relayUrl: "http://orchestrator:3000/api/v1/mcp/abc" },
+    integrations: { relayToken: "relay-secret" },
   };
 
   const stored = encryptConfig(config, key);
 
   assert.notEqual(stored.integrations?.relayToken, "relay-secret");
   assert.match(stored.integrations?.relayToken ?? "", /^v1:/);
-  assert.equal(stored.integrations?.relayUrl, config.integrations?.relayUrl);
   assert.deepEqual(decryptConfig(stored, key), config);
 });
 

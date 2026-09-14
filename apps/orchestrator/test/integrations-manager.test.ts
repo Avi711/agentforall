@@ -25,7 +25,7 @@ import {
   type IntegrationProvider,
 } from "../src/services/integrations/provider.js";
 import { IntegrationSessions } from "../src/services/integrations/sessions.js";
-import { relayBindingFor } from "../src/services/integrations/relay-binding.js";
+import { freshRelayToken } from "../src/services/relay.js";
 import { makeInstance } from "./helpers/fixtures.js";
 
 const RETURN_URL = "https://agentforall.co.il/app/bot/connections?connected=gmail";
@@ -45,7 +45,7 @@ function harness(overrides: Overrides = {}) {
   if (!overrides.unbound && !instance.config.integrations) {
     instance = {
       ...instance,
-      config: { ...instance.config, integrations: relayBindingFor(instance.id, "http://orchestrator:3000") },
+      config: { ...instance.config, integrations: { relayToken: freshRelayToken() } },
     };
   }
   const calls = {
@@ -156,7 +156,7 @@ function harness(overrides: Overrides = {}) {
     sessions,
     provider,
     eventLog,
-    { orchestratorInternalUrl: "http://orchestrator:3000", dashboardOrigin: "https://agentforall.co.il" },
+    { dashboardOrigin: "https://agentforall.co.il" },
     noLog,
     () => now,
   );
@@ -536,7 +536,7 @@ test("resolveRelay accepts only the bound token of a live bot", async () => {
 // The relay is bound at creation now, so the first thing a bot's container ever does may be a
 // relay call: the provider session is created then, once, however many calls race for it.
 test("resolveRelay creates the provider session on a bot's first call and shares it", async () => {
-  const binding = { relayToken: "a".repeat(64), relayUrl: "http://orchestrator:3000/api/v1/mcp/x" };
+  const binding = { relayToken: "a".repeat(64) };
   const h = harness({ instance: { config: { ...makeInstance([]).config, integrations: binding } } });
   const inst = h.instance();
 

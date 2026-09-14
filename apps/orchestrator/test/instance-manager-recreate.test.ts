@@ -122,12 +122,11 @@ test("recreate binds the relay for a bot created before it was bound at creation
   await manager.recreate(baseInstance.id, baseInstance.userId);
 
   const binding = repo.instance.config.integrations;
-  assert.equal(binding?.relayUrl, `http://orchestrator:3000/api/v1/mcp/${baseInstance.id}`);
   assert.match(binding?.relayToken ?? "", /^[0-9a-f]{64}$/);
 });
 
 test("recreate keeps an existing relay binding", async () => {
-  const integrations = { relayToken: "existing", relayUrl: "http://orchestrator:3000/api/v1/mcp/x" };
+  const integrations = { relayToken: "existing" };
   const repo = new FakeRepo({ ...baseInstance, config: { ...baseInstance.config, integrations } });
   const runtime = new FakeRuntime();
   const manager = createManager(repo, runtime, adapter(), {

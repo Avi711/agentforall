@@ -4,7 +4,7 @@ import {
   generateOpenclawFiles,
   generateRuntimePatchedOpenclawFiles,
 } from "../src/services/agent-runtime/openclaw/config.js";
-import { configWith } from "./helpers/fixtures.js";
+import { RELAY_URLS, configWith } from "./helpers/fixtures.js";
 import type { ChannelConfig } from "../src/domain/types.js";
 
 interface Patched {
@@ -22,6 +22,7 @@ function patch(existing: unknown, channels: ChannelConfig[]): Patched {
     JSON.stringify(existing),
     configWith(channels),
     "token",
+    RELAY_URLS,
   );
   return JSON.parse(files.configJson) as Patched;
 }
@@ -111,6 +112,7 @@ test("a blank display name clears the identity instead of leaving the old one", 
     JSON.stringify({ agents: { entries: { main: { identity: { name: "Old" } } } } }),
     { ...configWith([{ type: "whatsapp" }]), displayName: "  " },
     "token",
+    RELAY_URLS,
   );
   const patched = JSON.parse(files.configJson) as Patched;
   // An entry that held nothing but our name goes with it; OpenClaw runs its single agent without one.
@@ -328,7 +330,7 @@ test("every field the generator renders is one a config change can deliver", () 
 
   for (const channels of cases) {
     const pristine = JSON.parse(
-      generateOpenclawFiles(configWith(channels), "token").configJson,
+      generateOpenclawFiles(configWith(channels), "token", RELAY_URLS).configJson,
     ) as Record<string, unknown>;
     const agents = pristine.agents as { defaults: Record<string, unknown>; entries: unknown };
     const deliverable: Record<string, unknown> = {
@@ -344,7 +346,7 @@ test("every field the generator renders is one a config change can deliver", () 
   }
 });
 
-const RELAY = { relayToken: "relay-secret", relayUrl: "http://orchestrator:3000/api/v1/mcp/abc" };
+const RELAY = { relayToken: "relay-secret" };
 
 // The default fixture is a direct provider; the media plugin only applies behind a gateway.
 function patchGateway(existing: unknown): Patched {
@@ -356,13 +358,14 @@ function patchGateway(existing: unknown): Patched {
       provider: { ...base.provider, baseUrl: "https://gateway.example/v1", media: ["image", "audio", "video"] },
     },
     "token",
+    RELAY_URLS,
   );
   return JSON.parse(files.configJson) as Patched;
 }
 
 function patchWithIntegrations(existing: unknown, integrations: typeof RELAY | undefined): Patched {
   const config = { ...configWith([{ type: "whatsapp" }]), ...(integrations ? { integrations } : {}) };
-  const files = generateRuntimePatchedOpenclawFiles(JSON.stringify(existing), config, "token");
+  const files = generateRuntimePatchedOpenclawFiles(JSON.stringify(existing), config, "token", RELAY_URLS);
   return JSON.parse(files.configJson) as Patched;
 }
 
@@ -374,7 +377,7 @@ test("binding the relay delivers our MCP entry beside the tenant's own servers",
       local: { command: "x" },
       agentforall: {
         transport: "streamable-http",
-        url: RELAY.relayUrl,
+        url: RELAY_URLS.mcp,
         headers: { Authorization: "Bearer relay-secret" },
         requestTimeoutMs: 120_000,
         connectionTimeoutMs: 15_000,
@@ -394,7 +397,7 @@ test("clearing the relay removes only our MCP entry", () => {
 
 test("a config that never bound the relay renders no mcp block", () => {
   const pristine = JSON.parse(
-    generateOpenclawFiles(configWith([{ type: "whatsapp" }]), "token").configJson,
+    generateOpenclawFiles(configWith([{ type: "whatsapp" }]), "token", RELAY_URLS).configJson,
   ) as Patched;
   assert.equal("mcp" in pristine, false);
 });

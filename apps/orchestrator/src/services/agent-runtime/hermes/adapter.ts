@@ -1,7 +1,7 @@
 import type { Readable } from "node:stream";
 import type { ContainerArchiveFile } from "../../container-runtime.js";
 import type { ContainerRuntime } from "../../container-runtime.js";
-import type { Instance, InstanceConfig } from "../../../domain/types.js";
+import type { Instance } from "../../../domain/types.js";
 import type {
   AgentRuntimeAdapter,
   ConfigApplyOutcome,
@@ -54,7 +54,7 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   async buildContainerOptions(instance: Instance) {
-    const files = this.generateConfig(instance.config, instance.gatewayToken);
+    const files = this.generateConfig(instance);
     return {
       name: instance.containerName,
       image: this.image,
@@ -92,11 +92,8 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
     };
   }
 
-  generateConfig(
-    config: InstanceConfig,
-    gatewayToken: string,
-  ): RuntimeConfigFiles {
-    return generateHermesFiles(config, gatewayToken);
+  generateConfig(instance: Instance): RuntimeConfigFiles {
+    return generateHermesFiles(instance.config, instance.gatewayToken);
   }
 
   // Hermes has no live-config channel; a change is only live once the container boots again.
@@ -106,7 +103,7 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   async writeConfig(containerId: string, instance: Instance): Promise<void> {
-    const files = this.generateConfig(instance.config, instance.gatewayToken);
+    const files = this.generateConfig(instance);
     await this.runtime.putArchive(
       containerId,
       HERMES_STATE_PARENT,

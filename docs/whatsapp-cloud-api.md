@@ -141,8 +141,7 @@ dashboard ──FB.login popup──▶ Meta ──code + ids──▶ web (exch
   displayPhoneNumber: string; verifiedName: string;
   accessToken: string;      // business-integration system-user token, WABA-scoped
   pin: string;              // 6 digits: ours for a fresh number, the client's for a migrated one (§6 Connect)
-  relayToken: string;       // 32 random bytes hex; the container's bearer for the relay
-  relayUrl: string }        // http://orchestrator:3000/api/v1/whatsapp-cloud/<instanceId>
+  relayToken: string }      // 32 random bytes hex; the container's bearer for the relay
 ```
 
 `CHANNEL_TYPES` gains `"whatsapp_cloud"`; `sanitizeInstance` masks `accessToken`, `pin`, `relayToken`;
@@ -351,8 +350,9 @@ Known limits, accepted for v1:
 - The plugin's reply queue lives in memory: a gateway restart between a failed send and its redelivery
   re-runs that one turn (one possible duplicate). A turn that never settles is presumed dead after two
   timeouts (20 minutes); if it does finish after that, the redelivery may have answered already.
-- `relayUrl` is written into the channel at connect time from `ORCHESTRATOR_INTERNAL_URL`, like the MCP
-  relay binding; changing that URL means reconnecting the number.
+- The relay URL in the rendered openclaw.json is derived from `ORCHESTRATOR_INTERNAL_URL` each time the
+  config is written, like the MCP relay entry; nothing per bot stores it, so moving the orchestrator is an
+  env change plus a config rewrite.
 
 ## 8. Config rendered by the orchestrator
 

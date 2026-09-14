@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { generateOpenclawFiles } from "../src/services/agent-runtime/openclaw/config.js";
-import { configWith } from "./helpers/fixtures.js";
+import { RELAY_URLS, configWith } from "./helpers/fixtures.js";
 
 function dotEnvFor(provider: { name: "litellm" | "openai"; baseUrl?: string }): string {
   const config = configWith([{ type: "telegram", botToken: "t" }]);
@@ -11,6 +11,7 @@ function dotEnvFor(provider: { name: "litellm" | "openai"; baseUrl?: string }): 
       provider: { ...config.provider, name: provider.name, apiKey: "sk-key", baseUrl: provider.baseUrl },
     },
     "token",
+    RELAY_URLS,
   ).dotEnv;
 }
 

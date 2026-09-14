@@ -48,7 +48,7 @@ import {
   findWhatsappChannel,
   withWhatsappOwnerNumber,
 } from "../domain/channels.js";
-import { relayBindingFor } from "./integrations/relay-binding.js";
+import { freshRelayToken } from "./relay.js";
 
 export interface AgentBackupRestoreStorage {
   openObjectStream(
@@ -392,16 +392,16 @@ export class InstanceManager {
 
   private async ensureIntegrationsBinding(inst: Instance): Promise<Instance> {
     if (inst.config.integrations) return inst;
-    const binding = this.newIntegrationsBinding(inst.id);
+    const binding = this.newIntegrationsBinding();
     if (!binding) return inst;
     const config: InstanceConfig = { ...inst.config, integrations: binding };
     await this.repo.updateConfig(inst.id, config);
     return { ...inst, config };
   }
 
-  private newIntegrationsBinding(instanceId: string): InstanceConfig["integrations"] {
+  private newIntegrationsBinding(): InstanceConfig["integrations"] {
     if (!this.appConfig.integrationsProvider) return undefined;
-    return relayBindingFor(instanceId, this.appConfig.orchestratorInternalUrl);
+    return { relayToken: freshRelayToken() };
   }
 
   private async stopLocked(id: string, userId: string): Promise<void> {
@@ -772,7 +772,7 @@ export class InstanceManager {
         if (!provider) {
           throw new Error("provider provisioning returned no provider");
         }
-        const integrations = this.newIntegrationsBinding(id);
+        const integrations = this.newIntegrationsBinding();
         const config: InstanceConfig = {
           displayName: input.displayName,
           provider,

@@ -13,7 +13,7 @@ import type { AgentRuntimeRegistry } from "../src/services/agent-runtime/registr
 import type { WhatsappPairingRequest } from "../src/services/agent-runtime/types.js";
 import type { EventRepository } from "../src/storage/event-repository.js";
 import type { ChannelConfig, Instance } from "../src/domain/types.js";
-import { configWith, fakeChannelManager, makeInstance } from "./helpers/fixtures.js";
+import { RELAY_URLS, configWith, fakeChannelManager, makeInstance } from "./helpers/fixtures.js";
 
 const TELEGRAM: ChannelConfig = {
   type: "telegram",
@@ -34,7 +34,7 @@ interface GeneratedConfig {
 }
 
 function generate(channels: ChannelConfig[]): GeneratedConfig {
-  const files = generateOpenclawFiles(configWith(channels), "token");
+  const files = generateOpenclawFiles(configWith(channels), "token", RELAY_URLS);
   return JSON.parse(files.configJson) as GeneratedConfig;
 }
 
@@ -43,6 +43,7 @@ function patch(existing: unknown, channels: ChannelConfig[]): GeneratedConfig {
     JSON.stringify(existing),
     configWith(channels),
     "token",
+    RELAY_URLS,
   );
   return JSON.parse(files.configJson) as GeneratedConfig;
 }

@@ -7,7 +7,7 @@ import type { Instance, InstanceConfig } from "../src/domain/types.js";
 
 test("generated Hermes config uses LiteLLM as a named custom provider", () => {
   const adapter = new HermesRuntimeAdapter({} as ContainerRuntime, "hermes-image");
-  const files = adapter.generateConfig(liteLlmConfig, "gateway-token");
+  const files = adapter.generateConfig({ ...instance, gatewayToken: "gateway-token" });
   const config = JSON.parse(files.configJson) as {
     model: { provider: string; default: string; supports_vision?: boolean };
     custom_providers?: {

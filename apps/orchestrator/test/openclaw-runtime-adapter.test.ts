@@ -11,9 +11,12 @@ import {
   ValidationError,
 } from "../src/domain/errors.js";
 
+const makeAdapter = (runtime: ContainerRuntime = {} as ContainerRuntime) =>
+  new OpenClawRuntimeAdapter(runtime, "openclaw-image", "http://orchestrator:3000");
+
 test("generated config supports LiteLLM media provider", () => {
-  const adapter = new OpenClawRuntimeAdapter({} as ContainerRuntime, "openclaw-image");
-  const files = adapter.generateConfig(liteLlmConfig, "gateway-token");
+  const adapter = makeAdapter();
+  const files = adapter.generateConfig({ ...instance, config: liteLlmConfig, gatewayToken: "gateway-token" });
   const config = JSON.parse(files.configJson) as {
     agents: {
       defaults: {
@@ -91,9 +94,8 @@ test("generated config supports LiteLLM media provider", () => {
 // Any provider with a baseUrl is a config provider, which OpenClaw registers for image only —
 // LiteLLM is just the one we run. A gateway under another name must get the same treatment.
 test("a gateway provider under any name transcribes through the plugin", () => {
-  const adapter = new OpenClawRuntimeAdapter({} as ContainerRuntime, "openclaw-image");
-  const files = adapter.generateConfig(
-    {
+  const adapter = makeAdapter();
+  const files = adapter.generateConfig({ ...instance, config: {
       ...liteLlmConfig,
       provider: {
         name: "openai",
@@ -103,9 +105,7 @@ test("a gateway provider under any name transcribes through the plugin", () => {
         baseUrl: "https://proxy.example/v1",
         media: ["image", "audio", "video"],
       },
-    },
-    "gateway-token",
-  );
+    }, gatewayToken: "gateway-token" });
   const config = JSON.parse(files.configJson) as { tools?: { media?: MediaTools } };
 
   assert.equal(config.tools?.media?.image?.preferredModel, "proxy/gpt-5.5");
@@ -124,9 +124,8 @@ test("a gateway provider under any name transcribes through the plugin", () => {
 // The plugin exists for gateway providers. A bot on a direct provider must keep the provider
 // OpenClaw transcribes with itself, or it would call a plugin that has no key for that vendor.
 test("a bot on a direct provider keeps OpenClaw's own audio provider", () => {
-  const adapter = new OpenClawRuntimeAdapter({} as ContainerRuntime, "openclaw-image");
-  const files = adapter.generateConfig(
-    {
+  const adapter = makeAdapter();
+  const files = adapter.generateConfig({ ...instance, config: {
       ...liteLlmConfig,
       provider: {
         name: "anthropic",
@@ -134,9 +133,7 @@ test("a bot on a direct provider keeps OpenClaw's own audio provider", () => {
         model: "claude-sonnet-5",
         media: ["image", "audio", "video"],
       },
-    },
-    "gateway-token",
-  );
+    }, gatewayToken: "gateway-token" });
   const config = JSON.parse(files.configJson) as { tools?: { media?: MediaTools } };
 
   assert.deepEqual(mediaModelFor(config.tools?.media, "audio"), {
@@ -149,11 +146,8 @@ test("a bot on a direct provider keeps OpenClaw's own audio provider", () => {
 });
 
 test("a bot whose plan carries no audio gets no audio block", () => {
-  const adapter = new OpenClawRuntimeAdapter({} as ContainerRuntime, "openclaw-image");
-  const files = adapter.generateConfig(
-    { ...liteLlmConfig, provider: { ...liteLlmConfig.provider, media: ["image"] } },
-    "gateway-token",
-  );
+  const adapter = makeAdapter();
+  const files = adapter.generateConfig({ ...instance, config: { ...liteLlmConfig, provider: { ...liteLlmConfig.provider, media: ["image"] } }, gatewayToken: "gateway-token" });
   const config = JSON.parse(files.configJson) as { tools?: { media?: { audio?: unknown } } };
 
   assert.equal(config.tools?.media?.audio, undefined);
@@ -189,19 +183,13 @@ interface SentConfig {
 const failure = (fields: Record<string, unknown>) => JSON.stringify({ ok: false, ...fields });
 // What the adapter would write, so a container whose env already matches reports "applied".
 const desiredConfig = () =>
-  new OpenClawRuntimeAdapter({} as ContainerRuntime, "openclaw-image").generateConfig(
-    instanceConfig,
-    "new-token",
-  ).configJson;
+  makeAdapter().generateConfig(instance).configJson;
 const currentEnv = () =>
-  new OpenClawRuntimeAdapter({} as ContainerRuntime, "openclaw-image").generateConfig(
-    instanceConfig,
-    "new-token",
-  ).dotEnv;
+  makeAdapter().generateConfig(instance).dotEnv;
 
 test("a live change goes to the gateway carrying the merged config, not a file write", async () => {
   const live = liveRuntime();
-  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+  const adapter = makeAdapter(live.runtime);
 
   assert.equal(await adapter.applyConfig("container-1", instance), "applied");
 
@@ -224,7 +212,7 @@ test("a live change goes to the gateway carrying the merged config, not a file w
 // Only .env is staged on success: the gateway owns openclaw.json once it has accepted the change.
 test("an applied change stages env for the next boot and nothing else", async () => {
   const live = liveRuntime();
-  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+  const adapter = makeAdapter(live.runtime);
 
   await adapter.applyConfig("container-1", instance);
 
@@ -237,7 +225,7 @@ test("a config the gateway rejected fails loudly and writes nothing", async () =
   const live = liveRuntime({
     applyResult: failure({ stage: "write", transport: false, code: "INVALID_REQUEST", message: "must be boolean" }),
   });
-  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+  const adapter = makeAdapter(live.runtime);
 
   await assert.rejects(adapter.applyConfig("container-1", instance), ValidationError);
   assert.equal(live.archiveOrNull(), null);
@@ -249,7 +237,7 @@ test("a lost acknowledgement is resolved by reading the live config", async () =
     applyResult: failure({ stage: "write", transport: false, code: "UNAVAILABLE", message: "rate limit exceeded" }),
     liveConfigHoldsChange: true,
   });
-  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+  const adapter = makeAdapter(live.runtime);
 
   assert.equal(await adapter.applyConfig("container-1", instance), "applied");
   assert.match(await readTarEntry(live.archive(), ".openclaw/.env"), /LITELLM_API_KEY/);
@@ -262,7 +250,7 @@ test("a change that neither landed nor was refused fails retryably and writes no
     "unreadable output",
   ]) {
     const live = liveRuntime({ applyResult });
-    const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+    const adapter = makeAdapter(live.runtime);
 
     await assert.rejects(adapter.applyConfig("container-1", instance), UpstreamUnavailableError);
     assert.equal(live.archiveOrNull(), null);
@@ -276,7 +264,7 @@ test("an exec that could not run stages the config for a restart", async () => {
     liveRuntime({ applyExitCode: 1, applyStderr: "OCI runtime exec failed" }),
     liveRuntime({ applyThrows: new Error("docker daemon unavailable") }),
   ]) {
-    const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+    const adapter = makeAdapter(live.runtime);
     assert.equal(await adapter.applyConfig("container-1", instance), "restart_required");
     await readTarEntry(live.archive(), ".openclaw/openclaw.json");
   }
@@ -292,12 +280,12 @@ test("no secret from the config reaches the error message", async () => {
       message: "invalid near new-token and telegram-secret and openai-key and relay-secret and meta-secret and 987654 and cloud-secret",
     }),
   });
-  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+  const adapter = makeAdapter(live.runtime);
   const withSecrets: Instance = {
     ...instance,
     config: {
       ...instanceConfig,
-      integrations: { relayToken: "relay-secret", relayUrl: "http://orchestrator:3000/api/v1/mcp/x" },
+      integrations: { relayToken: "relay-secret" },
       provider: { ...instanceConfig.provider, apiKey: "openai-key" },
       channels: [
         { type: "whatsapp" },
@@ -321,14 +309,14 @@ test("no secret from the config reaches the error message", async () => {
 // reported as applied — the env file is read once at start-up.
 test("a change the running gateway cannot make live asks for a restart", async () => {
   const live = liveRuntime({ envOnDisk: "LITELLM_API_KEY=a-previous-key\n" });
-  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+  const adapter = makeAdapter(live.runtime);
 
   assert.equal(await adapter.applyConfig("container-1", instance), "restart_required");
 });
 
 test("a change that is fully live reports applied", async () => {
   const live = liveRuntime();
-  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+  const adapter = makeAdapter(live.runtime);
 
   assert.equal(await adapter.applyConfig("container-1", instance), "applied");
 });
@@ -337,7 +325,7 @@ test("a change that is fully live reports applied", async () => {
 // will never read is how a change disappears silently.
 test("a running container that cannot be read is never reported as staged", async () => {
   const live = liveRuntime({ configReadThrows: new Error("exec timeout") });
-  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+  const adapter = makeAdapter(live.runtime);
 
   await assert.rejects(adapter.applyConfig("container-1", instance), UpstreamUnavailableError);
   assert.equal(live.archiveOrNull(), null);
@@ -350,7 +338,7 @@ test("a config the container already holds is reported applied, not failed", asy
     applyResult: failure({ stage: "write", transport: false, code: "UNAVAILABLE", message: "rate limit exceeded" }),
     changeIsNoop: true,
   });
-  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+  const adapter = makeAdapter(live.runtime);
 
   assert.equal(await adapter.applyConfig("container-1", instance), "applied");
 });
@@ -361,7 +349,7 @@ test("a gateway that cannot be reached stages the config for a restart", async (
   const live = liveRuntime({
     applyResult: failure({ stage: "connect", transport: true, code: null, message: "gateway-disconnected" }),
   });
-  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+  const adapter = makeAdapter(live.runtime);
 
   assert.equal(await adapter.applyConfig("container-1", instance), "restart_required");
   const written = JSON.parse(await readTarEntry(live.archive(), ".openclaw/openclaw.json")) as {
@@ -375,7 +363,7 @@ test("a gateway that gave no verdict and does not hold the config fails retryabl
   const live = liveRuntime({
     applyResult: failure({ stage: "write", transport: false, code: "UNAVAILABLE", message: "rate limit exceeded" }),
   });
-  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+  const adapter = makeAdapter(live.runtime);
 
   await assert.rejects(adapter.applyConfig("container-1", instance), UpstreamUnavailableError);
   assert.equal(live.archiveOrNull(), null);
@@ -384,7 +372,7 @@ test("a gateway that gave no verdict and does not hold the config fails retryabl
 // Nothing the runtime reads changed, so there is no reason to spend a gateway write on it.
 test("a change the container already matches never touches the gateway", async () => {
   const live = liveRuntime({ changeIsNoop: true });
-  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+  const adapter = makeAdapter(live.runtime);
 
   assert.equal(await adapter.applyConfig("container-1", instance), "applied");
   assert.deepEqual(live.commands.filter((cmd) => cmd[0] === "node"), []);
@@ -395,7 +383,7 @@ test("a change the container already matches never touches the gateway", async (
 // stopped, its next start recreates it and renders from the row.
 test("a running container from another image is refused, not written to", async () => {
   const live = liveRuntime({ onImage: false });
-  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+  const adapter = makeAdapter(live.runtime);
 
   await assert.rejects(adapter.applyConfig("container-1", instance), RuntimeImageMismatchError);
   assert.deepEqual(live.commands, []);
@@ -412,7 +400,7 @@ test("staging config onto a container from another image is refused", async () =
       wrote = true;
     },
   } as unknown as ContainerRuntime;
-  const adapter = new OpenClawRuntimeAdapter(runtime, "openclaw-image");
+  const adapter = makeAdapter(runtime);
 
   await assert.rejects(adapter.writeConfig("container-1", instance), RuntimeImageMismatchError);
   assert.equal(wrote, false);
@@ -428,7 +416,7 @@ test("a stopped container from another image is left for its next start to rebui
       wrote = true;
     },
   } as unknown as ContainerRuntime;
-  const adapter = new OpenClawRuntimeAdapter(runtime, "openclaw-image");
+  const adapter = makeAdapter(runtime);
 
   assert.equal(await adapter.applyConfig("container-1", instance), "restart_required");
   assert.equal(wrote, false);
@@ -449,7 +437,7 @@ test("a stopped container is staged, never reported as applied", async () => {
     },
   } as unknown as ContainerRuntime;
 
-  const adapter = new OpenClawRuntimeAdapter(runtime, "openclaw-image");
+  const adapter = makeAdapter(runtime);
   assert.equal(await adapter.applyConfig("container-1", instance), "restart_required");
 
   assert.ok(archive);
@@ -463,7 +451,7 @@ test("a stopped container is staged, never reported as applied", async () => {
 // Callers that restart afterwards stage the file, and it must carry the runtime's own state.
 test("writeConfig preserves runtime-written config on a running container", async () => {
   const live = liveRuntime();
-  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+  const adapter = makeAdapter(live.runtime);
 
   await adapter.writeConfig("container-1", instance);
 
@@ -477,7 +465,7 @@ test("writeConfig preserves runtime-written config on a running container", asyn
 
 test("writeConfig never opens the gateway RPC", async () => {
   const live = liveRuntime();
-  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+  const adapter = makeAdapter(live.runtime);
 
   await adapter.writeConfig("container-1", instance);
 
@@ -505,7 +493,7 @@ test("staging a stopped container keeps the config it already has", async () => 
     },
   } as unknown as ContainerRuntime;
 
-  await new OpenClawRuntimeAdapter(runtime, "openclaw-image").writeConfig("container-1", instance);
+  await makeAdapter(runtime).writeConfig("container-1", instance);
 
   assert.ok(archive);
   const written = JSON.parse(await readTarEntry(archive, ".openclaw/openclaw.json")) as {
@@ -529,7 +517,7 @@ test("a container with no config yet gets the freshly generated one", async () =
     },
   } as unknown as ContainerRuntime;
 
-  await new OpenClawRuntimeAdapter(runtime, "openclaw-image").writeConfig("container-1", instance);
+  await makeAdapter(runtime).writeConfig("container-1", instance);
 
   assert.ok(archive);
   const written = JSON.parse(await readTarEntry(archive, ".openclaw/openclaw.json")) as {
@@ -543,7 +531,7 @@ test("a container with no config yet gets the freshly generated one", async () =
 // Applying a change to a container we cannot read from would mean guessing at its config.
 test("a live change to a container with no readable config fails loudly", async () => {
   const live = liveRuntime({ configMissing: true });
-  const adapter = new OpenClawRuntimeAdapter(live.runtime, "openclaw-image");
+  const adapter = makeAdapter(live.runtime);
 
   await assert.rejects(() => adapter.applyConfig("container-1", instance), /no config/);
   assert.deepEqual(live.commands, []);

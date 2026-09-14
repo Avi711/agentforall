@@ -208,7 +208,6 @@ function harness(initial: Instance, opts: HarnessOptions = {}) {
       },
     },
     eventLog,
-    { orchestratorInternalUrl: "http://orchestrator:3000" },
     silentLog,
     ownerMessenger,
     opts.now,
@@ -246,7 +245,6 @@ test("connect subscribes, registers with a fresh pin, binds the number and store
   const channel = cloudChannel(h);
   assert.equal(channel.pin, pin);
   assert.equal(channel.accessToken, "meta-token");
-  assert.equal(channel.relayUrl, `http://orchestrator:3000/api/v1/whatsapp-cloud/${ID}`);
   assert.match(channel.relayToken, /^[0-9a-f]{64}$/);
   assert.deepEqual(h.numbers.get("2000"), { phoneNumberId: "2000", instanceId: ID, wabaId: "1000", pin, appDataSynced: [] });
   assert.equal(view.status, "connected");

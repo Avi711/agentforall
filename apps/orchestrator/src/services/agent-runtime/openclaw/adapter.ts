@@ -1,7 +1,8 @@
 import type { Readable } from "node:stream";
 import type { ContainerArchiveFile } from "../../container-runtime.js";
 import type { ContainerRuntime } from "../../container-runtime.js";
-import type { Instance, InstanceConfig } from "../../../domain/types.js";
+import type { Instance } from "../../../domain/types.js";
+import { relayUrlsFor, type RelayUrls } from "../../relay.js";
 import {
   RuntimeImageMismatchError,
   UpstreamUnavailableError,
@@ -67,6 +68,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   constructor(
     private readonly runtime: ContainerRuntime,
     readonly image: string,
+    private readonly orchestratorInternalUrl: string,
   ) {}
 
   containerName(instanceId: string): string {
@@ -115,11 +117,12 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     return seedOpenclawWorkspace(this.runtime, containerId);
   }
 
-  generateConfig(
-    config: InstanceConfig,
-    gatewayToken: string,
-  ): RuntimeConfigFiles {
-    return generateOpenclawFiles(config, gatewayToken);
+  generateConfig(instance: Instance): RuntimeConfigFiles {
+    return generateOpenclawFiles(instance.config, instance.gatewayToken, this.relayUrls(instance));
+  }
+
+  private relayUrls(instance: Instance): RelayUrls {
+    return relayUrlsFor(instance.id, this.orchestratorInternalUrl);
   }
 
   // Stages the config for the container's next boot, patching the fields we own onto whatever is
@@ -134,8 +137,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     const existing = await this.readConfig(containerId);
     const files =
       existing === null
-        ? generateOpenclawFiles(instance.config, instance.gatewayToken)
-        : generateRuntimePatchedOpenclawFiles(existing, instance.config, instance.gatewayToken);
+        ? this.generateConfig(instance)
+        : generateRuntimePatchedOpenclawFiles(existing, instance.config, instance.gatewayToken, this.relayUrls(instance));
 
     await this.runtime.putArchive(
       containerId,
@@ -165,6 +168,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       existing,
       instance.config,
       instance.gatewayToken,
+      this.relayUrls(instance),
     );
 
     // Env vars are read once at start-up, so a changed env file is not live until the next boot.

@@ -10,7 +10,7 @@ import { applyChannelDefaults, withWhatsappOwnerNumber } from "../src/domain/cha
 import { WhatsappAccessManager } from "../src/services/whatsapp-access-manager.js";
 import type { EventRepository } from "../src/storage/event-repository.js";
 import type { ChannelConfig } from "../src/domain/types.js";
-import { configWith, fakeChannelManager, makeInstance } from "./helpers/fixtures.js";
+import { RELAY_URLS, configWith, fakeChannelManager, makeInstance } from "./helpers/fixtures.js";
 
 interface GeneratedConfig {
   session: { dmScope: string; identityLinks?: Record<string, string[]> };
@@ -21,7 +21,7 @@ interface GeneratedConfig {
 }
 
 function generate(channels: ChannelConfig[]): GeneratedConfig {
-  const files = generateOpenclawFiles(configWith(channels), "token");
+  const files = generateOpenclawFiles(configWith(channels), "token", RELAY_URLS);
   return JSON.parse(files.configJson) as GeneratedConfig;
 }
 
@@ -85,6 +85,7 @@ test("runtime patch keeps runtime whatsapp keys but orchestrator owns access pol
     JSON.stringify(existing),
     configWith([{ type: "whatsapp", dmAccess: "owner" }]),
     "token",
+    RELAY_URLS,
   );
   const patched = JSON.parse(files.configJson) as {
     session: unknown;
