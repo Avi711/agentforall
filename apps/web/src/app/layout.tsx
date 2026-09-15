@@ -147,13 +147,19 @@ const structuredData = {
   ],
 };
 
+const A11Y_BOOT = `try{var p=JSON.parse(localStorage.getItem("a11y-prefs")||"{}"),r=document.documentElement;if(p.fontSize)r.setAttribute("data-font-size",p.fontSize);if(p.highContrast)r.setAttribute("data-high-contrast","");if(p.reducedMotion)r.setAttribute("data-reduced-motion","")}catch(e){}`;
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html lang="he-IL" dir="rtl" className={`${heebo.variable} ${secular.variable}`}>
+    <html lang="he-IL" dir="rtl" className={`${heebo.variable} ${secular.variable}`} suppressHydrationWarning>
+      <head>
+        {/* Persisted accessibility prefs must be on <html> before first paint; the widget only syncs them later. */}
+        <script dangerouslySetInnerHTML={{ __html: A11Y_BOOT }} />
+      </head>
       <body
         className="bg-cream font-[family-name:var(--font-heebo)] text-espresso antialiased"
         suppressHydrationWarning

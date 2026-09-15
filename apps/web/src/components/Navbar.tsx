@@ -25,6 +25,7 @@ export function Navbar() {
 
   return (
     <nav
+      data-site-nav
       className={`fixed top-0 z-50 w-full transition-all duration-300 ${
         scrolled
           ? "border-b border-sand/40 bg-cream/90 shadow-sm backdrop-blur-xl"

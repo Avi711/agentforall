@@ -16,7 +16,7 @@ export function Pricing({ ctaHref = "/app" }: { ctaHref?: string }) {
   return (
     <section id="pricing" aria-labelledby="pricing-title" className="py-16 sm:py-24">
       <div className="max-w-5xl mx-auto px-4 sm:px-6">
-        <header className="text-center mb-10 sm:mb-14">
+        <header className="sd-reveal text-center mb-10 sm:mb-14">
           <p className="text-xs uppercase tracking-[0.22em] text-espresso-light/80 mb-3">מחירים</p>
           <h2 id="pricing-title" className="font-display text-3xl sm:text-4xl text-espresso leading-tight">
             תוכנית לכל קצב
@@ -26,13 +26,13 @@ export function Pricing({ ctaHref = "/app" }: { ctaHref?: string }) {
           </p>
         </header>
 
-        <div className="grid gap-4 sm:gap-6 sm:grid-cols-3">
+        <div className="sd-stagger grid gap-4 sm:gap-6 sm:grid-cols-3">
           {PLAN_CATALOGUE.map((plan) => {
             const featured = plan.code === DEFAULT_PLAN;
             return (
               <article
                 key={plan.code}
-                className={`relative flex flex-col rounded-[24px] border bg-white p-6 sm:p-8 ${
+                className={`lift relative flex flex-col rounded-[24px] border bg-white p-6 sm:p-8 ${
                   featured ? "border-terra shadow-[0_24px_60px_-32px_rgba(199,84,42,0.35)]" : "border-sand-light"
                 }`}
               >

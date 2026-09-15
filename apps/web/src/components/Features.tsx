@@ -118,7 +118,7 @@ export function Features() {
   return (
     <section id="features" className="relative py-20 sm:py-24">
       <div className="mx-auto max-w-6xl px-5 sm:px-8">
-        <div className="max-w-2xl">
+        <div className="sd-reveal max-w-2xl">
           <h2 className="font-display text-4xl font-black leading-[1.1] tracking-tight text-espresso sm:text-5xl">
             כל מה שצריך,
             <br />

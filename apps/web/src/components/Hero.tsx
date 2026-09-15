@@ -11,19 +11,22 @@ export function Hero() {
       <div className="mx-auto max-w-6xl">
         <div className="grid items-center gap-12 lg:grid-cols-[1.1fr_0.9fr] lg:gap-20">
           {/* Copy */}
-          <div className="animate-fade-up text-center lg:text-start">
+          <div className="text-center lg:text-start">
             <h1 className="font-display text-[2.75rem] font-black leading-[1.05] tracking-tight text-espresso sm:text-6xl lg:text-7xl">
-              רוצים סוכן AI?
-              <br />
-              <span className="text-terra">עכשיו זה פשוט.</span>
+              <span className="hero-line">
+                <span className="hero-rise">רוצים סוכן AI?</span>
+              </span>
+              <span className="hero-line">
+                <span className="hero-rise text-terra" style={{ animationDelay: "0.15s" }}>עכשיו זה פשוט.</span>
+              </span>
             </h1>
 
-            <p className="mt-6 max-w-lg text-xl font-light leading-relaxed text-espresso-light sm:text-2xl lg:text-start">
+            <p className="hero-fade mt-6 max-w-lg text-xl font-light leading-relaxed text-espresso-light sm:text-2xl lg:text-start" style={{ animationDelay: "0.5s" }}>
               מזיז פגישות ביומן, מוציא חשבוניות לאקסל, עוקב אחרי מחיר הטיסה ומדבר עם הלקוחות של העסק.
               נשמע מסובך? סוכן AI פרטי משלכם, על שרת פרטי, מוכן לשימוש בכמה קליקים. אתם כותבים הודעה, הוא מבצע.
             </p>
 
-            <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row lg:justify-start">
+            <div className="hero-fade mt-10 flex flex-col items-center gap-4 sm:flex-row lg:justify-start" style={{ animationDelay: "0.7s" }}>
               <a
                 href="/app"
                 className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-terra px-8 py-4 text-lg font-bold text-white shadow-lg shadow-terra/25 transition-all hover:bg-espresso hover:shadow-xl hover:shadow-espresso/20 sm:w-auto"
@@ -43,7 +46,7 @@ export function Hero() {
             </div>
 
             {/* Trust signals */}
-            <div className="mt-12 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-espresso-light lg:justify-start">
+            <div className="hero-fade mt-12 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-espresso-light lg:justify-start" style={{ animationDelay: "0.9s" }}>
               <span className="flex items-center gap-1.5">
                 <svg className="h-4 w-4 text-sage" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/></svg>
                 הקמה תוך דקות
