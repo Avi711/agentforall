@@ -25,7 +25,7 @@ function harness(options: {
   const inspected: string[] = [];
   const statusUpdates: { id: string; status: string }[] = [];
   const resumed: string[] = [];
-  const expired: number[] = [];
+  const expired: [number, string[]][] = [];
   let purges = 0;
   const warnings: string[] = [];
   const repo = {
@@ -70,9 +70,11 @@ function harness(options: {
       isOperating: options.operating ?? (() => false),
       purgeMovedSources: async () => void purges++,
     } as never,
-    pairingManager: { expireStale: async (ms: number) => void expired.push(ms) } as never,
+    pairingManager: { expireStale: async (ms: number, hostIds: string[]) => void expired.push([ms, hostIds]) } as never,
+    events: { append: async () => {} },
     logger: { info: () => {}, warn: (_: unknown, msg: string) => void warnings.push(msg), error: () => {} } as unknown as FastifyBaseLogger,
     pairingStaleThresholdMs: 900_000,
+    readopt: { maxPerWindow: 3, windowMs: 3_600_000 },
   });
   return { reconciler, statusUpdates, resumed, expired, inspected, warnings, purges: () => purges };
 }
@@ -93,7 +95,7 @@ test("an unreachable host suspends the whole run: no provisioning resumes, no st
   await h.reconciler.run();
   assert.deepEqual(h.statusUpdates, []);
   assert.deepEqual(h.resumed, []);
-  assert.deepEqual(h.expired, []);
+  assert.deepEqual(h.expired, [], "the sweep is not even called when no host answers");
 });
 
 test("a reachable host runs every phase", async () => {
@@ -104,7 +106,7 @@ test("a reachable host runs every phase", async () => {
     { id: "a", status: "stopped" },
     { id: "b", status: "stopped" },
   ]);
-  assert.deepEqual(h.expired, [900_000]);
+  assert.deepEqual(h.expired, [[900_000, ["host"]]]);
   assert.equal(h.purges(), 1, "the sweep is the manager's; the run only calls it");
 });
 
@@ -134,5 +136,5 @@ test("hosts are gated one by one: an unreachable host's rows are left alone whil
   assert.deepEqual(h.inspected, ["container-a"]);
   assert.deepEqual(h.statusUpdates, [{ id: "a", status: "stopped" }]);
   assert.deepEqual(h.resumed, []);
-  assert.deepEqual(h.expired, [], "pairing expiry is fleet-wide and waits for every host");
+  assert.deepEqual(h.expired, [[900_000, ["local-dev"]]], "pairing expiry runs for the hosts that answer");
 });

@@ -85,7 +85,7 @@ packages/
   db/                      # Drizzle schema + client
 infra/
   main.tf                  # GCP VM, GAR, WIF, IAM, snapshots
-  startup.sh               # VM bootstrap (idempotent, runs every boot)
+  startup/                 # VM bootstrap: common.sh + one script per role (idempotent, runs every boot)
   variables.tf
   outputs.tf
   terraform.tfvars         # gitignored, real values

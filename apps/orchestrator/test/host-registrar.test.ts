@@ -8,8 +8,10 @@ import { createGoogleIdTokenVerifier } from "../src/services/google-identity.js"
 
 const NOW_S = 1_800_000_000;
 const WORKERS = new Map([["1234567890123456789", "agent-forall-vm"]]);
+const ADDRESSES = new Map([["agent-forall-vm", "10.10.0.4"]]);
 
 type Registration = [string, string, number | undefined];
+type Capacity = [string, number | undefined];
 
 function claims(overrides: Record<string, unknown> = {}) {
   return {
@@ -35,9 +37,9 @@ function harness(payload: unknown | Error) {
     if (payload instanceof Error) throw payload;
     return payload;
   };
-  const attached: Registration[] = [];
-  const onRegistered = (hostId: string, address: string, memoryMb?: number) => void attached.push([hostId, address, memoryMb]);
-  const registrar = new HostRegistrar(repo, verify, WORKERS, logger, onRegistered, () => NOW_S * 1000);
+  const attached: Capacity[] = [];
+  const onRegistered = (hostId: string, memoryMb?: number) => void attached.push([hostId, memoryMb]);
+  const registrar = new HostRegistrar(repo, verify, WORKERS, ADDRESSES, logger, onRegistered, () => NOW_S * 1000);
   return { registrar, registered, attached, warnings };
 }
 
@@ -45,14 +47,14 @@ test("a fresh token from a listed instance registers that host's address and not
   const { registrar, registered, attached } = harness(claims());
   await registrar.register("token", "10.10.0.4");
   assert.deepEqual(registered, [["agent-forall-vm", "10.10.0.4", undefined]]);
-  assert.deepEqual(attached, [["agent-forall-vm", "10.10.0.4", undefined]]);
+  assert.deepEqual(attached, [["agent-forall-vm", undefined]]);
 });
 
 test("a reported memory size reaches the repository and the callback unchanged", async () => {
   const { registrar, registered, attached } = harness(claims());
   await registrar.register("token", "10.10.0.4", 32_089);
   assert.deepEqual(registered, [["agent-forall-vm", "10.10.0.4", 32_089]]);
-  assert.deepEqual(attached, [["agent-forall-vm", "10.10.0.4", 32_089]]);
+  assert.deepEqual(attached, [["agent-forall-vm", 32_089]]);
 });
 
 test("rejections: unknown instance, stale token, unverified email, missing claims, library refusal", async () => {
@@ -70,6 +72,14 @@ test("rejections: unknown instance, stale token, unverified email, missing claim
     assert.deepEqual(attached, []);
     assert.deepEqual(warnings, [reason]);
   }
+});
+
+test("an address other than the configured one is refused: the token proves the worker, the config says where it lives", async () => {
+  const { registrar, registered, attached, warnings } = harness(claims());
+  await assert.rejects(registrar.register("token", "10.10.0.99"), HostNotAllowedError);
+  assert.deepEqual(registered, []);
+  assert.deepEqual(attached, []);
+  assert.deepEqual(warnings, ["address does not match the configured address"]);
 });
 
 test("a certificate fetch failure is upstream trouble, not a rejected host", async () => {

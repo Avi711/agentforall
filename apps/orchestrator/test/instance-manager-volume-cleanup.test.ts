@@ -96,8 +96,10 @@ test("reconciler removes state volume before resolving orphaned destroys", async
     hosts: singleHost(runtime as unknown as ContainerRuntime, registry),
     manager: { purgeMovedSources: async () => {} } as never,
     pairingManager: { expireStale: async () => {} } as never,
+    events: { append: async () => {} },
     logger: fakeLogger,
     pairingStaleThresholdMs: 60_000,
+    readopt: { maxPerWindow: 3, windowMs: 3_600_000 },
   });
 
   await reconciler.run();
@@ -160,6 +162,8 @@ class FakeRuntime {
   readonly createdVolumes: string[] = [];
   readonly removedVolumes: string[] = [];
   readonly removedContainers: string[] = [];
+
+  async ensureImagePresent(): Promise<void> {}
 
   async ensureVolumeExists(name: string): Promise<void> {
     this.createdVolumes.push(name);

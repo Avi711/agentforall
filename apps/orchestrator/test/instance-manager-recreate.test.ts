@@ -8,6 +8,7 @@ import type { AgentRuntimeRegistry } from "../src/services/agent-runtime/registr
 import type { AgentRuntimeAdapter } from "../src/services/agent-runtime/types.js";
 import type { Instance } from "../src/domain/types.js";
 import { singleHost } from "./helpers/host-runtimes.js";
+import { UpstreamUnavailableError } from "../src/domain/errors.js";
 
 test("recreate replaces the container and preserves the state volume", async () => {
   const repo = new FakeRepo({ ...baseInstance });
@@ -23,6 +24,18 @@ test("recreate replaces the container and preserves the state volume", async () 
   assert.deepEqual(runtime.removedVolumes, []);
   assert.equal(repo.instance.containerId, "container-2");
   assert.equal(repo.instance.status, "running");
+});
+
+test("a runtime image missing from the host fails the recreate before the old container is touched", async () => {
+  const repo = new FakeRepo({ ...baseInstance });
+  const runtime = new FakeRuntime();
+  runtime.imageMissing = true;
+  const manager = createManager(repo, runtime, adapter());
+
+  await assert.rejects(manager.recreate(baseInstance.id, baseInstance.userId), UpstreamUnavailableError);
+
+  assert.deepEqual(runtime.removedContainers, []);
+  assert.deepEqual(runtime.createdContainers, []);
 });
 
 // The volume was written by the old image; the new one refuses to boot it until it is migrated,
@@ -500,6 +513,12 @@ class FakeRuntime {
   async findContainerByName(): Promise<string | null> {
     const named = [this.options.byName ?? "container-1", ...this.createdContainers];
     return named.reverse().find((id) => !this.removedContainers.includes(id)) ?? null;
+  }
+
+  imageMissing = false;
+
+  async ensureImagePresent(): Promise<void> {
+    if (this.imageMissing) throw new UpstreamUnavailableError("image", "img is not on this host");
   }
 
   async ensureVolumeExists(name: string): Promise<void> {

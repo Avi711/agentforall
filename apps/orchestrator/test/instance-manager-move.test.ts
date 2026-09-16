@@ -582,7 +582,7 @@ class FakeRuntime {
       .filter((id) => !this.removed.includes(id));
   }
 
-  async ensureImagePulled(): Promise<void> {}
+  async ensureImagePresent(): Promise<void> {}
 
   async isRunning(containerId: string): Promise<boolean> {
     return this.options.running && !this.stopped.includes(containerId);

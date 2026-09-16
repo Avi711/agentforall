@@ -55,6 +55,12 @@ test("draining hosts, hosts of unknown capacity and unreachable hosts are never 
   assert.equal(await placement.choose(4096), "ok");
 });
 
+test("assertFits accepts a draining target with room (an operator's move) but still refuses an unreachable or full one", async () => {
+  await harness({ draining: { status: "draining", usedMb: 1000 } }).placement.assertFits("draining", 4096);
+  await assert.rejects(harness({ down: { reachable: false } }).placement.assertFits("down", 4096), NoPlacementError);
+  await assert.rejects(harness({ full: { usedMb: 30_000 } }).placement.assertFits("full", 4096), NoPlacementError);
+});
+
 test("a host is refused once the new bot would push it past 90 % of capacity minus the reserve", async () => {
   const budget = 0.9 * (32_089 - 2048);
   const fits = harness({ a: { usedMb: Math.floor(budget - 4096) } });

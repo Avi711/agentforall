@@ -31,7 +31,8 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$IMAGE" ] || { echo "--image is required: the ref tenants must end up on" >&2; exit 2; }
 
-API="https://api.agentforall.co.il"
+# The VM is a private source, which the public site refuses; the orchestrator's frontend IP is the ops path.
+API="http://172.16.0.10:3000"
 ENV_FILE="/home/deploy/agent-forall/.env.runtime"
 BACKUP_DIR="/home/deploy/backups"
 SNAPSHOT_IMAGE="alpine:3.22"

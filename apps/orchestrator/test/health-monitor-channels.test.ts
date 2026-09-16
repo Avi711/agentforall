@@ -389,8 +389,8 @@ test("a container Docker cannot tell us about is unknown, never down", async () 
     );
     await monitor.pollAll();
     assert.deepEqual(observer.samples, [{ id: "instance-1", sample: "unknown" }]);
-    // The row is still marked, so the dashboard shows the problem.
-    assert.equal(repo.healthUpdates[0]?.failures, 1);
+    // The reconciler owns a container Docker cannot vouch for; a write here would keep it away.
+    assert.deepEqual(repo.healthUpdates, []);
   }
 });
 

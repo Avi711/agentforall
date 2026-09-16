@@ -1,7 +1,7 @@
 #!/bin/bash
-# Exercises startup.sh's set_runtime_env against the characters that break a sed replacement.
+# Exercises startup/orchestrator.sh's set_runtime_env against the characters that break a sed replacement.
 set -euo pipefail
-startup="$(cd "$(dirname "$0")/.." && pwd)/startup.sh"
+startup="$(cd "$(dirname "$0")/.." && pwd)/startup/orchestrator.sh"
 tmp="$(mktemp -d)"
 cd "$tmp"
 printf 'A=1\nSAMPLE_URL=old\nB=2\n' > .env.runtime

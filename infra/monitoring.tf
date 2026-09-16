@@ -3,7 +3,9 @@ locals {
     var.monitoring_notification_channel_ids,
     google_monitoring_notification_channel.email[*].id,
   )
-  vm_filter = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${google_compute_instance.platform.instance_id}\""
+  # Container logs come from the orchestrator VM alone; agent metrics from every VM carrying the app label.
+  vm_filter    = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${google_compute_instance.platform.instance_id}\""
+  fleet_filter = "resource.type=\"gce_instance\" AND metadata.user_labels.app=\"agent-forall\""
 }
 
 resource "google_monitoring_notification_channel" "email" {
@@ -75,7 +77,7 @@ resource "google_monitoring_alert_policy" "vm_memory" {
   conditions {
     display_name = "Memory used above 85 percent for 5 minutes"
     condition_threshold {
-      filter          = "${local.vm_filter} AND metric.type=\"agent.googleapis.com/memory/percent_used\" AND metric.labels.state=\"used\""
+      filter          = "${local.fleet_filter} AND metric.type=\"agent.googleapis.com/memory/percent_used\" AND metric.labels.state=\"used\""
       comparison      = "COMPARISON_GT"
       threshold_value = 85
       duration        = "300s"
@@ -114,5 +116,87 @@ resource "google_monitoring_alert_policy" "orchestrator_errors" {
       period = "1800s"
     }
     auto_close = "3600s"
+  }
+}
+
+resource "google_monitoring_alert_policy" "vm_disk_warning" {
+  display_name          = "agent-forall VM disk usage warning"
+  combiner              = "OR"
+  enabled               = true
+  notification_channels = local.alert_channels
+
+  conditions {
+    display_name = "Disk used above 75 percent"
+    condition_threshold {
+      filter          = "${local.fleet_filter} AND metric.type=\"agent.googleapis.com/disk/percent_used\" AND metric.labels.state=\"used\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 75
+      duration        = "300s"
+
+      aggregations {
+        alignment_period   = "60s"
+        per_series_aligner = "ALIGN_MEAN"
+      }
+    }
+  }
+}
+
+resource "google_monitoring_alert_policy" "vm_disk_critical" {
+  display_name          = "agent-forall VM disk usage critical"
+  combiner              = "OR"
+  enabled               = true
+  notification_channels = local.alert_channels
+
+  conditions {
+    display_name = "Disk used above 85 percent"
+    condition_threshold {
+      filter          = "${local.fleet_filter} AND metric.type=\"agent.googleapis.com/disk/percent_used\" AND metric.labels.state=\"used\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 85
+      duration        = "300s"
+
+      aggregations {
+        alignment_period   = "60s"
+        per_series_aligner = "ALIGN_MEAN"
+      }
+    }
+  }
+}
+
+# NAT trouble is silent on the VM: a dropped packet or a failed port allocation only shows here.
+resource "google_monitoring_alert_policy" "nat_drops" {
+  display_name          = "agent-forall NAT dropping traffic"
+  combiner              = "OR"
+  enabled               = true
+  notification_channels = local.alert_channels
+
+  conditions {
+    display_name = "Packets dropped by Cloud NAT"
+    condition_threshold {
+      filter          = "resource.type=\"nat_gateway\" AND resource.labels.gateway_name=\"${google_compute_router_nat.workers.name}\" AND metric.type=\"router.googleapis.com/nat/dropped_sent_packets_count\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0
+      duration        = "300s"
+
+      aggregations {
+        alignment_period   = "60s"
+        per_series_aligner = "ALIGN_RATE"
+      }
+    }
+  }
+
+  conditions {
+    display_name = "Cloud NAT could not allocate ports to a VM"
+    condition_threshold {
+      filter          = "resource.type=\"nat_gateway\" AND resource.labels.gateway_name=\"${google_compute_router_nat.workers.name}\" AND metric.type=\"router.googleapis.com/nat/nat_allocation_failed\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0
+      duration        = "60s"
+
+      aggregations {
+        alignment_period   = "60s"
+        per_series_aligner = "ALIGN_COUNT_TRUE"
+      }
+    }
   }
 }

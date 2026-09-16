@@ -36,7 +36,8 @@ done
 [ -n "$PLUGIN" ] || { echo "--plugin is required" >&2; exit 2; }
 [ -n "$SENTINEL" ] || { echo "--sentinel is required: a file that must exist in the staged plugin" >&2; exit 2; }
 
-API="https://api.agentforall.co.il"
+# The VM is a private source, which the public site refuses; the orchestrator's frontend IP is the ops path.
+API="http://172.16.0.10:3000"
 ENV_FILE="/home/deploy/agent-forall/.env.runtime"
 TOKEN="$(sudo grep '^SERVICE_TOKENS=' "$ENV_FILE" | cut -d= -f2- | cut -d, -f1 | tr -d '"' || true)"
 [ -n "$TOKEN" ] || { echo "no SERVICE_TOKENS in $ENV_FILE" >&2; exit 1; }

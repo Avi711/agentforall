@@ -502,7 +502,8 @@ export class InstanceRepository {
     return this.toDomainSafe(rows);
   }
 
-  async findStalePairings(olderThanMs: number): Promise<Instance[]> {
+  async findStalePairings(olderThanMs: number, hostIds: readonly string[]): Promise<Instance[]> {
+    if (hostIds.length === 0) return [];
     const cutoff = new Date(Date.now() - olderThanMs);
     const rows = await this.db
       .select()
@@ -510,6 +511,7 @@ export class InstanceRepository {
       .where(
         and(
           this.ownedByHost(),
+          inArray(instances.hostId, [...hostIds]),
           inArray(instances.pairingStatus, ["awaiting_qr", "awaiting_code"]),
           sql`${instances.updatedAt} < ${cutoff}`,
         ),

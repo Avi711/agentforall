@@ -15,12 +15,13 @@ const SETTLED: ContainerState = { running: true, restarting: false, health: "hea
 function harness(options: { gatewayUp?: () => boolean; state?: ContainerState; reachable?: () => boolean } = {}) {
   const inst = makeInstance([], { hasWhatsappCreds: false, lastSeenAt: null });
   const restarts: string[] = [];
+  const healthWrites: number[] = [];
   const clock = { now: 10_000_000 };
   const logger = { info: () => {}, warn: () => {}, error: () => {} } as unknown as FastifyBaseLogger;
 
   const repo = {
     findByStatuses: async (): Promise<Instance[]> => [inst],
-    updateHealth: async () => {},
+    updateHealth: async (_id: string, failures: number) => void healthWrites.push(failures),
     updatePairing: async () => {},
     updateContainerId: async () => {},
   };
@@ -74,8 +75,18 @@ function harness(options: { gatewayUp?: () => boolean; state?: ContainerState; r
       clock.now += 15_000;
     }
   };
-  return { inst, poll, restarts };
+  return { inst, poll, restarts, healthWrites };
 }
+
+test("a container that is not running is the reconciler's business: no failure is counted and the row is not written", async () => {
+  const stopped = harness({ state: { ...SETTLED, running: false } });
+  await stopped.poll(5);
+  assert.deepEqual(stopped.healthWrites, [], "a write would bump updated_at and keep the reconciler away for good");
+
+  const down = harness();
+  await down.poll(2);
+  assert.equal(down.healthWrites.length, 2, "a running bot that does not answer still counts");
+});
 
 test("four failed polls on a settled bot produce exactly one system restart", async () => {
   const h = harness();

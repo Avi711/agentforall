@@ -187,6 +187,9 @@ export class HealthMonitor {
       return;
     }
 
+    // No running container is no evidence about the bot; writing here would keep the reconciler, which owns that case, away.
+    if (result.liveness === "unknown") return;
+
     const failures = inst.healthFailures + 1;
     let newStatus: InstanceStatus = inst.status;
 

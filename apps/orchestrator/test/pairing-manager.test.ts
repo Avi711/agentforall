@@ -7,6 +7,7 @@ import type { HostRuntime } from "../src/services/host-runtimes.js";
 import type { EventRepository } from "../src/storage/event-repository.js";
 import type { Instance, PairingStatus } from "../src/domain/types.js";
 import type { PairingConfig } from "../src/config.js";
+import { UpstreamUnavailableError } from "../src/domain/errors.js";
 import { PairingSessionRegistry } from "../src/services/pairing-session-registry.js";
 import { PairingSidecarClient } from "../src/services/pairing-sidecar-client.js";
 import { AgentRuntimeRegistry } from "../src/services/agent-runtime/registry.js";
@@ -34,6 +35,7 @@ test("startPairing serializes concurrent calls for the same instance", async () 
 
   const runtime = {
     isRunning: async () => sidecarCreates > 0,
+    ensureImagePresent: async () => undefined,
     removeIfExists: async () => undefined,
     createSidecar: async () => {
       sidecarCreates += 1;
@@ -41,7 +43,6 @@ test("startPairing serializes concurrent calls for the same instance", async () 
       return `sidecar-${sidecarCreates}`;
     },
     start: async () => undefined,
-    getPublishedHostPort: async () => null,
   } as unknown as ContainerRuntime;
 
   const eventLog = {
@@ -134,10 +135,12 @@ test("expireStale only tears down when the stale-state CAS wins", async () => {
   let appendCount = 0;
   let teardownCount = 0;
 
+  const queried: [number, string[]][] = [];
   const repo = {
-    findStalePairings: async () => [
-      { ...instance, pairingStatus: "awaiting_qr" as const },
-    ],
+    findStalePairings: async (olderThanMs: number, hostIds: string[]) => {
+      queried.push([olderThanMs, hostIds]);
+      return [{ ...instance, pairingStatus: "awaiting_qr" as const }];
+    },
     updatePairing: async () => false,
   } as unknown as InstanceRepository;
 
@@ -160,8 +163,9 @@ test("expireStale only tears down when the stale-state CAS wins", async () => {
     eventLog,
   );
 
-  await manager.expireStale(1);
+  await manager.expireStale(1, ["worker-1"]);
 
+  assert.deepEqual(queried, [[1, ["worker-1"]]]);
   assert.equal(appendCount, 0);
   assert.equal(teardownCount, 0);
 });
@@ -225,6 +229,8 @@ const instance: Instance = {
 const pairingConfig: PairingConfig = {
   image: "pairing",
   port: 18790,
+  // The fixture bot sits on gateway port 19000; its sidecar lands 1000 below it.
+  hostPortOffset: -1000,
   idleTimeoutMs: 60_000,
   requestTimeoutMs: 1_000,
   staleThresholdMs: 60_000,
@@ -269,20 +275,20 @@ test("the sidecar is dialed by name over the Docker network, by loopback in dev,
     baseUrl: string;
   }[] = [
     { host: {}, publish: undefined, baseUrl: "http://pairing-4b86fc8b-ef1:18790" },
-    { host: { dockerNetwork: false }, publish: { port: 18790, bindIp: "127.0.0.1" }, baseUrl: "http://127.0.0.1:41000" },
-    { host: { address: "10.0.0.9" }, publish: { port: 18790, bindIp: "10.0.0.9" }, baseUrl: "http://10.0.0.9:41000" },
+    { host: { dockerNetwork: false }, publish: { port: 18790, bindIp: "127.0.0.1", hostPort: 18000 }, baseUrl: "http://127.0.0.1:18000" },
+    { host: { address: "10.0.0.9" }, publish: { port: 18790, bindIp: "10.0.0.9", hostPort: 18000 }, baseUrl: "http://10.0.0.9:18000" },
   ];
   for (const c of cases) {
     const created: SidecarCreateOptions[] = [];
     const repo = { updatePairing: async () => true } as unknown as InstanceRepository;
     const runtime = {
+      ensureImagePresent: async () => undefined,
       removeIfExists: async () => undefined,
       createSidecar: async (opts: SidecarCreateOptions) => {
         created.push(opts);
         return "sidecar-1";
       },
       start: async () => undefined,
-      getPublishedHostPort: async () => 41000,
     } as unknown as ContainerRuntime;
     const sessions = new PairingSessionRegistry();
     const manager = createPairingManager(repo, runtime, { append: async () => undefined } as never, undefined, c.host, sessions);
@@ -292,6 +298,31 @@ test("the sidecar is dialed by name over the Docker network, by loopback in dev,
     assert.deepEqual(created[0]?.publish, c.publish);
     assert.equal(sessions.get(instance.id)?.sidecarBaseUrl, c.baseUrl);
   }
+});
+
+test("a sidecar image missing from the host fails the pairing with the host's error and rolls the row back", async () => {
+  const patches: Record<string, unknown>[] = [];
+  const repo = {
+    updatePairing: async (_id: string, patch: Record<string, unknown>) => {
+      patches.push(patch);
+      return true;
+    },
+  } as unknown as InstanceRepository;
+  let created = 0;
+  const runtime = {
+    ensureImagePresent: async () => {
+      throw new UpstreamUnavailableError("image", "pairing is not on this host");
+    },
+    createSidecar: async () => {
+      created += 1;
+      return "sidecar-1";
+    },
+  } as unknown as ContainerRuntime;
+  const manager = createPairingManager(repo, runtime, { append: async () => undefined } as never);
+
+  await assert.rejects(manager.startPairing(instance), UpstreamUnavailableError);
+  assert.equal(created, 0);
+  assert.deepEqual(patches.at(-1), { pairingStatus: "failed" });
 });
 
 function sleep(ms: number): Promise<void> {

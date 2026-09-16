@@ -49,6 +49,10 @@ export class StaticHostRuntimes implements HostRuntimes {
   upsert(host: HostRuntime): void {
     this.byId.set(host.hostId, host);
   }
+
+  setCapacity(hostId: string, capacityMb: number): void {
+    this.byId.set(hostId, { ...this.for(hostId), capacityMb });
+  }
 }
 
 export function dialUrl(

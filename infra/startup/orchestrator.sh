@@ -1,169 +1,41 @@
-#!/bin/bash
-#
-# GCE startup script — idempotent. This runs on first boot AND every reboot
-# (GCE re-executes startup scripts). First-time-only work is gated behind a
-# sentinel file so we don't rotate secrets or stomp on the running stack.
-#
-# Outputs are streamed to /var/log/agent-forall-startup.log for post-mortem.
-#
-set -euo pipefail
-exec > >(tee -a /var/log/agent-forall-startup.log) 2>&1
 
+# ── Orchestrator: control plane, Caddy, Docker proxy and the bots that still live beside them. ──
 DEPLOY_DIR="/home/deploy/agent-forall"
-BOOTSTRAP_SENTINEL="/var/lib/agent-forall/bootstrap.done"
 DOMAIN="${domain}"
-
-# Image refs — all three images live in GAR (auth via VM service account).
-GAR_HOST="${region}-docker.pkg.dev"
-GAR_REPO="$GAR_HOST/${project_id}/agent-forall"
 ORCHESTRATOR_IMAGE="${orchestrator_image}"
 PAIRING_IMAGE="${pairing_image}"
 AGENT_RUNTIME_KIND="openclaw"
 AGENT_RUNTIME_IMAGE="${agent_runtime_image}"
 HERMES_RUNTIME_IMAGE="${hermes_runtime_image}"
+FRONTEND_BRIDGE="${frontend_bridge}"
+FRONTEND_SUBNET="${frontend_subnet}"
+ORCHESTRATOR_FRONTEND_IP="${orchestrator_frontend_ip}"
+CA_DIR=/var/lib/agent-forall/ca
+CP_DIR=/var/lib/agent-forall/control-plane
+INSTANCE_ID=$(curl -sf -H "Metadata-Flavor: Google" http://169.254.169.254/computeMetadata/v1/instance/id)
+SELF_IP=$(curl -sf -H "Metadata-Flavor: Google" http://169.254.169.254/computeMetadata/v1/instance/network-interfaces/0/ip)
+# This VM is a host too: it heads both lists, Terraform supplies the workers.
+WORKER_IDS="${worker_instance_ids}"
+WORKER_IPS="${worker_addresses}"
+WORKER_INSTANCE_IDS="agent-forall-vm=$INSTANCE_ID$${WORKER_IDS:+,$WORKER_IDS}"
+WORKER_ADDRESSES="agent-forall-vm=$SELF_IP$${WORKER_IPS:+,$WORKER_IPS}"
 
-mkdir -p /var/lib/agent-forall
-
-# ── Data disk: Docker's data-root (every tenant volume) lives on agent-forall-data, never the boot disk. ──
-DATA_DEV="/dev/disk/by-id/google-agent-forall-data"
-DATA_MOUNT="/mnt/docker"
-if [ -e "$DATA_DEV" ]; then
-  if ! blkid "$DATA_DEV" >/dev/null 2>&1; then
-    # Only a never-bootstrapped VM may format; afterwards a blank data disk is a fault, not a fresh start.
-    if [ -f "$BOOTSTRAP_SENTINEL" ]; then
-      echo "error: data disk $DATA_DEV has no filesystem after bootstrap; refusing to format it"
-      exit 1
-    fi
-    mkfs.ext4 -m 0 -E lazy_itable_init=0,lazy_journal_init=0,discard "$DATA_DEV"
-  fi
-  mkdir -p "$DATA_MOUNT"
-  DATA_UUID=$(blkid -s UUID -o value "$DATA_DEV")
-  if ! grep -q " $DATA_MOUNT " /etc/fstab; then
-    echo "UUID=$DATA_UUID $DATA_MOUNT ext4 discard,defaults,nofail 0 2" >> /etc/fstab
-  fi
-  mountpoint -q "$DATA_MOUNT" || mount "$DATA_MOUNT"
-  mkdir -p /etc/docker /etc/systemd/system/docker.service.d
-  # A late or missing mount must stop Docker, not start it on an empty boot-disk directory.
-  cat > /etc/systemd/system/docker.service.d/data-root.conf <<UNITEOF
-[Unit]
-RequiresMountsFor=$DATA_MOUNT
-UNITEOF
-  DAEMON_JSON='{
-  "data-root": "/mnt/docker",
-  "firewall-backend": "iptables"
-}'
-  if [ ! -f /etc/docker/daemon.json ] || [ "$(cat /etc/docker/daemon.json)" != "$DAEMON_JSON" ]; then
-    printf '%s\n' "$DAEMON_JSON" > /etc/docker/daemon.json
-  fi
-  systemctl daemon-reload
-else
-  echo "error: data disk $DATA_DEV is not attached; refusing to run Docker off the boot disk"
-  exit 1
-fi
-
-# ── Metadata guard: only the orchestrator (fixed IP on its own bridge, default route via gw_priority) may reach
-# 169.254.169.254, which is the VM's service account and also its DNS (:53 stays open); 172.16/24 is outside Docker's pool. ──
-FRONTEND_BRIDGE=af-front
-FRONTEND_SUBNET=172.16.0.0/24
-ORCHESTRATOR_FRONTEND_IP=172.16.0.10
-cat > /usr/local/sbin/agent-forall-metadata-guard <<GUARDEOF
-#!/bin/bash
-set -euo pipefail
-iptables-restore --noflush <<'RULES'
-*filter
-:DOCKER-USER - [0:0]
--A DOCKER-USER -i $FRONTEND_BRIDGE -s $ORCHESTRATOR_FRONTEND_IP -d 169.254.169.254 -j RETURN
--A DOCKER-USER -p udp --dport 53 -d 169.254.169.254 -j RETURN
--A DOCKER-USER -p tcp --dport 53 -d 169.254.169.254 -j RETURN
--A DOCKER-USER -d 169.254.169.254 -j DROP
--A DOCKER-USER -j RETURN
-COMMIT
-RULES
-GUARDEOF
-chmod 755 /usr/local/sbin/agent-forall-metadata-guard
-cat > /etc/systemd/system/agent-forall-metadata-guard.service <<'UNITEOF'
-[Unit]
-Description=Block Docker containers from the GCE metadata server
-DefaultDependencies=no
-After=network-pre.target
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/sbin/agent-forall-metadata-guard
-UNITEOF
-# Requires, not Before: a failing guard must keep Docker down rather than start it with the hole open.
-cat > /etc/systemd/system/docker.service.d/metadata-guard.conf <<'UNITEOF'
-[Unit]
-Requires=agent-forall-metadata-guard.service
-After=agent-forall-metadata-guard.service
-
-[Service]
-ExecStartPost=/usr/sbin/iptables -C FORWARD -j DOCKER-USER
-UNITEOF
-systemctl daemon-reload
-systemctl start agent-forall-metadata-guard.service
-
-# ── Install Docker Engine + Compose plugin (first boot only) ──
-if ! command -v docker >/dev/null 2>&1; then
-  export DEBIAN_FRONTEND=noninteractive
-  apt-get update -y
-  apt-get install -y ca-certificates curl gnupg lsb-release cron
-
-  install -m 0755 -d /etc/apt/keyrings
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-    | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-  chmod a+r /etc/apt/keyrings/docker.gpg
-
-  UBUNTU_CODENAME=$(lsb_release -cs)
-  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $${UBUNTU_CODENAME} stable" \
-    > /etc/apt/sources.list.d/docker.list
-
-  apt-get update -y
-  apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-  systemctl enable --now docker
-  systemctl enable --now cron
-fi
-
-echo "Waiting for Docker..."
-for _ in $(seq 1 60); do docker info >/dev/null 2>&1 && break; sleep 2; done
-docker info >/dev/null 2>&1 || { echo "error: Docker did not come up within 120s (is $DATA_MOUNT mounted?)"; exit 1; }
-echo "Docker ready."
-# Owned by the orchestrator, shared by every bot: kept outside compose so a stack change can never recreate it.
+# Owned by the orchestrator, shared by every bot here: kept outside compose so a stack change can never recreate it.
 docker network inspect tenant-net >/dev/null 2>&1 || docker network create tenant-net
 
-if ! command -v cron >/dev/null 2>&1; then
-  export DEBIAN_FRONTEND=noninteractive
-  apt-get update -y
-  apt-get install -y cron
-fi
-systemctl enable --now cron
+printf '%s\n' "$AGENT_RUNTIME_IMAGE" "$HERMES_RUNTIME_IMAGE" "$PAIRING_IMAGE" "$ORCHESTRATOR_IMAGE" > "$PINNED_IMAGES"
+pull_pinned_images
 
-# Best effort: an apt lock held by unattended-upgrades at boot must not abort the platform start.
-if ! systemctl is-enabled --quiet google-cloud-ops-agent 2>/dev/null; then
-  { curl -fsS -o /tmp/add-google-cloud-ops-agent-repo.sh https://dl.google.com/cloudagents/add-google-cloud-ops-agent-repo.sh \
-      && bash /tmp/add-google-cloud-ops-agent-repo.sh --also-install; } \
-    || echo "warn: ops agent install failed; VM metrics stay degraded until the next boot"
-  rm -f /tmp/add-google-cloud-ops-agent-repo.sh
-fi
-
-cat > /usr/local/sbin/agent-forall-docker-housekeeping <<'HOUSEKEEPINGEOF'
+# Ops helper: the admin API through the frontend IP with the service token (the public site refuses private sources).
+cat > /usr/local/sbin/agent-forall-admin <<'ADMINEOF'
 #!/bin/bash
+# Usage: agent-forall-admin <method> <path> [json]
 set -euo pipefail
-
-DISK_USED=$(df --output=pcent / | tail -1 | tr -dc '0-9')
-if [ "$DISK_USED" -ge 75 ]; then
-  logger -p daemon.warning "agent-forall disk usage warning: root filesystem $${DISK_USED}% used"
-fi
-
-docker image prune -af >/dev/null
-docker builder prune -af >/dev/null
-HOUSEKEEPINGEOF
-chmod 0755 /usr/local/sbin/agent-forall-docker-housekeeping
-
-cat > /etc/cron.d/agent-forall-docker-housekeeping <<'CRONEOF'
-17 3 * * * root /usr/local/sbin/agent-forall-docker-housekeeping >> /var/log/agent-forall-docker-housekeeping.log 2>&1
-CRONEOF
-chmod 0644 /etc/cron.d/agent-forall-docker-housekeeping
+TOKEN=$(grep ^SERVICE_TOKENS= /home/deploy/agent-forall/.env.runtime | cut -d= -f2 | cut -d, -f1)
+curl -sS -X "$1" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" $${3:+--data "$3"} \
+  -w "\nhttp %%{http_code} in %%{time_total}s\n" "http://${orchestrator_frontend_ip}:3000$2"
+ADMINEOF
+chmod 0755 /usr/local/sbin/agent-forall-admin
 
 # Deploy user directory (created by Terraform; ensure ownership for cron logs).
 id -u deploy >/dev/null 2>&1 || useradd -m -s /bin/bash deploy
@@ -187,14 +59,14 @@ DASHBOARD_SERVICE_TOKEN=$(gcloud secrets versions access latest --secret=dashboa
 DEFAULT_PROVIDER_API_KEY=$(gcloud secrets versions access latest --secret=default-provider-api-key --project=${project_id})
 LITELLM_MASTER_KEY=$(gcloud secrets versions access latest --secret=litellm-master-key --project=${project_id})
 COMPOSIO_API_KEY=$(gcloud secrets versions access latest --secret=composio-api-key --project=${project_id})
-CA_DIR=/var/lib/agent-forall/ca
-# This VM is also the only worker until step 6; it registers itself with its own identity token.
-INSTANCE_ID=$(curl -sf -H "Metadata-Flavor: Google" http://169.254.169.254/computeMetadata/v1/instance/id)
 install -d -m 0755 "$CA_DIR"
-gcloud secrets versions access latest --secret=caddy-internal-ca-cert --project=${project_id} > "$CA_DIR/root.crt.tmp"
-chmod 0644 "$CA_DIR/root.crt.tmp" && mv "$CA_DIR/root.crt.tmp" "$CA_DIR/root.crt"
-(umask 077; gcloud secrets versions access latest --secret=caddy-internal-ca-key --project=${project_id} > "$CA_DIR/root.key.tmp")
-mv "$CA_DIR/root.key.tmp" "$CA_DIR/root.key"
+fetch_secret caddy-internal-ca-cert "$CA_DIR/root.crt" 0644
+fetch_secret caddy-internal-ca-key "$CA_DIR/root.key" 0600
+# Client identity for workers' Docker endpoints, read by the orchestrator process (uid 1001 in its image).
+install -d -m 0750 -o 1001 -g 1001 "$CP_DIR"
+fetch_secret control-plane-ca-cert "$CP_DIR/ca.crt" 0644 1001:1001
+fetch_secret orchestrator-client-cert "$CP_DIR/client.crt" 0644 1001:1001
+fetch_secret orchestrator-client-key "$CP_DIR/client.key" 0600 1001:1001
 LITELLM_GATEWAY_URL="${litellm_gateway_url}"
 DEFAULT_PROVIDER_BASE_URL="$LITELLM_GATEWAY_URL/v1"
 
@@ -220,8 +92,8 @@ PULL_IMAGES_ON_STARTUP=false
 DOCKER_HOST=docker-socket-proxy
 DOCKER_PORT=2375
 DOCKER_NETWORK=tenant-net
-PORT_RANGE_START=19000
-PORT_RANGE_END=19999
+PORT_RANGE_START=${port_range_start}
+PORT_RANGE_END=${port_range_end}
 HEALTH_POLL_INTERVAL_MS=15000
 RECONCILE_INTERVAL_MS=60000
 RATE_LIMIT_MAX=100
@@ -240,7 +112,12 @@ PAIRING_STALE_THRESHOLD_MS=900000
 PAIRING_LOG_LEVEL=info
 ORCHESTRATOR_INTERNAL_URL=https://orchestrator.internal
 TENANT_CA_CERT_PATH=$CA_DIR/root.crt
-WORKER_INSTANCE_IDS=agent-forall-vm=$INSTANCE_ID
+WORKER_INSTANCE_IDS=$WORKER_INSTANCE_IDS
+WORKER_ADDRESSES=$WORKER_ADDRESSES
+CONTROL_PLANE_CA_PATH=/control-plane/ca.crt
+ORCHESTRATOR_CLIENT_CERT_PATH=/control-plane/client.crt
+ORCHESTRATOR_CLIENT_KEY_PATH=/control-plane/client.key
+SIDECAR_PORT_RANGE_START=${sidecar_port_range_start}
 MOVES_BUCKET=agent-forall-moves
 DEFAULT_PROVIDER_NAME=litellm
 DEFAULT_PROVIDER_ID=litellm
@@ -282,7 +159,14 @@ else
   set_runtime_env DEFAULT_PROVIDER_API_KEY "$DEFAULT_PROVIDER_API_KEY"
   set_runtime_env DEFAULT_PROVIDER_NAME litellm
   set_runtime_env TENANT_CA_CERT_PATH "$CA_DIR/root.crt"
-  set_runtime_env WORKER_INSTANCE_IDS "agent-forall-vm=$INSTANCE_ID"
+  set_runtime_env WORKER_INSTANCE_IDS "$WORKER_INSTANCE_IDS"
+  set_runtime_env WORKER_ADDRESSES "$WORKER_ADDRESSES"
+  set_runtime_env CONTROL_PLANE_CA_PATH /control-plane/ca.crt
+  set_runtime_env ORCHESTRATOR_CLIENT_CERT_PATH /control-plane/client.crt
+  set_runtime_env ORCHESTRATOR_CLIENT_KEY_PATH /control-plane/client.key
+  set_runtime_env PORT_RANGE_START ${port_range_start}
+  set_runtime_env PORT_RANGE_END ${port_range_end}
+  set_runtime_env SIDECAR_PORT_RANGE_START ${sidecar_port_range_start}
   set_runtime_env MOVES_BUCKET agent-forall-moves
   set_runtime_env DEFAULT_PROVIDER_MODEL gemini-agentforall
   set_runtime_env DEFAULT_PROVIDER_ID litellm
@@ -364,6 +248,8 @@ services:
       - "3000"
     env_file:
       - .env.runtime
+    volumes:
+      - /var/lib/agent-forall/control-plane:/control-plane:ro
     depends_on:
       docker-socket-proxy:
         condition: service_started
@@ -465,6 +351,14 @@ https://orchestrator.internal {
     }
   }
   # Caddy answers on the public IP too: the internal site exists only for private sources.
+  # A bot on a worker arrives with the worker's address too; the token check refuses it, this keeps the path off the internet.
+  @register {
+    path /internal/hosts/register
+    not remote_ip ${vpc_cidr}
+  }
+  handle @register {
+    respond 404
+  }
   @relay {
     path /api/v1/mcp/* /api/v1/whatsapp-cloud/* /internal/*
     remote_ip private_ranges
@@ -482,6 +376,9 @@ if [ -n "$DOMAIN" ]; then
   cat >> Caddyfile <<CADDYEOF
 
 $DOMAIN {
+  # A private source (a bot, a worker) has the internal site; the public one is for the internet. Ops on the VM use the frontend IP.
+  @private remote_ip private_ranges
+  respond @private 404
   # Relay and sidecar paths are for containers on the internal site only; never expose them publicly.
   @mcp path /api/v1/mcp/*
   respond @mcp 404
@@ -535,17 +432,6 @@ else
 CADDYEOF
 fi
 
-# ── Configure docker to auth GAR via VM service account (idempotent). ──
-if ! grep -q "$GAR_HOST" /root/.docker/config.json 2>/dev/null; then
-  gcloud auth configure-docker "$GAR_HOST" --quiet
-fi
-
-# ── Warm the image cache. Non-fatal: may already be cached. ──
-docker pull "$AGENT_RUNTIME_IMAGE" 2>/dev/null || echo "warn: could not pull $AGENT_RUNTIME_IMAGE"
-docker pull "$HERMES_RUNTIME_IMAGE" 2>/dev/null || echo "warn: could not pull $HERMES_RUNTIME_IMAGE"
-docker pull "$PAIRING_IMAGE" 2>/dev/null || echo "warn: could not pull $PAIRING_IMAGE"
-docker pull "$ORCHESTRATOR_IMAGE" 2>/dev/null || echo "warn: could not pull $ORCHESTRATOR_IMAGE"
-
 # ── Pull and start with retry. `--no-recreate` on up preserves running containers. ──
 # Compose reads ORCHESTRATOR_IMAGE from both the exported env and generated .env.
 export ORCHESTRATOR_IMAGE
@@ -571,5 +457,8 @@ if [ "$STARTED" -ne 1 ]; then
   echo "error: agent-forall platform did not start after $MAX_RETRIES attempts."
   exit 1
 fi
+# `up --no-recreate` leaves a running Caddy on its old config; a reload with an unchanged file is a no-op.
+docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile \
+  || echo "warn: caddy reload failed; the old config stays until the next start"
 
 echo "agent-forall platform started."

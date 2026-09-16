@@ -3,12 +3,11 @@ import type { FastifyBaseLogger } from "fastify";
 import type { InstanceRepository } from "../storage/instance-repository.js";
 import type { EventRepository } from "../storage/event-repository.js";
 import type { Instance } from "../domain/types.js";
-import { dialUrl, type HostRuntime, type HostRuntimes } from "./host-runtimes.js";
+import { dialUrl, type HostRuntimes } from "./host-runtimes.js";
 import {
   AuthenticationError,
   InvalidStateError,
   NotFoundError,
-  UpstreamUnavailableError,
   errorMessage,
 } from "../domain/errors.js";
 import type { PairingConfig } from "../config.js";
@@ -101,9 +100,12 @@ export class PairingManager {
     const sidecarName = `pairing-${shortId}`;
     const authToken = randomBytes(32).toString("hex");
     // Docker DNS only resolves from inside the local network; anywhere else the sidecar publishes a port.
-    const publish = host.address !== null || !host.dockerNetwork;
+    const published = host.address !== null || !host.dockerNetwork
+      ? { port: this.pairing.port, bindIp: host.address ?? "127.0.0.1", hostPort: instance.gatewayPort + this.pairing.hostPortOffset }
+      : null;
 
     try {
+      await runtime.ensureImagePresent(this.pairing.image);
       await runtime.removeIfExists(sidecarName);
 
       // tmpfs session dir ג€” sidecar tars and POSTs creds on success; nothing on host disk.
@@ -124,9 +126,7 @@ export class PairingManager {
             options: tmpfsOptions(PAIRING_USER, SIDECAR_TMPFS_SIZE_MB),
           },
         ],
-        ...(publish
-          ? { publish: { port: this.pairing.port, bindIp: host.address ?? "127.0.0.1" } }
-          : {}),
+        ...(published ? { publish: published } : {}),
       }, this.pairing.tenantCaCertPath));
 
       try {
@@ -136,8 +136,8 @@ export class PairingManager {
         throw err;
       }
 
-      const sidecarBaseUrl = publish
-        ? await this.publishedSidecarUrl(host, sidecarId)
+      const sidecarBaseUrl = published
+        ? `http://${published.bindIp}:${published.hostPort}`
         : `http://${sidecarName}:${this.pairing.port}`;
 
       this.sessions.set({
@@ -166,12 +166,6 @@ export class PairingManager {
         .catch(() => undefined);
       throw err;
     }
-  }
-
-  private async publishedSidecarUrl(host: HostRuntime, sidecarId: string): Promise<string> {
-    const hostPort = await host.runtime.getPublishedHostPort(sidecarId, this.pairing.port);
-    if (hostPort === null) throw new UpstreamUnavailableError("pairing sidecar port");
-    return `http://${host.address ?? "127.0.0.1"}:${hostPort}`;
   }
 
   private buildSidecarEnv(instanceId: string, authToken: string): string[] {
@@ -409,8 +403,8 @@ export class PairingManager {
     await this.teardownSidecar(instanceId, reason);
   }
 
-  async expireStale(olderThanMs: number): Promise<void> {
-    const stale = await this.repo.findStalePairings(olderThanMs);
+  async expireStale(olderThanMs: number, hostIds: readonly string[]): Promise<void> {
+    const stale = await this.repo.findStalePairings(olderThanMs, hostIds);
     for (const inst of stale) {
       this.logger.warn({ instanceId: inst.id }, "expiring stale pairing");
       const updated = await this.repo.updatePairing(

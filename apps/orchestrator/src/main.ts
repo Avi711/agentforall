@@ -24,7 +24,7 @@ import { HostRepository } from "./storage/host-repository.js";
 import { HostRegistrar } from "./services/host-registrar.js";
 import { HostReachability } from "./services/host-reachability.js";
 import { StaticHostRuntimes, type HostCapacity, type HostRuntime } from "./services/host-runtimes.js";
-import { createHostAttacher, createRemoteHost, createStubHost, type RemoteHostDeps } from "./services/remote-host.js";
+import { createRemoteHost, type RemoteHostDeps } from "./services/remote-host.js";
 import { createGoogleIdTokenVerifier } from "./services/google-identity.js";
 import { internalHostRoutes } from "./routes/hosts.js";
 import { HealthRepository } from "./storage/health-repository.js";
@@ -109,12 +109,12 @@ async function waitForDependency(
 
 // Pull failures are non-fatal because the image may already exist locally.
 async function tryPullImage(
-  runtime: ContainerRuntime,
+  runtime: DockerContainerRuntime,
   image: string,
   log: { info: (obj: object, msg: string) => void; warn: (obj: object, msg: string) => void },
 ): Promise<void> {
   try {
-    await runtime.ensureImagePulled(image);
+    await runtime.pullImage(image);
     log.info({ image }, "image ready");
   } catch (err) {
     log.warn({ image, err }, "image pull failed — may already exist locally");
@@ -163,7 +163,7 @@ async function main(): Promise<void> {
   log.info({ hostIds: [...config.managedHostIds] }, "hosts registered, queries scoped to them");
   const eventLog = new EventRepository(db);
 
-  const runtime: ContainerRuntime = new DockerContainerRuntime(createDockerClient(config), config.dockerNetwork, log);
+  const runtime = new DockerContainerRuntime(createDockerClient(config), config.dockerNetwork, log);
 
   await waitForDependency("docker", async () => {
     await runtime.ping();
@@ -197,13 +197,12 @@ async function main(): Promise<void> {
   const remoteDeps: RemoteHostDeps | null = controlPlaneTls
     ? { tls: controlPlaneTls, adaptersFor, networkName: config.dockerNetwork, logger: log }
     : null;
-  // A worker without a registered address is a stub until it registers.
-  const workerHosts = workerHostIds.map((hostId) => {
-    const address = hostRows.get(hostId)?.address;
-    return remoteDeps && address
-      ? createRemoteHost(hostId, address, remoteDeps, capacityOf(hostId))
-      : createStubHost(hostId, { adaptersFor }, capacityOf(hostId));
-  });
+  // Addresses are configuration; a worker's gate stays closed until its Docker answers.
+  const workerHosts = remoteDeps
+    ? [...config.workerAddresses]
+        .filter(([hostId]) => hostId !== config.orchestratorHostId)
+        .map(([hostId, address]) => createRemoteHost(hostId, address, remoteDeps, capacityOf(hostId)))
+    : [];
   const hosts = new StaticHostRuntimes([localHost, ...workerHosts]);
   log.info(
     {
@@ -327,8 +326,10 @@ async function main(): Promise<void> {
     hosts,
     manager,
     pairingManager,
+    events: eventLog,
     logger: log,
     pairingStaleThresholdMs: config.pairingStaleThresholdMs,
+    readopt: { maxPerWindow: config.autoRestartMaxPerWindow, windowMs: config.autoRestartWindowMs },
   });
   if (config.reconcileOnStartup) {
     try {
@@ -397,9 +398,17 @@ async function main(): Promise<void> {
   });
   if (config.workerInstanceIds.size > 0) {
     const audience = new URL("/internal/hosts/register", config.orchestratorInternalUrl).href;
-    // remoteDeps is set whenever a worker is managed (checked at boot), so a non-local id never reaches an absent attacher.
-    const attachHost = remoteDeps ? createHostAttacher(hosts, config.orchestratorHostId, remoteDeps, log) : undefined;
-    const registrar = new HostRegistrar(hostRepo, createGoogleIdTokenVerifier(audience), config.workerInstanceIds, log, attachHost);
+    const recordCapacity = (hostId: string, memoryMb?: number): void => {
+      if (memoryMb !== undefined) hosts.setCapacity(hostId, memoryMb);
+    };
+    const registrar = new HostRegistrar(
+      hostRepo,
+      createGoogleIdTokenVerifier(audience),
+      config.workerInstanceIds,
+      config.workerAddresses,
+      log,
+      recordCapacity,
+    );
     await app.register(internalHostRoutes, { prefix: "/internal", registrar });
     log.info({ audience, workers: [...config.workerInstanceIds.values()] }, "host registration enabled");
   } else {

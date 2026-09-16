@@ -69,7 +69,7 @@ Reference implementations to mirror:
 ## Production deploys — MUST
 
 - Never deploy floating image tags (`:latest`, `:main`) to production. Use a GAR digest or a git-SHA tag.
-- Hermes must be pinned by digest in `infra/variables.tf` and `infra/startup.sh`; update it only after a production smoke test creates and deletes a real temporary bot.
+- Hermes must be pinned by digest in `infra/variables.tf` (rendered into the startup scripts); update it only after a production smoke test creates and deletes a real temporary bot.
 - Hermes tenant containers intentionally follow the official Hermes Docker contract; do not reapply generic `CapDrop=ALL` / `no-new-privileges` hardening without smoke-testing the exact Hermes digest.
 - Hermes gateway/platform variables must be passed as Docker env vars and mirrored in `config.yaml`; the adapter also writes `/opt/data/.env` for Hermes state compatibility.
 - Hermes WhatsApp UX is intentionally consumer-facing: approvals are disabled, WhatsApp tool progress is hidden, interim assistant lifecycle messages are hidden, busy input is queued, long-task heartbeats are disabled, and busy acknowledgements are disabled via config and env. Do not re-enable developer-style progress or compression notices for WhatsApp without product approval.

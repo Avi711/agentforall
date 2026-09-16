@@ -45,6 +45,15 @@ test("all() lists every registered bundle", () => {
   assert.deepEqual(new StaticHostRuntimes([a, b]).all(), [a, b]);
 });
 
+test("setCapacity records a reported size on the existing bundle and refuses an unknown host", () => {
+  const a = host("host-a");
+  const hosts = new StaticHostRuntimes([a]);
+  hosts.setCapacity("host-a", 16_000);
+  assert.equal(hosts.for("host-a").capacityMb, 16_000);
+  assert.equal(hosts.for("host-a").runtime, a.runtime, "same client, only the figure changes");
+  assert.throws(() => hosts.setCapacity("host-z", 1), UnknownHostError);
+});
+
 test("upsert replaces a bundle in place and appends an unknown one", () => {
   const a = host("host-a");
   const b = host("host-b");

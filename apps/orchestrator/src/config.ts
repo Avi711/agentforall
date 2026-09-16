@@ -62,6 +62,24 @@ const workerInstanceIdsSchema = z
     return hostByInstance;
   });
 
+export const PRIVATE_IPV4 = /^(10\.\d{1,3}|172\.(1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3}$/;
+
+// "hostId=privateIPv4,..." → host id → address; the address a worker may register is fixed here, not by the worker.
+const workerAddressesSchema = z
+  .string()
+  .optional()
+  .transform((val) => {
+    const addressByHost = new Map<string, string>();
+    for (const entry of (val ?? "").split(",").map((s) => s.trim()).filter(Boolean)) {
+      const match = /^([a-z0-9-]{1,64})=(\d{1,3}(?:\.\d{1,3}){3})$/.exec(entry);
+      if (!match || addressByHost.has(match[1]!) || !PRIVATE_IPV4.test(match[2]!)) {
+        throw new Error(`WORKER_ADDRESSES: invalid, duplicate or public entry "${entry}"`);
+      }
+      addressByHost.set(match[1]!, match[2]!);
+    }
+    return addressByHost;
+  });
+
 const providerIdSchema = z
   .string()
   .regex(/^[a-z0-9][a-z0-9._-]{0,63}$/i, "invalid provider id");
@@ -106,6 +124,7 @@ const AppConfigSchema = z.object({
 
   apiKeys: apiKeysSchema,
   workerInstanceIds: workerInstanceIdsSchema,
+  workerAddresses: workerAddressesSchema,
   serviceTokens: z
     .string()
     .optional()
@@ -140,6 +159,8 @@ const AppConfigSchema = z.object({
 
   portRangeStart: z.coerce.number().int().min(1024).max(65535).default(19000),
   portRangeEnd: z.coerce.number().int().min(1024).max(65535).default(19999),
+  // Pairing sidecars publish on gatewayPort shifted into this range, so one firewall rule covers them.
+  sidecarPortRangeStart: z.coerce.number().int().min(1024).max(65535).default(18000),
 
   healthPollIntervalMs: z.coerce.number().int().min(5000).default(15_000),
   healthDegradedThreshold: z.coerce.number().int().min(1).default(5),
@@ -284,6 +305,7 @@ export type AppConfig = Omit<z.infer<typeof AppConfigSchema>, ControlPlaneTlsFie
 export interface PairingConfig {
   image: string;
   port: number;
+  hostPortOffset: number;
   idleTimeoutMs: number;
   requestTimeoutMs: number;
   staleThresholdMs: number;
@@ -296,6 +318,7 @@ export function extractPairingConfig(config: AppConfig): PairingConfig {
   return {
     image: config.pairingImage,
     port: config.pairingPort,
+    hostPortOffset: config.sidecarPortRangeStart - config.portRangeStart,
     idleTimeoutMs: config.pairingIdleTimeoutMs,
     requestTimeoutMs: config.pairingRequestTimeoutMs,
     staleThresholdMs: config.pairingStaleThresholdMs,
@@ -317,6 +340,7 @@ export function loadConfig(): AppConfig {
     apiKeys: process.env.API_KEYS,
     serviceTokens: process.env.SERVICE_TOKENS,
     workerInstanceIds: process.env.WORKER_INSTANCE_IDS,
+    workerAddresses: process.env.WORKER_ADDRESSES,
     agentRuntimeKind: process.env.AGENT_RUNTIME_KIND,
     agentRuntimeImage: process.env.AGENT_RUNTIME_IMAGE,
     hermesRuntimeImage: process.env.HERMES_RUNTIME_IMAGE,
@@ -327,6 +351,7 @@ export function loadConfig(): AppConfig {
     dockerNetwork: process.env.DOCKER_NETWORK,
     portRangeStart: process.env.PORT_RANGE_START,
     portRangeEnd: process.env.PORT_RANGE_END,
+    sidecarPortRangeStart: process.env.SIDECAR_PORT_RANGE_START,
     healthPollIntervalMs: process.env.HEALTH_POLL_INTERVAL_MS,
     healthDegradedThreshold: process.env.HEALTH_DEGRADED_THRESHOLD,
     healthUnhealthyThreshold: process.env.HEALTH_UNHEALTHY_THRESHOLD,
@@ -407,6 +432,22 @@ export function loadConfig(): AppConfig {
     throw new Error(
       `PORT_RANGE_END (${result.data.portRangeEnd}) must be greater than PORT_RANGE_START (${result.data.portRangeStart})`,
     );
+  }
+
+  const { portRangeStart, portRangeEnd, sidecarPortRangeStart } = result.data;
+  const sidecarPortRangeEnd = sidecarPortRangeStart + (portRangeEnd - portRangeStart);
+  if (sidecarPortRangeEnd > 65535 || (sidecarPortRangeStart <= portRangeEnd && sidecarPortRangeEnd >= portRangeStart)) {
+    throw new Error(
+      `SIDECAR_PORT_RANGE_START (${sidecarPortRangeStart}): the sidecar range ${sidecarPortRangeStart}-${sidecarPortRangeEnd} must end below 65536 and not overlap ${portRangeStart}-${portRangeEnd}`,
+    );
+  }
+
+  const workerHostIds = new Set(result.data.workerInstanceIds.values());
+  for (const hostId of workerHostIds) {
+    if (!result.data.workerAddresses.has(hostId)) throw new Error(`WORKER_ADDRESSES: no address for ${hostId}`);
+  }
+  for (const hostId of result.data.workerAddresses.keys()) {
+    if (!workerHostIds.has(hostId)) throw new Error(`WORKER_ADDRESSES: ${hostId} is not in WORKER_INSTANCE_IDS`);
   }
 
   const { controlPlaneCaPath, orchestratorClientCertPath, orchestratorClientKeyPath, ...data } = result.data;

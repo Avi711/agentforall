@@ -35,11 +35,28 @@ const bot = (overrides: Partial<ContainerCreateOptions>): ContainerCreateOptions
   ...overrides,
 });
 
+const sidecar = (overrides: Partial<SidecarCreateOptions>): SidecarCreateOptions => ({
+  name: "pairing-x",
+  image: "img",
+  envVars: [],
+  memoryBytes: 1,
+  cpuShares: 1,
+  labels: {},
+  volumeMounts: [],
+  ...overrides,
+});
+
 test("a bot beside the orchestrator restarts with Docker and binds its gateway to loopback", async () => {
   const { runtime, created } = capturing();
   await runtime.create(bot({}));
   assert.deepEqual(created[0]?.HostConfig.RestartPolicy, { Name: "unless-stopped", MaximumRetryCount: 0 });
   assert.deepEqual(created[0]?.HostConfig.PortBindings, { "18789/tcp": [{ HostIp: "127.0.0.1", HostPort: "19042" }] });
+});
+
+test("a published sidecar binds the given host port on the given address", async () => {
+  const { runtime, created } = capturing();
+  await runtime.createSidecar(sidecar({ publish: { port: 18790, bindIp: "10.0.0.9", hostPort: 18042 } }));
+  assert.deepEqual(created[0]?.HostConfig.PortBindings, { "18790/tcp": [{ HostIp: "10.0.0.9", HostPort: "18042" }] });
 });
 
 test("a bot on a worker never restarts on its own and binds its gateway to the worker's address", async () => {
@@ -61,8 +78,8 @@ test("a sidecar publishes its port only where asked, on the given address", asyn
     volumeMounts: [],
   };
   await runtime.createSidecar(sidecar);
-  await runtime.createSidecar({ ...sidecar, publish: { port: 18790, bindIp: "10.0.0.9" } });
+  await runtime.createSidecar({ ...sidecar, publish: { port: 18790, bindIp: "10.0.0.9", hostPort: 18042 } });
   assert.equal(created[0]?.HostConfig.PortBindings, undefined);
-  assert.deepEqual(created[1]?.HostConfig.PortBindings, { "18790/tcp": [{ HostIp: "10.0.0.9", HostPort: "" }] });
+  assert.deepEqual(created[1]?.HostConfig.PortBindings, { "18790/tcp": [{ HostIp: "10.0.0.9", HostPort: "18042" }] });
   assert.deepEqual(created[1]?.HostConfig.RestartPolicy, { Name: "no" });
 });

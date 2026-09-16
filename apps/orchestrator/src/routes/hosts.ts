@@ -1,11 +1,11 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { AuthenticationError } from "../domain/errors.js";
+import { PRIVATE_IPV4 } from "../config.js";
 import type { HostRegistrar } from "../services/host-registrar.js";
 
 // A GCE identity token with format=full is ~1.2 KB, well past the shared bearer extractor's cap.
 const MAX_ID_TOKEN_LENGTH = 4096;
-const PRIVATE_IPV4 = /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/;
 
 const RegisterBody = z
   .object({

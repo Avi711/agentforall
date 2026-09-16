@@ -96,6 +96,20 @@ test("reads cover every managed host and nothing outside the set", { skip }, asy
   assert.equal((await both.findById(ON_B))?.status, "running");
 });
 
+test("findStalePairings returns only rows on the given hosts", { skip }, async () => {
+  const repo = new InstanceRepository(db, KEY, new Set(["ir-a", "ir-b"]));
+  await repo.updatePairing(ON_A, { pairingStatus: "awaiting_qr" });
+  await repo.updatePairing(ON_B, { pairingStatus: "awaiting_qr" });
+  // updated_at is stamped by a trigger, so staleness is measured with a small threshold after a wait that beats clock skew.
+  await new Promise((resolve) => setTimeout(resolve, 3_000));
+  assert.deepEqual((await repo.findStalePairings(1_000, ["ir-a"])).map((i) => i.id), [ON_A]);
+  assert.deepEqual((await repo.findStalePairings(1_000, ["ir-a", "ir-b"])).map((i) => i.id).sort(), [ON_A, ON_B]);
+  assert.deepEqual(await repo.findStalePairings(1_000, []), []);
+  assert.deepEqual(await repo.findStalePairings(3_600_000, ["ir-a", "ir-b"]), [], "a fresh pairing is not stale");
+  await repo.updatePairing(ON_A, { pairingStatus: "none" });
+  await repo.updatePairing(ON_B, { pairingStatus: "none" });
+});
+
 test("moveTo flips a stopped row in one CAS write and refuses the wrong status, host or an unmanaged target", { skip }, async () => {
   const repo = new InstanceRepository(db, KEY, new Set(["ir-a", "ir-b"]));
   await repo.insert({ ...fields(MOVER, "ir-a", 19200), status: "stopped" });

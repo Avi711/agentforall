@@ -15,7 +15,7 @@ output "instance_name" {
 
 output "ssh_command" {
   description = "SSH into the VM"
-  value       = "gcloud compute ssh ${var.ssh_user}@${google_compute_instance.platform.name} --zone=${var.zone} --project=${var.project_id}"
+  value       = "gcloud compute ssh ${var.ssh_user}@${google_compute_instance.platform.name} --zone=${var.zone} --project=${var.project_id} --tunnel-through-iap"
 }
 
 output "platform_url" {
@@ -31,6 +31,11 @@ output "image_registry" {
 output "github_actions_wif_provider" {
   description = "Workload Identity Provider — set this as GHA secret WIF_PROVIDER"
   value       = google_iam_workload_identity_pool_provider.github.name
+}
+
+output "workers" {
+  description = "Worker host ids with their instance ids and addresses, as the orchestrator env sees them"
+  value       = { for name, worker in module.worker : name => { instance_id = worker.instance_id, address = worker.address } }
 }
 
 output "github_actions_service_account" {

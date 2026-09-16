@@ -63,7 +63,15 @@ export class DockerContainerRuntime implements ContainerRuntime {
     private readonly logger: FastifyBaseLogger,
   ) {}
 
-  async ensureImagePulled(image: string): Promise<void> {
+  // The API pull carries no registry credential (private images fail), so each host keeps its own images warm.
+  async ensureImagePresent(image: string): Promise<void> {
+    if (!(await this.hasImage(image))) {
+      throw new UpstreamUnavailableError("image", `${image} is not on this host; the host's startup and housekeeping pull it`);
+    }
+  }
+
+  // Dev only: public images on a fresh machine.
+  async pullImage(image: string): Promise<void> {
     const stream = await this.docker.pull(image);
     await new Promise<void>((resolve, reject) => {
       this.docker.modem.followProgress(stream, (err: Error | null) => {
@@ -71,6 +79,16 @@ export class DockerContainerRuntime implements ContainerRuntime {
         else resolve();
       });
     });
+  }
+
+  private async hasImage(image: string): Promise<boolean> {
+    try {
+      await this.docker.getImage(image).inspect();
+      return true;
+    } catch (err) {
+      if (isDockerNotFound(err)) return false;
+      throw err;
+    }
   }
 
   async ensureNetworkExists(): Promise<void> {
@@ -171,29 +189,11 @@ export class DockerContainerRuntime implements ContainerRuntime {
             }
           : {}),
         ...(publish
-          ? {
-              // Empty HostPort = Docker picks one.
-              PortBindings: { [`${publish.port}/tcp`]: [{ HostIp: publish.bindIp, HostPort: "" }] },
-            }
+          ? { PortBindings: { [`${publish.port}/tcp`]: [{ HostIp: publish.bindIp, HostPort: String(publish.hostPort) }] } }
           : {}),
       },
     });
     return container.id;
-  }
-
-  // Polls because Docker-on-Windows can report empty Ports for ~100s of ms after start().
-  async getPublishedHostPort(
-    containerId: string,
-    internalPort: number,
-  ): Promise<number | null> {
-    const key = `${internalPort}/tcp`;
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      const info = await this.inspect(containerId);
-      const hostPort = info?.NetworkSettings.Ports?.[key]?.[0]?.HostPort;
-      if (hostPort) return Number(hostPort);
-      await new Promise((r) => setTimeout(r, 200));
-    }
-    return null;
   }
 
   async ensureVolumeExists(name: string): Promise<void> {

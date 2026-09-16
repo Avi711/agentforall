@@ -6,3 +6,9 @@ disk_size_gb        = 50
 domain              = "openclaw.example.com"
 ssh_user            = "deploy"
 ssh_public_key_path = "~/.ssh/id_rsa.pub"
+# Workers come last: apply with none, bake the image (infra/images/worker/bake.sh), then set both and apply again.
+# The ip is a free address in the region's subnet (vpc_cidr); the image name is what bake.sh printed.
+worker_image        = "agent-forall-worker-20260916-1700"
+workers = {
+  "worker-1" = { ip = "10.128.0.40", machine_type = "e2-highmem-2", data_disk_gb = 50 }
+}

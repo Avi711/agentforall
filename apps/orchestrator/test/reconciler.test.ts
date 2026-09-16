@@ -11,10 +11,13 @@ const OLD = new Date("2026-08-21T00:00:00.000Z");
 
 function harness(
   rows: Instance[],
-  docker: { known: Record<string, boolean>; byName: string | null },
+  docker: { known: Record<string, boolean | "restarting">; byName: string | null },
   operating: (id: string) => boolean = () => false,
   restartPolicy: RestartPolicy = "unless-stopped",
+  clock = { now: 1_000_000 },
 ) {
+  const events: string[] = [];
+  const errors: string[] = [];
   const statusUpdates: { id: string; status: InstanceStatus }[] = [];
   const containerIdUpdates: { id: string; containerId: string }[] = [];
   const started: string[] = [];
@@ -33,7 +36,9 @@ function harness(
   const byNameLookups = { count: 0 };
   const runtime = {
     containerState: async (id: string) =>
-      id in docker.known ? { running: docker.known[id], restarting: false, health: "none", startedAt: null } : null,
+      id in docker.known
+        ? { running: docker.known[id] === true, restarting: docker.known[id] === "restarting", health: "none", startedAt: null }
+        : null,
     findContainerByName: async () => {
       byNameLookups.count += 1;
       return docker.byName;
@@ -54,11 +59,32 @@ function harness(
     ),
     manager: { resumeProvisioning: async () => undefined, isOperating: operating, purgeMovedSources: async () => {} } as never,
     pairingManager: { expireStale: async () => {} } as never,
-    logger: { info: () => {}, warn: () => {}, error: () => {} } as unknown as FastifyBaseLogger,
+    events: { append: async (_id: string, type: string) => void events.push(type) },
+    logger: { info: () => {}, warn: () => {}, error: (_: unknown, msg: string) => void errors.push(msg) } as unknown as FastifyBaseLogger,
     pairingStaleThresholdMs: 900_000,
+    readopt: { maxPerWindow: 2, windowMs: 60_000 },
+    now: () => clock.now,
   });
-  return { reconciler, statusUpdates, containerIdUpdates, byNameLookups, started };
+  return { reconciler, statusUpdates, containerIdUpdates, byNameLookups, started, events, errors };
 }
+
+test("re-adopting a container that keeps exiting spends the auto-restart budget, then the row goes stopped with the exhausted alert", async () => {
+  const row = makeInstance([], { containerId: "container-1", updatedAt: OLD });
+  const clock = { now: 1_000_000 };
+  const h = harness([row], { known: { "container-1": false }, byName: null }, undefined, "no", clock);
+  for (let i = 0; i < 3; i += 1) {
+    await h.reconciler.run();
+    clock.now += 1_000;
+  }
+  assert.deepEqual(h.started, ["container-1", "container-1"]);
+  assert.deepEqual(h.events, ["instance.auto_restart_exhausted"]);
+  assert.deepEqual(h.errors, ["auto restart budget exhausted; bot needs manual attention"]);
+  assert.deepEqual(h.statusUpdates, [{ id: row.id, status: "stopped" }], "a stopped row leaves the running set; a user start brings it back");
+
+  clock.now += 60_000;
+  await h.reconciler.run();
+  assert.equal(h.started.length, 3, "a fresh window (a later user start that failed again) gets a new budget");
+});
 
 test("a stopped container on a no-policy host is started and the row stays running; an unless-stopped host marks it stopped", async () => {
   const row = makeInstance([], { containerId: "container-1", updatedAt: OLD });
@@ -83,6 +109,14 @@ test("a known container that is not running marks the row stopped without a name
   assert.deepEqual(h.statusUpdates, [{ id: row.id, status: "stopped" }]);
   assert.equal(h.byNameLookups.count, 0);
   assert.deepEqual(h.containerIdUpdates, []);
+});
+
+test("a container Docker is restarting is left alone: the row stays running and nothing is started", async () => {
+  const row = makeInstance([], { containerId: "container-1", updatedAt: OLD });
+  const h = harness([row], { known: { "container-1": "restarting" }, byName: null });
+  await h.reconciler.run();
+  assert.deepEqual(h.statusUpdates, []);
+  assert.deepEqual(h.started, []);
 });
 
 test("a row under an operation lock is left alone even when its container is down", async () => {

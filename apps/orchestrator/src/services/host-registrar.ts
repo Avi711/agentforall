@@ -19,8 +19,9 @@ export class HostRegistrar {
     private readonly repo: HostRepository,
     private readonly verifyToken: IdTokenVerifier,
     private readonly hostByInstanceId: ReadonlyMap<string, string>,
+    private readonly addressByHost: ReadonlyMap<string, string>,
     private readonly logger: FastifyBaseLogger,
-    private readonly onRegistered: (hostId: string, address: string, memoryMb?: number) => void = () => undefined,
+    private readonly onRegistered: (hostId: string, memoryMb?: number) => void = () => undefined,
     private readonly now: () => number = Date.now,
   ) {}
 
@@ -31,9 +32,10 @@ export class HostRegistrar {
     const hostId = this.hostByInstanceId.get(instanceId);
     if (!hostId) return this.reject("instance is not in the worker set", identity);
     if (this.now() / 1000 - claims.iat > MAX_TOKEN_AGE_S) return this.reject("token older than 5 minutes", identity);
+    if (this.addressByHost.get(hostId) !== address) return this.reject("address does not match the configured address", identity);
     await this.repo.register(hostId, address, memoryMb);
     this.logger.info({ hostId, address, memoryMb: memoryMb ?? null, ...identity }, "host.registered");
-    this.onRegistered(hostId, address, memoryMb);
+    this.onRegistered(hostId, memoryMb);
   }
 
   private async verifiedClaims(idToken: string): Promise<z.infer<typeof Claims>> {

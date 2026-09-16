@@ -15,17 +15,17 @@ Verified from inside a bot: `169.254.169.254` answered with the VM service accou
 
 ## Easy (1-2 days each)
 
-### S-14. Caddy on tenant-net also serves the public site to bots
+### S-14. Caddy on tenant-net also serves the public site to bots — FIXED 2026-09-16 (step 6: public site 404s private sources; ops use the frontend IP)
 - **Risk:** since 2026-09-14 Caddy sits on `tenant-net` (alias `orchestrator.internal`); a bot can send Host `api.agentforall.co.il` to it and reach `/api/v1/*` — the same authenticated surface `orchestrator:3000` exposes to bots today, so no regression yet.
 - **Fix:** before the orchestrator leaves `tenant-net`: `@private remote_ip private_ranges` → `respond @private 404` on the public site (check the VM's own ops curls first: they arrive as the VM's private IP).
-- **Files:** `infra/startup.sh` (Caddyfile).
+- **Files:** `infra/startup/orchestrator.sh` (Caddyfile).
 
-### S-15. Bots can reach each other's gateway on tenant-net (found 2026-09-15, step 4 review)
+### S-15. Bots can reach each other's gateway on tenant-net (found 2026-09-15, step 4 review) — closed on workers 2026-09-16 (`enable_icc=false` + INPUT drop on `af-tenant`); still open beside the orchestrator until it leaves tenant-net
 - **Risk:** `tenant-net` is a plain bridge with inter-container communication on; any bot can open `http://openclaw-<other>:18789` and needs only that bot's bearer token. Pre-existing, not new to Phase 2.
 - **Fix:** create `tenant-net` with `com.docker.network.bridge.enable_icc=false` once the orchestrator probes bots by the host's VPC IP (step 4b); the orchestrator and Caddy keep reaching bots because they are not subject to ICC on that bridge only if they sit on another network — verify on the second VM first.
-- **Files:** `apps/orchestrator/src/services/docker-container-runtime.ts` (`ensureNetworkExists`).
+- **Files:** `infra/startup/worker.sh`, `infra/startup/guard-worker.rules` (workers); `apps/orchestrator/src/services/docker-container-runtime.ts` (`ensureNetworkExists`, the orchestrator VM).
 
-### S-16. Worker registration binds no address to the identity (found 2026-09-16, whole-diff review)
+### S-16. Worker registration binds no address to the identity — FIXED 2026-09-16 (addresses are configuration, `WORKER_ADDRESSES`; a registration naming another address is refused)
 - **Risk:** a listed worker's identity token lets that VM register any private IPv4 as its address; the orchestrator then dials Docker there with its client cert. A compromised worker A could point its record at worker B and have A's rows managed on B. Bounded to already-trusted workers.
 - **Fix (step 6):** derive the address from the GCE API by instance id instead of the request body, or check that the dialed server cert carries the host id.
 - **Files:** `apps/orchestrator/src/services/host-registrar.ts`, `apps/orchestrator/src/routes/hosts.ts`, `apps/orchestrator/src/services/remote-host.ts`.

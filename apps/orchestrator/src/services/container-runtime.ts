@@ -59,8 +59,8 @@ export interface SidecarCreateOptions {
   labels: Record<string, string>;
   volumeMounts: VolumeMount[];
   tmpfsMounts?: TmpfsMount[];
-  // Random host port on bindIp (127.0.0.1 in dev, the worker's VPC IP remotely); local prod uses Docker DNS.
-  publish?: { port: number; bindIp: string };
+  // Host port on bindIp (127.0.0.1 in dev, the worker's VPC IP remotely); local prod uses Docker DNS.
+  publish?: { port: number; bindIp: string; hostPort: number };
 }
 
 export interface TmpfsMount {
@@ -119,7 +119,7 @@ export function isContainerBooting(state: ContainerState, now: number): boolean 
 // One implementation per host kind; nothing vendor-specific crosses this boundary.
 export interface ContainerRuntime {
   ping(): Promise<void>;
-  ensureImagePulled(image: string): Promise<void>;
+  ensureImagePresent(image: string): Promise<void>;
   ensureNetworkExists(): Promise<void>;
   ensureVolumeExists(name: string): Promise<void>;
   hasVolume(name: string): Promise<boolean>;
@@ -139,7 +139,6 @@ export interface ContainerRuntime {
   isRunning(containerId: string): Promise<boolean>;
   isOnImage(containerId: string, imageRef: string): Promise<boolean>;
   waitForHealthy(containerId: string, timeoutMs: number): Promise<boolean>;
-  getPublishedHostPort(containerId: string, internalPort: number): Promise<number | null>;
   memoryUsage(containerId: string): Promise<ContainerMemory | null>;
 
   putArchive(containerId: string, targetPath: string, archive: Buffer | Readable, signal?: AbortSignal): Promise<void>;

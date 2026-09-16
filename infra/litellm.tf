@@ -65,7 +65,7 @@ resource "google_cloud_run_v2_service" "litellm" {
       egress = "PRIVATE_RANGES_ONLY"
 
       network_interfaces {
-        network = data.google_compute_network.default.name
+        network = google_compute_network.default.name
       }
     }
 

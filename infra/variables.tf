@@ -27,6 +27,40 @@ variable "disk_size_gb" {
   default     = 50
 }
 
+variable "vpc_cidr" {
+  description = "Primary range of the europe-west4 subnet of the default VPC (imported, not created)."
+  type        = string
+  default     = "10.164.0.0/20"
+}
+
+variable "orchestrator_internal_ip" {
+  description = "The orchestrator VM's internal IP, promoted to a static address; workers and the private DNS zone point here."
+  type        = string
+  default     = "10.164.0.4"
+}
+
+variable "workers" {
+  description = "Worker VMs by host id. The ip is reserved in the subnet and baked into that worker's server certificate."
+  type = map(object({
+    ip           = string
+    machine_type = string
+    data_disk_gb = number
+  }))
+  default = {}
+}
+
+variable "worker_image" {
+  description = "Name of the baked worker image (infra/images/worker/bake.sh), pinned like a container digest."
+  type        = string
+  default     = ""
+}
+
+variable "worker_boot_disk_gb" {
+  description = "Worker boot disk: OS plus every image layer (the containerd store stays on the boot disk)."
+  type        = number
+  default     = 60
+}
+
 variable "domain" {
   description = "Domain for TLS (e.g. openclaw.example.com). Leave empty for IP-only."
   type        = string
@@ -54,7 +88,7 @@ variable "github_repo" {
 variable "orchestrator_image" {
   description = "Immutable orchestrator image ref. Production must use a GAR digest or git-SHA tag, never :latest."
   type        = string
-  default     = "europe-west4-docker.pkg.dev/agent-for-all/agent-forall/orchestrator@sha256:d78e9796cdb1d70c7a909d7c9e0c92a6d1aecc346280627072b9f68616aa6339"
+  default     = "europe-west4-docker.pkg.dev/agent-for-all/agent-forall/orchestrator@sha256:ed5938a6d27d49f68c70c7d8d5e43f5b06fc0ab0971e1e80649f098c5a287aaf"
 }
 
 variable "pairing_image" {

@@ -10,20 +10,16 @@ resource "google_project_service" "servicenetworking" {
   disable_on_destroy = false
 }
 
-data "google_compute_network" "default" {
-  name = "default"
-}
-
 resource "google_compute_global_address" "private_services" {
   name          = "agent-forall-private-services"
   purpose       = "VPC_PEERING"
   address_type  = "INTERNAL"
   prefix_length = 16
-  network       = data.google_compute_network.default.id
+  network       = google_compute_network.default.id
 }
 
 resource "google_service_networking_connection" "private_services" {
-  network                 = data.google_compute_network.default.id
+  network                 = google_compute_network.default.id
   service                 = "servicenetworking.googleapis.com"
   reserved_peering_ranges = [google_compute_global_address.private_services.name]
 
@@ -62,7 +58,7 @@ resource "google_sql_database_instance" "litellm" {
 
     ip_configuration {
       ipv4_enabled    = false
-      private_network = data.google_compute_network.default.id
+      private_network = google_compute_network.default.id
     }
 
     insights_config {

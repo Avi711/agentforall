@@ -413,6 +413,7 @@ export class InstanceManager {
     const inst = await this.ensureIntegrationsBinding(current);
     const { runtime, adapters } = this.hosts.for(inst.hostId);
     const adapter = adapters.get(inst.runtimeKind);
+    await runtime.ensureImagePresent(adapter.image);
     const existing = await this.existingContainerId(inst);
     if (existing && (await runtime.isRunning(existing))) {
       await runtime.stop(existing);
@@ -646,7 +647,7 @@ export class InstanceManager {
     if (!(await target.gate.check())) throw new UpstreamUnavailableError("docker", `host ${targetHostId} is unreachable`);
     await this.placement.assertFits(targetHostId, inst.config.resources.memoryMb);
     const adapter = target.adapters.get(inst.runtimeKind);
-    await target.runtime.ensureImagePulled(adapter.image);
+    await target.runtime.ensureImagePresent(adapter.image);
     if (!(await target.runtime.hasVolume(adapter.stateVolumeName(inst.id)))) return;
     if (inst.movedFromHostId !== targetHostId || inst.moveObjectName !== null) {
       throw new ConflictError(`host ${targetHostId} already holds a state volume for this bot`);
@@ -1096,6 +1097,7 @@ export class InstanceManager {
     if (existing && (await adapter.isOnCurrentImage(existing))) return existing;
     // Left by an orchestrator on the previous image (a crash mid-provision): its volume needs the
     // migration too, and the container itself cannot take this config.
+    await runtime.ensureImagePresent(adapter.image);
     if (existing) {
       await runtime.remove(existing);
       await adapter.prepareState(inst);

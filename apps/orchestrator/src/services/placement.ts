@@ -41,9 +41,9 @@ export class Placement {
     return best.hostId;
   }
 
-  // Same rule as choose, for a host the caller already picked (a move target).
+  // For a host the caller already picked (a move target): draining keeps new bots away, an operator's move still lands.
   async assertFits(hostId: string, memoryMb: number): Promise<void> {
-    const verdict = await this.assess(this.hosts.for(hostId), memoryMb);
+    const verdict = await this.headroom(this.hosts.for(hostId), memoryMb);
     if (verdict.headroomMb === null || verdict.headroomMb < 0) {
       this.logger.warn({ memoryMb, host: verdict }, "host has no room for the bot");
       throw new NoPlacementError();
@@ -51,10 +51,13 @@ export class Placement {
   }
 
   private async assess(host: HostRuntime, memoryMb: number): Promise<Verdict> {
+    if (host.status !== "active") return { hostId: host.hostId, headroomMb: null, skipped: host.status };
+    return this.headroom(host, memoryMb);
+  }
+
+  private async headroom(host: HostRuntime, memoryMb: number): Promise<Verdict> {
     const verdict = { hostId: host.hostId, headroomMb: null, skipped: null };
-    if (host.status !== "active") return { ...verdict, skipped: host.status };
     if (host.capacityMb === null) return { ...verdict, skipped: "capacity unknown" };
-    // A worker without an address is a stub whose gate never opens, so it drops out here.
     if (!(await host.gate.check())) return { ...verdict, skipped: "unreachable" };
     const budgetMb = USABLE_FRACTION * (host.capacityMb - this.config.reserveMb);
     const headroomMb = Math.floor(budgetMb - this.usage.usedMb(host.hostId) - memoryMb / this.config.overcommit);
