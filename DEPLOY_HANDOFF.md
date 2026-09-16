@@ -514,7 +514,9 @@ unregistered worker's stub refuses every Docker call (was sharing the local clie
 misses and shares one in-flight ping; a bot moved while stopped lands stopped (`keepStopped`, `stopped_at` as the marker); move streams
 carry a 30 min abort; the per-row destroy log line no longer matches the "reconciliation failed" alert; a bot that errored after a
 completed move is swept; bucket IAM narrowed to `objectUser`; S-16 recorded; step 6 gained four review items. 586 unit tests, DB suites
-27/27 + 5/5 rehearsed a third time. NOT YET DEPLOYED: prod runs `74769e7c` (pre-review build); redeploy after commit, no migration.
+27/27 + 5/5 rehearsed a third time. COMMITTED `1d78676`; DEPLOYED 2026-09-16 15:55 UTC as
+`orchestrator@sha256:d78e9796cdb1d70c7a909d7c9e0c92a6d1aecc346280627072b9f68616aa6339` (Cloud Build `b57f9286`), healthy, 15/15 running,
+0 warnings, Terraform pinned. Rollback floor for the move columns stays `cf652d35`.
 2026-09-14 (Caddy): the public site now 404s `/internal/*` (sidecar callbacks travel over tenant-net only); `/api/v1/admin/*` stays
 public because the dashboard's admin panel calls it with the service token. Applied by editing the VM's Caddyfile + `compose restart caddy`
 (~3 s): `sed -i` on a bind-mounted file swaps the inode, so `caddy reload` kept serving the old file until the container was restarted.

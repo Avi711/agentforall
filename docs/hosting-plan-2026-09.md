@@ -88,6 +88,8 @@ Verify each step on a second VM in the same project before touching the current 
 
 ## Later
 
+- One deploy script (build, pin the digest in Terraform and the VM env, apply, roll, verify): today the digest is carried by hand in three places on every roll.
+
 - ~100 bots or credits gone: 1-year CUD (~$5/bot) or Hetzner AX workers (~€1/bot), control plane unchanged.
 - GKE only with an engineer who has run it, or >500 bots.
 
