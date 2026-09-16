@@ -188,6 +188,8 @@ DEFAULT_PROVIDER_API_KEY=$(gcloud secrets versions access latest --secret=defaul
 LITELLM_MASTER_KEY=$(gcloud secrets versions access latest --secret=litellm-master-key --project=${project_id})
 COMPOSIO_API_KEY=$(gcloud secrets versions access latest --secret=composio-api-key --project=${project_id})
 CA_DIR=/var/lib/agent-forall/ca
+# This VM is also the only worker until step 6; it registers itself with its own identity token.
+INSTANCE_ID=$(curl -sf -H "Metadata-Flavor: Google" http://169.254.169.254/computeMetadata/v1/instance/id)
 install -d -m 0755 "$CA_DIR"
 gcloud secrets versions access latest --secret=caddy-internal-ca-cert --project=${project_id} > "$CA_DIR/root.crt.tmp"
 chmod 0644 "$CA_DIR/root.crt.tmp" && mv "$CA_DIR/root.crt.tmp" "$CA_DIR/root.crt"
@@ -236,8 +238,10 @@ PAIRING_IDLE_TIMEOUT_MS=600000
 PAIRING_REQUEST_TIMEOUT_MS=5000
 PAIRING_STALE_THRESHOLD_MS=900000
 PAIRING_LOG_LEVEL=info
-ORCHESTRATOR_INTERNAL_URL=http://orchestrator:3000
+ORCHESTRATOR_INTERNAL_URL=https://orchestrator.internal
 TENANT_CA_CERT_PATH=$CA_DIR/root.crt
+WORKER_INSTANCE_IDS=agent-forall-vm=$INSTANCE_ID
+MOVES_BUCKET=agent-forall-moves
 DEFAULT_PROVIDER_NAME=litellm
 DEFAULT_PROVIDER_ID=litellm
 DEFAULT_PROVIDER_API_KEY=$DEFAULT_PROVIDER_API_KEY
@@ -278,6 +282,8 @@ else
   set_runtime_env DEFAULT_PROVIDER_API_KEY "$DEFAULT_PROVIDER_API_KEY"
   set_runtime_env DEFAULT_PROVIDER_NAME litellm
   set_runtime_env TENANT_CA_CERT_PATH "$CA_DIR/root.crt"
+  set_runtime_env WORKER_INSTANCE_IDS "agent-forall-vm=$INSTANCE_ID"
+  set_runtime_env MOVES_BUCKET agent-forall-moves
   set_runtime_env DEFAULT_PROVIDER_MODEL gemini-agentforall
   set_runtime_env DEFAULT_PROVIDER_ID litellm
   set_runtime_env AGENT_RUNTIME_KIND "$AGENT_RUNTIME_KIND"

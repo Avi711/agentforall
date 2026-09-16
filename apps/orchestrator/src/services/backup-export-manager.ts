@@ -14,7 +14,7 @@ export interface BackupExportStorage {
     contentType: string;
     contentLength: number;
     body: Readable;
-  }): Promise<void>;
+  }): Promise<unknown>;
   createReadSignedUrl(input: {
     objectName: string;
     expiresInSeconds: number;

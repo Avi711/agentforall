@@ -63,6 +63,7 @@ const ENV_READ_LIMIT_BYTES = 64 * 1024;
 
 export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   readonly kind = "openclaw" as const;
+  readonly internalPort = OPENCLAW_INTERNAL_PORT;
   readonly maxBackupBytes = OPENCLAW_MAX_BACKUP_BYTES;
 
   constructor(
@@ -284,20 +285,20 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     );
   }
 
-  probeGateway(
-    instance: Instance,
-    timeoutMs: number,
-    useDockerNetwork: boolean,
-  ): Promise<GatewayLiveness> {
-    return probeOpenclawGateway(instance, timeoutMs, useDockerNetwork);
+  exportVolume(containerId: string, signal?: AbortSignal): Promise<Readable> {
+    return this.runtime.getArchive(containerId, OPENCLAW_STATE_ROOT, signal);
+  }
+
+  importVolume(containerId: string, tar: Readable, signal?: AbortSignal): Promise<void> {
+    return this.runtime.putArchive(containerId, OPENCLAW_STATE_PARENT, tar, signal);
+  }
+
+  probeGateway(_instance: Instance, timeoutMs: number, baseUrl: string): Promise<GatewayLiveness> {
+    return probeOpenclawGateway(baseUrl, timeoutMs);
   }
 
   // The probe runs inside the container, so it never depends on how the host reaches the gateway.
-  probeWhatsapp(
-    instance: Instance,
-    timeoutMs: number,
-    _useDockerNetwork: boolean,
-  ): Promise<WhatsappLinkState> {
+  probeWhatsapp(instance: Instance, timeoutMs: number, _baseUrl: string): Promise<WhatsappLinkState> {
     return probeOpenclawWhatsapp(this.runtime, instance, timeoutMs);
   }
 

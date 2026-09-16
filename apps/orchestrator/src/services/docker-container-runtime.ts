@@ -30,7 +30,25 @@ export interface DockerConnection {
   dockerSocketPath?: string;
 }
 
-export function createDockerClient(connection: DockerConnection): Docker {
+export interface DockerTls {
+  ca: Buffer;
+  cert: Buffer;
+  key: Buffer;
+}
+
+interface RemoteDockerConnection {
+  host: string;
+  tls: DockerTls;
+}
+
+const REMOTE_DOCKER_PORT = 2376;
+const PING_TIMEOUT_MS = 5_000;
+
+export function createDockerClient(connection: DockerConnection | RemoteDockerConnection): Docker {
+  if ("tls" in connection) {
+    const { ca, cert, key } = connection.tls;
+    return new Docker({ host: connection.host, port: REMOTE_DOCKER_PORT, protocol: "https", ca, cert, key });
+  }
   if (connection.dockerHost) {
     return new Docker({ host: connection.dockerHost, port: connection.dockerPort ?? 2375 });
   }
@@ -97,13 +115,13 @@ export class DockerContainerRuntime implements ContainerRuntime {
       },
       HostConfig: {
         PortBindings: {
-          [portKey]: [{ HostIp: "127.0.0.1", HostPort: String(opts.hostPort) }],
+          [portKey]: [{ HostIp: opts.bindIp, HostPort: String(opts.hostPort) }],
         },
         Memory: opts.memoryBytes,
         MemorySwap: opts.memoryBytes,
         ...(opts.shmSizeBytes ? { ShmSize: opts.shmSizeBytes } : {}),
         CpuShares: opts.cpuShares,
-        RestartPolicy: { Name: "unless-stopped", MaximumRetryCount: 0 },
+        RestartPolicy: { Name: opts.restartPolicy, MaximumRetryCount: 0 },
         NetworkMode: this.networkName,
         ...(opts.capDrop === null
           ? {}
@@ -126,7 +144,7 @@ export class DockerContainerRuntime implements ContainerRuntime {
   }
 
   async createSidecar(opts: SidecarCreateOptions): Promise<string> {
-    const portKey = opts.publishPort ? `${opts.publishPort}/tcp` : undefined;
+    const publish = opts.publish;
     const container = await this.docker.createContainer({
       name: opts.name,
       Image: opts.image,
@@ -135,7 +153,7 @@ export class DockerContainerRuntime implements ContainerRuntime {
         ...opts.labels,
         "agent-forall.managed": "true",
       },
-      ...(portKey ? { ExposedPorts: { [portKey]: {} } } : {}),
+      ...(publish ? { ExposedPorts: { [`${publish.port}/tcp`]: {} } } : {}),
       HostConfig: {
         Memory: opts.memoryBytes,
         MemorySwap: opts.memoryBytes,
@@ -152,10 +170,10 @@ export class DockerContainerRuntime implements ContainerRuntime {
               ),
             }
           : {}),
-        ...(portKey
+        ...(publish
           ? {
-              // Empty HostPort = Docker picks one; 127.0.0.1 keeps it host-local.
-              PortBindings: { [portKey]: [{ HostIp: "127.0.0.1", HostPort: "" }] },
+              // Empty HostPort = Docker picks one.
+              PortBindings: { [`${publish.port}/tcp`]: [{ HostIp: publish.bindIp, HostPort: "" }] },
             }
           : {}),
       },
@@ -189,6 +207,16 @@ export class DockerContainerRuntime implements ContainerRuntime {
       Name: name,
       Labels: { "agent-forall.managed": "true" },
     });
+  }
+
+  async hasVolume(name: string): Promise<boolean> {
+    try {
+      await this.docker.getVolume(name).inspect();
+      return true;
+    } catch (err: unknown) {
+      if (isDockerNotFound(err)) return false;
+      throw err;
+    }
   }
 
   async removeVolume(name: string): Promise<void> {
@@ -253,14 +281,12 @@ export class DockerContainerRuntime implements ContainerRuntime {
     await this.execCommand(containerId, ["rm", "-f", path], 15_000);
   }
 
-  async putArchive(
-    containerId: string,
-    targetPath: string,
-    archive: Buffer | Readable,
-  ): Promise<void> {
-    await this.docker
-      .getContainer(containerId)
-      .putArchive(archive, { path: targetPath });
+  async putArchive(containerId: string, targetPath: string, archive: Buffer | Readable, signal?: AbortSignal): Promise<void> {
+    await this.docker.getContainer(containerId).putArchive(archive, { path: targetPath, abortSignal: signal });
+  }
+
+  async getArchive(containerId: string, path: string, signal?: AbortSignal): Promise<Readable> {
+    return (await this.docker.getContainer(containerId).getArchive({ path, abortSignal: signal })) as Readable;
   }
 
   // By image id, so the same digest under another reference is the same image; a gone container is on none.
@@ -392,8 +418,10 @@ export class DockerContainerRuntime implements ContainerRuntime {
     }
   }
 
+  // dockerode's typings omit ping's options object; the signal reaches http.request so a half-open socket cannot hang a pass.
   async ping(): Promise<void> {
-    await this.docker.ping();
+    const ping = this.docker.ping as unknown as (options: { abortSignal: AbortSignal }) => Promise<unknown>;
+    await ping.call(this.docker, { abortSignal: AbortSignal.timeout(PING_TIMEOUT_MS) });
   }
 
   async execCommand(

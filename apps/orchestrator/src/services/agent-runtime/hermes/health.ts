@@ -1,16 +1,7 @@
-import type { Instance } from "../../../domain/types.js";
 import type { GatewayLiveness, WhatsappLinkState } from "../types.js";
-import {
-  HERMES_HEALTH_PATH,
-  HERMES_INTERNAL_PORT,
-} from "./constants.js";
+import { HERMES_HEALTH_PATH } from "./constants.js";
 
-export async function probeHermesGateway(
-  instance: Instance,
-  timeoutMs: number,
-  useDockerNetwork: boolean,
-): Promise<GatewayLiveness> {
-  const base = baseUrl(instance, useDockerNetwork);
+export async function probeHermesGateway(base: string, timeoutMs: number): Promise<GatewayLiveness> {
   try {
     const resp = await fetch(`${base}${HERMES_HEALTH_PATH}`, {
       signal: AbortSignal.timeout(timeoutMs),
@@ -22,12 +13,7 @@ export async function probeHermesGateway(
   }
 }
 
-export async function probeHermesWhatsapp(
-  instance: Instance,
-  timeoutMs: number,
-  useDockerNetwork: boolean,
-): Promise<WhatsappLinkState> {
-  const base = baseUrl(instance, useDockerNetwork);
+export async function probeHermesWhatsapp(base: string, timeoutMs: number): Promise<WhatsappLinkState> {
   let detailed: unknown;
   try {
     const resp = await fetch(`${base}/health/detailed`, {
@@ -39,12 +25,6 @@ export async function probeHermesWhatsapp(
     return "probe_failed";
   }
   return parseWhatsappState(detailed);
-}
-
-function baseUrl(instance: Instance, useDockerNetwork: boolean): string {
-  const host = useDockerNetwork ? instance.containerName : "127.0.0.1";
-  const port = useDockerNetwork ? HERMES_INTERNAL_PORT : instance.gatewayPort;
-  return `http://${host}:${port}`;
 }
 
 function parseWhatsappState(detailedHealth: unknown): WhatsappLinkState {

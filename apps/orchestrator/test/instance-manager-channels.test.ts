@@ -7,6 +7,7 @@ import type { AppConfig } from "../src/config.js";
 import type { AgentRuntimeRegistry } from "../src/services/agent-runtime/registry.js";
 import type { ChannelConfig, Instance, InstanceConfig } from "../src/domain/types.js";
 import { makeWhatsappCloudChannel } from "./helpers/fixtures.js";
+import { singleHost } from "./helpers/host-runtimes.js";
 
 test("disconnectWhatsapp logs out, clears creds, keeps the channel and restarts", async () => {
   const h = harness({
@@ -326,9 +327,9 @@ function harness(overrides: Overrides) {
 
   const manager = new InstanceManager(
     repo as never,
-    runtime as unknown as ContainerRuntime,
-    registry,
+    singleHost(runtime as unknown as ContainerRuntime, registry),
     {} as never,
+    { choose: () => "test-host" } as never,
     {} as AppConfig,
     { append: async (_id: string, type: string) => { calls.events.push(type); } } as never,
     pairingManager as never,
@@ -370,6 +371,10 @@ function makeInstance(overrides: Overrides): Instance {
     litellm: { keyAlias: null, keyHash: null, budgetCents: null, budgetDuration: null },
     createdAt: new Date("2026-08-21T00:00:00.000Z"),
     updatedAt: new Date("2026-08-21T00:00:00.000Z"),
+    movedFromHostId: null,
+    moveObjectName: null,
+    moveImportedAt: null,
+    movedAt: null,
     stoppedAt: null,
     destroyedAt: null,
   };

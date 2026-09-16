@@ -1,10 +1,12 @@
 import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
+import { totalmem } from "node:os";
 import { InstanceOperationLock } from "./services/instance-operation-lock.js";
 import { dirname, resolve } from "node:path";
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { loadConfig, extractPairingConfig } from "./config.js";
+import { loadConfig, extractPairingConfig, type ControlPlaneTls } from "./config.js";
 import { createApp } from "./server.js";
 import { healthRoutes } from "./routes/health.js";
 import { instanceRoutes } from "./routes/instances.js";
@@ -18,14 +20,22 @@ import { OwnerIdentityManager } from "./services/owner-identity-manager.js";
 import { adminRoutes } from "./routes/admin.js";
 import { AdminOverviewService } from "./services/admin-overview.js";
 import { InstanceRepository } from "./storage/instance-repository.js";
+import { HostRepository } from "./storage/host-repository.js";
+import { HostRegistrar } from "./services/host-registrar.js";
+import { HostReachability } from "./services/host-reachability.js";
+import { StaticHostRuntimes, type HostCapacity, type HostRuntime } from "./services/host-runtimes.js";
+import { createHostAttacher, createRemoteHost, createStubHost, type RemoteHostDeps } from "./services/remote-host.js";
+import { createGoogleIdTokenVerifier } from "./services/google-identity.js";
+import { internalHostRoutes } from "./routes/hosts.js";
 import { HealthRepository } from "./storage/health-repository.js";
 import { assertValidEncryptionKey } from "./services/crypto.js";
 import type { ContainerRuntime } from "./services/container-runtime.js";
-import { DockerContainerRuntime, createDockerClient } from "./services/docker-container-runtime.js";
+import { DockerContainerRuntime, createDockerClient, type DockerTls } from "./services/docker-container-runtime.js";
 import { AgentRuntimeRegistry } from "./services/agent-runtime/registry.js";
 import { OpenClawRuntimeAdapter } from "./services/agent-runtime/openclaw/adapter.js";
 import { HermesRuntimeAdapter } from "./services/agent-runtime/hermes/adapter.js";
 import { PortAllocator } from "./services/port-allocator.js";
+import { Placement } from "./services/placement.js";
 import { InstanceManager } from "./services/instance-manager.js";
 import { HealthMonitor } from "./services/health-monitor.js";
 import { AutoRestarter } from "./services/auto-restarter.js";
@@ -111,10 +121,21 @@ async function tryPullImage(
   }
 }
 
+function readControlPlaneTls(paths: ControlPlaneTls): DockerTls {
+  return { ca: readFileSync(paths.caPath), cert: readFileSync(paths.certPath), key: readFileSync(paths.keyPath) };
+}
+
 async function main(): Promise<void> {
   const config = loadConfig();
   const encryptionKey = Buffer.from(config.encryptionKey, "hex");
   assertValidEncryptionKey(encryptionKey);
+  const workerHostIds = [...config.managedHostIds].filter((hostId) => hostId !== config.orchestratorHostId);
+  const controlPlaneTls = config.controlPlaneTls ? readControlPlaneTls(config.controlPlaneTls) : null;
+  if (workerHostIds.length > 0 && !controlPlaneTls) {
+    throw new Error(
+      `WORKER_INSTANCE_IDS names remote hosts (${workerHostIds.join(", ")}) but CONTROL_PLANE_CA_PATH / ORCHESTRATOR_CLIENT_CERT_PATH / ORCHESTRATOR_CLIENT_KEY_PATH are unset`,
+    );
+  }
 
   const app = await createApp(config, encryptionKey);
   const log = app.log;
@@ -134,8 +155,12 @@ async function main(): Promise<void> {
     log.info("startup migrations disabled");
   }
 
-  const repo = new InstanceRepository(db, encryptionKey, config.orchestratorHostId);
-  log.info({ hostId: config.orchestratorHostId }, "host scoping enabled");
+  const hostRepo = new HostRepository(db);
+  for (const hostId of config.managedHostIds) await hostRepo.ensure(hostId);
+  // The orchestrator sees the VM's RAM; workers report theirs at registration.
+  await hostRepo.setCapacity(config.orchestratorHostId, Math.floor(totalmem() / 1024 / 1024));
+  const repo = new InstanceRepository(db, encryptionKey, config.managedHostIds);
+  log.info({ hostIds: [...config.managedHostIds] }, "hosts registered, queries scoped to them");
   const eventLog = new EventRepository(db);
 
   const runtime: ContainerRuntime = new DockerContainerRuntime(createDockerClient(config), config.dockerNetwork, log);
@@ -146,11 +171,56 @@ async function main(): Promise<void> {
   log.info("docker connected");
 
   await runtime.ensureNetworkExists();
+  const gate = new HostReachability(config.orchestratorHostId, runtime, log);
 
-  const runtimeAdapters = new AgentRuntimeRegistry([
-    new OpenClawRuntimeAdapter(runtime, config.agentRuntimeImage, config.orchestratorInternalUrl),
-    new HermesRuntimeAdapter(runtime, config.hermesRuntimeImage),
-  ]);
+  const adaptersFor = (hostRuntime: ContainerRuntime): AgentRuntimeRegistry =>
+    new AgentRuntimeRegistry([
+      new OpenClawRuntimeAdapter(hostRuntime, config.agentRuntimeImage, config.orchestratorInternalUrl),
+      new HermesRuntimeAdapter(hostRuntime, config.hermesRuntimeImage),
+    ]);
+  const runtimeAdapters = adaptersFor(runtime);
+  const hostRows = new Map((await hostRepo.findAll()).map((row) => [row.id, row]));
+  const capacityOf = (hostId: string): HostCapacity => {
+    const row = hostRows.get(hostId);
+    return { capacityMb: row?.memoryMb ?? null, status: row?.status ?? "active" };
+  };
+  const localHost: HostRuntime = {
+    hostId: config.orchestratorHostId,
+    address: null,
+    ...capacityOf(config.orchestratorHostId),
+    restartPolicy: "unless-stopped",
+    dockerNetwork: config.useDockerNetwork,
+    runtime,
+    adapters: runtimeAdapters,
+    gate,
+  };
+  const remoteDeps: RemoteHostDeps | null = controlPlaneTls
+    ? { tls: controlPlaneTls, adaptersFor, networkName: config.dockerNetwork, logger: log }
+    : null;
+  // A worker without a registered address is a stub until it registers.
+  const workerHosts = workerHostIds.map((hostId) => {
+    const address = hostRows.get(hostId)?.address;
+    return remoteDeps && address
+      ? createRemoteHost(hostId, address, remoteDeps, capacityOf(hostId))
+      : createStubHost(hostId, { adaptersFor }, capacityOf(hostId));
+  });
+  const hosts = new StaticHostRuntimes([localHost, ...workerHosts]);
+  log.info(
+    {
+      hosts: hosts.all().map((host) => ({ hostId: host.hostId, address: host.address, capacityMb: host.capacityMb, status: host.status })),
+    },
+    "hosts attached",
+  );
+  const memoryWatch = new MemoryWatch(repo, hosts, log, {
+    intervalMs: config.memoryWatchIntervalMs,
+    warnFraction: config.memoryWatchWarnFraction,
+  });
+  const placement = new Placement(
+    hosts,
+    memoryWatch,
+    { overcommit: config.placementOvercommit, reserveMb: config.hostReserveMb },
+    log,
+  );
 
   if (config.pullImagesOnStartup) {
     await tryPullImage(runtime, runtimeAdapters.get(config.agentRuntimeKind).image, log);
@@ -177,10 +247,10 @@ async function main(): Promise<void> {
         config.backupImportUploadOrigin,
       )
     : null;
+  const moveStorage = config.movesBucket ? new GcsBackupStorage(config.movesBucket) : null;
   const pairingManager = new PairingManager(
     repo,
-    runtime,
-    runtimeAdapters,
+    hosts,
     eventLog,
     pairingConfig,
     log,
@@ -206,9 +276,9 @@ async function main(): Promise<void> {
   const channelLock = new InstanceOperationLock();
   const manager = new InstanceManager(
     repo,
-    runtime,
-    runtimeAdapters,
+    hosts,
     portAllocator,
+    placement,
     config,
     eventLog,
     pairingManager,
@@ -227,7 +297,9 @@ async function main(): Promise<void> {
       },
     },
     channelLock,
+    moveStorage,
   );
+  log.info({ enabled: moveStorage !== null }, "host-to-host moves");
   const integrations =
     integrationProvider && integrationSessions
       ? new IntegrationsManager(manager, repo, integrationSessions, integrationProvider, eventLog, config, log)
@@ -252,18 +324,21 @@ async function main(): Promise<void> {
 
   const reconciler = new Reconciler({
     repo,
-    runtime,
-    runtimes: runtimeAdapters,
+    hosts,
     manager,
     pairingManager,
     logger: log,
     pairingStaleThresholdMs: config.pairingStaleThresholdMs,
   });
   if (config.reconcileOnStartup) {
-    await reconciler.run();
+    try {
+      await reconciler.run();
+    } catch (err) {
+      log.error({ err }, "startup reconciliation failed");
+    }
   }
 
-  const healthService = new HealthService(healthRepo, runtime);
+  const healthService = new HealthService(healthRepo);
   await app.register(healthRoutes, { healthService });
   await app.register(instanceRoutes, {
     prefix: "/api/v1/instances",
@@ -301,11 +376,12 @@ async function main(): Promise<void> {
   });
   await app.register(ownerIdentityRoutes, {
     prefix: "/api/v1/instances",
-    owner: new OwnerIdentityManager(manager, runtimeAdapters, eventLog, log),
+    owner: new OwnerIdentityManager(manager, hosts, eventLog, log),
   });
   await app.register(adminRoutes, {
     prefix: "/api/v1/admin",
     overview: new AdminOverviewService(repo, litellmKeys, log),
+    manager,
   });
   await app.register(integrationsRoutes, { prefix: "/api/v1", integrations });
   if (integrations) {
@@ -319,6 +395,16 @@ async function main(): Promise<void> {
     prefix: "/internal",
     pairingManager,
   });
+  if (config.workerInstanceIds.size > 0) {
+    const audience = new URL("/internal/hosts/register", config.orchestratorInternalUrl).href;
+    // remoteDeps is set whenever a worker is managed (checked at boot), so a non-local id never reaches an absent attacher.
+    const attachHost = remoteDeps ? createHostAttacher(hosts, config.orchestratorHostId, remoteDeps, log) : undefined;
+    const registrar = new HostRegistrar(hostRepo, createGoogleIdTokenVerifier(audience), config.workerInstanceIds, log, attachHost);
+    await app.register(internalHostRoutes, { prefix: "/internal", registrar });
+    log.info({ audience, workers: [...config.workerInstanceIds.values()] }, "host registration enabled");
+  } else {
+    log.info("host registration disabled");
+  }
 
   const whatsappCloudRepo = new WhatsappCloudRepository(db, encryptionKey);
   const inboxDispatcher = new InboxDispatcher(whatsappCloudRepo, eventLog, log, {
@@ -359,15 +445,13 @@ async function main(): Promise<void> {
   log.info({ enabled: autoRestarter !== null }, "auto restart of unresponsive bots");
   const healthMonitor = new HealthMonitor(
     repo,
-    runtime,
-    runtimeAdapters,
+    hosts,
     log,
     {
       pollIntervalMs: config.healthPollIntervalMs,
       degradedThreshold: config.healthDegradedThreshold,
       unhealthyThreshold: config.healthUnhealthyThreshold,
       requestTimeoutMs: config.healthRequestTimeoutMs,
-      useDockerNetwork: config.useDockerNetwork,
       maxConcurrentChecks: config.healthMaxConcurrentChecks,
       channelPollIntervalMs: config.healthChannelPollIntervalMs,
       channelStateMaxAgeMs: config.healthChannelStateMaxAgeMs,
@@ -378,10 +462,6 @@ async function main(): Promise<void> {
     autoRestarter,
   );
   healthMonitor.start();
-  const memoryWatch = new MemoryWatch(repo, runtime, log, {
-    intervalMs: config.memoryWatchIntervalMs,
-    warnFraction: config.memoryWatchWarnFraction,
-  });
   memoryWatch.start();
 
   // Skip tick if a run is in flight, so overlapping intervals don't race on the same rows.

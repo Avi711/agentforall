@@ -103,9 +103,9 @@ resource "google_monitoring_alert_policy" "orchestrator_errors" {
   notification_channels = local.alert_channels
 
   conditions {
-    display_name = "Auto restart budget exhausted, fleet-wide liveness failure, or a bot near its memory limit"
+    display_name = "Auto restart budget exhausted, fleet-wide liveness failure, a host's Docker unreachable, or a bot near its memory limit"
     condition_matched_log {
-      filter = "${local.vm_filter} AND logName=\"projects/${var.project_id}/logs/gcplogs-docker-driver\" AND jsonPayload.container.name=\"/orchestrator\" AND (jsonPayload.message:\"auto restart budget exhausted\" OR jsonPayload.message:\"most bots failed liveness at once\" OR jsonPayload.message:\"bot memory high\")"
+      filter = "${local.vm_filter} AND logName=\"projects/${var.project_id}/logs/gcplogs-docker-driver\" AND jsonPayload.container.name=\"/orchestrator\" AND (jsonPayload.message:\"auto restart budget exhausted\" OR jsonPayload.message:\"most bots failed liveness at once\" OR jsonPayload.message:\"host unreachable\" OR jsonPayload.message:\"reconciliation failed\" OR jsonPayload.message:\"bot memory high\")"
     }
   }
 

@@ -7,11 +7,12 @@ import type { ContainerRuntime, ContainerState } from "../src/services/container
 import type { AgentRuntimeRegistry } from "../src/services/agent-runtime/registry.js";
 import type { Instance } from "../src/domain/types.js";
 import { makeInstance } from "./helpers/fixtures.js";
+import { singleHost } from "./helpers/host-runtimes.js";
 
 const FAILURE_THRESHOLD = 4;
 const SETTLED: ContainerState = { running: true, restarting: false, health: "healthy", startedAt: null };
 
-function harness(options: { gatewayUp?: () => boolean; state?: ContainerState } = {}) {
+function harness(options: { gatewayUp?: () => boolean; state?: ContainerState; reachable?: () => boolean } = {}) {
   const inst = makeInstance([], { hasWhatsappCreds: false, lastSeenAt: null });
   const restarts: string[] = [];
   const clock = { now: 10_000_000 };
@@ -49,8 +50,7 @@ function harness(options: { gatewayUp?: () => boolean; state?: ContainerState } 
   );
   const monitor = new HealthMonitor(
     repo as never,
-    runtime,
-    adapters,
+    singleHost(runtime, adapters, { check: async () => options.reachable?.() ?? true }),
     logger,
     {
       pollIntervalMs: 15_000,
@@ -61,7 +61,6 @@ function harness(options: { gatewayUp?: () => boolean; state?: ContainerState } 
       unhealthyThreshold: 10,
       requestTimeoutMs: 1_000,
       channelProbeTimeoutMs: 1_000,
-      useDockerNetwork: false,
       maxConcurrentChecks: 4,
     },
     () => clock.now,
@@ -110,4 +109,18 @@ test("a container Docker still reports as starting is never restarted however lo
   await h.poll(FAILURE_THRESHOLD * 3);
 
   assert.deepEqual(h.restarts, []);
+});
+
+test("a Docker outage in the middle of a failing streak neither counts nor resets it", async () => {
+  let reachable = true;
+  const h = harness({ reachable: () => reachable });
+
+  await h.poll(FAILURE_THRESHOLD - 1);
+  reachable = false;
+  await h.poll(5);
+  assert.deepEqual(h.restarts, [], "unreachable polls never restart");
+
+  reachable = true;
+  await h.poll();
+  assert.deepEqual(h.restarts, [h.inst.id], "the streak resumes where it stopped");
 });

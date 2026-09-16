@@ -9,6 +9,10 @@ const migration0008 = readFileSync(new URL("../drizzle/0008_agent_runtime_kind.s
 const migration0009 = readFileSync(new URL("../drizzle/0009_litellm_key_metadata.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const migration0011 = readFileSync(new URL("../drizzle/0011_integration_sessions.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const migration0012 = readFileSync(new URL("../drizzle/0012_whatsapp_cloud.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const migration0017 = readFileSync(new URL("../drizzle/0017_hosts.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const migration0018 = readFileSync(new URL("../drizzle/0018_host_registration.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const migration0019 = readFileSync(new URL("../drizzle/0019_host_capacity.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const migration0020 = readFileSync(new URL("../drizzle/0020_instance_move.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const journal = readFileSync(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 
 test("duplicate bootstrap migration is idempotent for clean databases", () => {
@@ -83,4 +87,39 @@ test("0013 adds coexistence: no PIN for a number kept in the app, and timed owne
   assert.match(migration0013, /"whatsapp_cloud_conversations" ADD COLUMN "mode_changed_at" timestamp with time zone;/);
   assert.match(migration0013, /"whatsapp_cloud_numbers" ADD COLUMN "contacts_synced_at" timestamp with time zone;/);
   assert.match(migration0013, /"whatsapp_cloud_numbers" ADD COLUMN "history_synced_at" timestamp with time zone;/);
+});
+
+test("hosts migration seeds the table from existing rows before adding the FK", () => {
+  const create = migration0017.indexOf('CREATE TABLE "hosts"');
+  const seed = migration0017.indexOf('INSERT INTO "hosts" ("id") SELECT DISTINCT "host_id" FROM "instances"');
+  const fk = migration0017.indexOf('ADD CONSTRAINT "instances_host_id_hosts_id_fk"');
+  assert.ok(create >= 0);
+  assert.ok(seed > create);
+  assert.ok(fk > seed);
+  assert.match(migration0017, /REFERENCES "public"\."hosts"\("id"\) ON DELETE restrict/);
+  assert.match(journal, /"tag": "0017_hosts"/);
+});
+
+test("host registration migration adds the nullable address and timestamp", () => {
+  assert.match(migration0018, /ALTER TABLE "hosts" ADD COLUMN "address" text;/);
+  assert.match(migration0018, /ALTER TABLE "hosts" ADD COLUMN "last_registered_at" timestamp with time zone;/);
+  assert.doesNotMatch(migration0018, /NOT NULL/);
+  assert.match(journal, /"tag": "0018_host_registration"/);
+});
+
+test("host capacity migration adds a nullable memory column and a status defaulting to active", () => {
+  assert.match(migration0019, /ALTER TABLE "hosts" ADD COLUMN "memory_mb" integer;/);
+  assert.match(migration0019, /ALTER TABLE "hosts" ADD COLUMN "status" varchar\(16\) DEFAULT 'active' NOT NULL;/);
+  assert.equal((migration0019.match(/ALTER TABLE/g) ?? []).length, 2);
+  assert.match(journal, /"tag": "0019_host_capacity"/);
+});
+
+test("instance move migration adds four nullable columns and the previous-host FK", () => {
+  assert.match(migration0020, /ALTER TABLE "instances" ADD COLUMN "moved_from_host_id" text;/);
+  assert.match(migration0020, /ALTER TABLE "instances" ADD COLUMN "move_object_name" text;/);
+  assert.match(migration0020, /ALTER TABLE "instances" ADD COLUMN "moved_at" timestamp with time zone;/);
+  assert.match(migration0020, /ALTER TABLE "instances" ADD COLUMN "move_imported_at" timestamp with time zone;/);
+  assert.match(migration0020, /"instances_moved_from_host_id_hosts_id_fk" FOREIGN KEY \("moved_from_host_id"\) REFERENCES "public"\."hosts"\("id"\)/);
+  assert.doesNotMatch(migration0020, /NOT NULL/);
+  assert.match(journal, /"tag": "0020_instance_move"/);
 });

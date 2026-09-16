@@ -2,12 +2,14 @@ import { z } from "zod";
 import {
   AGENT_RUNTIME_KINDS,
   BACKUP_IMPORT_STATUSES,
+  HOST_STATUSES,
   INSTANCE_STATUSES,
   PAIRING_STATUSES,
 } from "@agent-forall/db";
 
-export { AGENT_RUNTIME_KINDS, BACKUP_IMPORT_STATUSES, INSTANCE_STATUSES, PAIRING_STATUSES };
+export { AGENT_RUNTIME_KINDS, BACKUP_IMPORT_STATUSES, HOST_STATUSES, INSTANCE_STATUSES, PAIRING_STATUSES };
 export type AgentRuntimeKind = (typeof AGENT_RUNTIME_KINDS)[number];
+export type HostStatus = (typeof HOST_STATUSES)[number];
 export type InstanceStatus = (typeof INSTANCE_STATUSES)[number];
 export type PairingStatus = (typeof PAIRING_STATUSES)[number];
 export type BackupImportStatus = (typeof BACKUP_IMPORT_STATUSES)[number];
@@ -245,6 +247,11 @@ export interface Instance {
   lastSeenAt: Date | null;
   backupImport: InstanceBackupImport;
   litellm: InstanceLiteLlm;
+  // Set from a move until the previous host's retained volume is purged.
+  movedFromHostId: string | null;
+  moveObjectName: string | null;
+  movedAt: Date | null;
+  moveImportedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   stoppedAt: Date | null;

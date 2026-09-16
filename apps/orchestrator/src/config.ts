@@ -44,6 +44,24 @@ const trustProxyEnv = z
 const emptyToUndefined = (value: unknown): unknown =>
   value === "" ? undefined : value;
 
+// "hostId=gceInstanceId,..." → instance id → host id; a worker registers under the host id its token resolves to.
+const workerInstanceIdsSchema = z
+  .string()
+  .optional()
+  .transform((val) => {
+    const hostByInstance = new Map<string, string>();
+    const hostIds = new Set<string>();
+    for (const entry of (val ?? "").split(",").map((s) => s.trim()).filter(Boolean)) {
+      const match = /^([a-z0-9-]{1,64})=(\d{1,20})$/.exec(entry);
+      if (!match || hostByInstance.has(match[2]!) || hostIds.has(match[1]!)) {
+        throw new Error(`WORKER_INSTANCE_IDS: invalid or duplicate entry "${entry}"`);
+      }
+      hostByInstance.set(match[2]!, match[1]!);
+      hostIds.add(match[1]!);
+    }
+    return hostByInstance;
+  });
+
 const providerIdSchema = z
   .string()
   .regex(/^[a-z0-9][a-z0-9._-]{0,63}$/i, "invalid provider id");
@@ -87,6 +105,7 @@ const AppConfigSchema = z.object({
     .regex(/^[a-z0-9-]+$/, "must be lowercase alphanumeric + dashes"),
 
   apiKeys: apiKeysSchema,
+  workerInstanceIds: workerInstanceIdsSchema,
   serviceTokens: z
     .string()
     .optional()
@@ -141,6 +160,9 @@ const AppConfigSchema = z.object({
   autoRestartWindowMs: z.coerce.number().int().min(600_000).default(3_600_000),
   memoryWatchIntervalMs: z.coerce.number().int().min(60_000).default(300_000),
   memoryWatchWarnFraction: z.coerce.number().min(0.1).max(1).default(0.8),
+  // Placement: a new bot's limit counts as limit ÷ overcommit; the reserve is RAM kept for the OS and the orchestrator.
+  placementOvercommit: z.coerce.number().min(1).default(1),
+  hostReserveMb: z.coerce.number().int().min(0).default(2048),
 
   shutdownTimeoutMs: z.coerce.number().int().min(1000).default(10_000),
 
@@ -154,6 +176,8 @@ const AppConfigSchema = z.object({
   backupImportBucket: z.string().min(3).optional(),
   backupImportUploadOrigin: z.string().url().default("https://agentforall.co.il"),
   backupImportTtlSeconds: z.coerce.number().int().min(300).default(60 * 60),
+  // Unset = host-to-host moves disabled (the admin endpoint answers 503 FEATURE_UNAVAILABLE).
+  movesBucket: z.preprocess(emptyToUndefined, z.string().min(3).optional()),
 
   rateLimitMax: z.coerce.number().int().min(1).default(100),
   rateLimitWindowMs: z.coerce.number().int().min(1000).default(60_000),
@@ -181,6 +205,9 @@ const AppConfigSchema = z.object({
     .url()
     .default("http://orchestrator:3000"),
   tenantCaCertPath: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+  controlPlaneCaPath: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+  orchestratorClientCertPath: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+  orchestratorClientKeyPath: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
 
   // LLM defaults — applied when a create-bot request omits `provider`.
   // The web dashboard never sends provider, so all bots inherit these.
@@ -237,9 +264,21 @@ const AppConfigSchema = z.object({
   whatsappCloudInboxSweepIntervalMs: z.coerce.number().int().min(10_000).default(60_000),
 });
 
-export type AppConfig = z.infer<typeof AppConfigSchema> & {
+export interface ControlPlaneTls {
+  caPath: string;
+  certPath: string;
+  keyPath: string;
+}
+
+type ControlPlaneTlsField = "controlPlaneCaPath" | "orchestratorClientCertPath" | "orchestratorClientKeyPath";
+
+export type AppConfig = Omit<z.infer<typeof AppConfigSchema>, ControlPlaneTlsField> & {
   // Prod reaches bots and the proxy by Docker DNS; dev publishes ports on localhost instead.
   useDockerNetwork: boolean;
+  // Own host plus every worker's host: the set this orchestrator's queries and placement cover.
+  managedHostIds: ReadonlySet<string>;
+  // Client identity for workers' Docker endpoints (mTLS); unset on a single-host deployment.
+  controlPlaneTls?: ControlPlaneTls;
 };
 
 export interface PairingConfig {
@@ -251,9 +290,6 @@ export interface PairingConfig {
   logLevel: string;
   orchestratorInternalUrl: string;
   tenantCaCertPath?: string;
-  /** Dev only: orchestrator runs on host and can't use Docker DNS, so sidecar publishes a 127.0.0.1 port. */
-  publishSidecarPort: boolean;
-  useDockerNetwork: boolean;
 }
 
 export function extractPairingConfig(config: AppConfig): PairingConfig {
@@ -266,8 +302,6 @@ export function extractPairingConfig(config: AppConfig): PairingConfig {
     logLevel: config.pairingLogLevel,
     orchestratorInternalUrl: config.orchestratorInternalUrl,
     tenantCaCertPath: config.tenantCaCertPath,
-    publishSidecarPort: config.nodeEnv === "development",
-    useDockerNetwork: config.useDockerNetwork,
   };
 }
 
@@ -282,6 +316,7 @@ export function loadConfig(): AppConfig {
     orchestratorHostId: process.env.ORCHESTRATOR_HOST_ID,
     apiKeys: process.env.API_KEYS,
     serviceTokens: process.env.SERVICE_TOKENS,
+    workerInstanceIds: process.env.WORKER_INSTANCE_IDS,
     agentRuntimeKind: process.env.AGENT_RUNTIME_KIND,
     agentRuntimeImage: process.env.AGENT_RUNTIME_IMAGE,
     hermesRuntimeImage: process.env.HERMES_RUNTIME_IMAGE,
@@ -308,6 +343,8 @@ export function loadConfig(): AppConfig {
     autoRestartWindowMs: process.env.AUTO_RESTART_WINDOW_MS,
     memoryWatchIntervalMs: process.env.MEMORY_WATCH_INTERVAL_MS,
     memoryWatchWarnFraction: process.env.MEMORY_WATCH_WARN_FRACTION,
+    placementOvercommit: process.env.PLACEMENT_OVERCOMMIT,
+    hostReserveMb: process.env.HOST_RESERVE_MB,
     shutdownTimeoutMs: process.env.SHUTDOWN_TIMEOUT_MS,
     reconcileOnStartup: process.env.RECONCILE_ON_STARTUP,
     reconcileIntervalMs: process.env.RECONCILE_INTERVAL_MS,
@@ -317,6 +354,7 @@ export function loadConfig(): AppConfig {
     backupImportBucket: process.env.BACKUP_IMPORT_BUCKET,
     backupImportUploadOrigin: process.env.BACKUP_IMPORT_UPLOAD_ORIGIN,
     backupImportTtlSeconds: process.env.BACKUP_IMPORT_TTL_SECONDS,
+    movesBucket: process.env.MOVES_BUCKET,
     rateLimitMax: process.env.RATE_LIMIT_MAX,
     rateLimitWindowMs: process.env.RATE_LIMIT_WINDOW_MS,
     pairingImage: process.env.PAIRING_IMAGE,
@@ -327,6 +365,9 @@ export function loadConfig(): AppConfig {
     pairingLogLevel: process.env.PAIRING_LOG_LEVEL,
     orchestratorInternalUrl: process.env.ORCHESTRATOR_INTERNAL_URL,
     tenantCaCertPath: process.env.TENANT_CA_CERT_PATH,
+    controlPlaneCaPath: process.env.CONTROL_PLANE_CA_PATH,
+    orchestratorClientCertPath: process.env.ORCHESTRATOR_CLIENT_CERT_PATH,
+    orchestratorClientKeyPath: process.env.ORCHESTRATOR_CLIENT_KEY_PATH,
     defaultProviderName: process.env.DEFAULT_PROVIDER_NAME,
     defaultProviderId: process.env.DEFAULT_PROVIDER_ID,
     defaultProviderApiKey: process.env.DEFAULT_PROVIDER_API_KEY,
@@ -368,5 +409,20 @@ export function loadConfig(): AppConfig {
     );
   }
 
-  return { ...result.data, useDockerNetwork: result.data.nodeEnv === "production" };
+  const { controlPlaneCaPath, orchestratorClientCertPath, orchestratorClientKeyPath, ...data } = result.data;
+  const tlsPathCount = [controlPlaneCaPath, orchestratorClientCertPath, orchestratorClientKeyPath].filter(Boolean).length;
+  if (tlsPathCount !== 0 && tlsPathCount !== 3) {
+    throw new Error(
+      "CONTROL_PLANE_CA_PATH, ORCHESTRATOR_CLIENT_CERT_PATH and ORCHESTRATOR_CLIENT_KEY_PATH must be set together",
+    );
+  }
+
+  return {
+    ...data,
+    useDockerNetwork: data.nodeEnv === "production",
+    managedHostIds: new Set([data.orchestratorHostId, ...data.workerInstanceIds.values()]),
+    ...(controlPlaneCaPath && orchestratorClientCertPath && orchestratorClientKeyPath
+      ? { controlPlaneTls: { caPath: controlPlaneCaPath, certPath: orchestratorClientCertPath, keyPath: orchestratorClientKeyPath } }
+      : {}),
+  };
 }

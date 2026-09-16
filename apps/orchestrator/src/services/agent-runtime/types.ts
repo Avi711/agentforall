@@ -48,11 +48,14 @@ export interface WhatsappLogoutResult {
 export interface AgentRuntimeAdapter {
   kind: AgentRuntimeKind;
   image: string;
+  // The gateway port inside the container; dialed directly over the Docker network.
+  internalPort: number;
   maxBackupBytes: number;
 
   containerName(instanceId: string): string;
   stateVolumeName(instanceId: string): string;
-  buildContainerOptions(instance: Instance): Promise<ContainerCreateOptions>;
+  // The restart policy belongs to the host, so the creator fills it in.
+  buildContainerOptions(instance: Instance): Promise<Omit<ContainerCreateOptions, "restartPolicy" | "bindIp">>;
   generateConfig(instance: Instance): RuntimeConfigFiles;
   // Writes config for the container's next boot. Callers that restart afterwards use this.
   writeConfig(containerId: string, instance: Instance): Promise<void>;
@@ -65,9 +68,13 @@ export interface AgentRuntimeAdapter {
   sendWhatsappMessage(containerId: string, to: string, text: string): Promise<boolean>;
   exportState(containerId: string): Promise<ArchiveStreamResult>;
   restoreState(containerId: string, sourceTarGzip: Readable): Promise<void>;
-  probeGateway(instance: Instance, timeoutMs: number, useDockerNetwork: boolean): Promise<GatewayLiveness>;
+  // The whole state tree as-is (session included), for a host-to-host move; the container may be stopped.
+  exportVolume(containerId: string, signal?: AbortSignal): Promise<Readable>;
+  importVolume(containerId: string, tar: Readable, signal?: AbortSignal): Promise<void>;
+  // baseUrl is how this orchestrator reaches the gateway (see dialUrl in host-runtimes.ts).
+  probeGateway(instance: Instance, timeoutMs: number, baseUrl: string): Promise<GatewayLiveness>;
   // Runs inside the container: the gateway only grants operator scopes to loopback callers.
-  probeWhatsapp(instance: Instance, timeoutMs: number, useDockerNetwork: boolean): Promise<WhatsappLinkState>;
+  probeWhatsapp(instance: Instance, timeoutMs: number, baseUrl: string): Promise<WhatsappLinkState>;
   // cleared: the stored session is gone from the container (it cannot resurrect on restart);
   // unlinked: the runtime also dropped the device server-side (best-effort).
   logoutWhatsapp(containerId: string): Promise<WhatsappLogoutResult>;

@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { Client, Pool } from "pg";
 import { eq, sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { createDbFromPool, instances, user, whatsappCloudConversations, whatsappCloudNumbers, type Database } from "@agent-forall/db";
+import { createDbFromPool, hosts, instances, user, whatsappCloudConversations, whatsappCloudNumbers, type Database } from "@agent-forall/db";
 import { WhatsappCloudRepository } from "../../src/lib/whatsapp-cloud/repository";
 
 // Runs only against a throwaway Postgres (see docs/whatsapp-cloud-api.md §11).
@@ -30,6 +30,7 @@ before(async () => {
   await db.execute(sql`create schema public`);
   await migrate(db, { migrationsFolder: fileURLToPath(new URL("../../../../packages/db/drizzle", import.meta.url)) });
   await db.insert(user).values({ id: "u1", email: "u1@example.com" });
+  await db.insert(hosts).values({ id: "host" });
   for (const [id, status] of [
     [A, "running"],
     [GONE, "destroyed"],

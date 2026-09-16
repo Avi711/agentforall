@@ -1,6 +1,8 @@
 import type { Readable } from "node:stream";
 import type { RuntimeUser } from "./runtime-users.js";
 
+export type RestartPolicy = "unless-stopped" | "no";
+
 export interface ContainerCreateOptions {
   name: string;
   image: string;
@@ -12,6 +14,9 @@ export interface ContainerCreateOptions {
   memoryBytes: number;
   cpuShares: number;
   labels: Record<string, string>;
+  restartPolicy: RestartPolicy;
+  // Loopback beside the orchestrator; a worker binds its VPC IP so the orchestrator can dial the gateway.
+  bindIp: string;
   capDrop?: string[] | null;
   capAdd?: string[];
   securityOpt?: string[] | null;
@@ -54,8 +59,8 @@ export interface SidecarCreateOptions {
   labels: Record<string, string>;
   volumeMounts: VolumeMount[];
   tmpfsMounts?: TmpfsMount[];
-  // Publish to a random 127.0.0.1 host port. Dev-only: prod uses Docker DNS.
-  publishPort?: number;
+  // Random host port on bindIp (127.0.0.1 in dev, the worker's VPC IP remotely); local prod uses Docker DNS.
+  publish?: { port: number; bindIp: string };
 }
 
 export interface TmpfsMount {
@@ -117,6 +122,7 @@ export interface ContainerRuntime {
   ensureImagePulled(image: string): Promise<void>;
   ensureNetworkExists(): Promise<void>;
   ensureVolumeExists(name: string): Promise<void>;
+  hasVolume(name: string): Promise<boolean>;
   removeVolume(name: string): Promise<void>;
 
   create(opts: ContainerCreateOptions): Promise<string>;
@@ -136,7 +142,9 @@ export interface ContainerRuntime {
   getPublishedHostPort(containerId: string, internalPort: number): Promise<number | null>;
   memoryUsage(containerId: string): Promise<ContainerMemory | null>;
 
-  putArchive(containerId: string, targetPath: string, archive: Buffer | Readable): Promise<void>;
+  putArchive(containerId: string, targetPath: string, archive: Buffer | Readable, signal?: AbortSignal): Promise<void>;
+  // Docker archive read: a tar of `path` (its basename as the top-level entry); works on a stopped container.
+  getArchive(containerId: string, path: string, signal?: AbortSignal): Promise<Readable>;
   putArchiveUnderDir(
     containerId: string,
     parentDir: string,

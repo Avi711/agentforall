@@ -247,10 +247,10 @@ terraform -chdir=infra apply -target=google_storage_bucket.backup_imports -targe
 | `openclaw-browser` image | GAR digest `sha256:f0e4aec97e55e0a3afd852ef72994cfe4ed3157ff4a90554de0a66b3940c31ca` (OpenClaw 2026.8.2 `-browser` variant with its own Chromium 151, WhatsApp plugin pinned to core, `agentforall-credit` + `agentforall-media` preinstalled, doctor prewarm) |
 | `litellm-gateway` Cloud Run | 1 vCPU / 3 GiB, `minScale=1`, `cpu-throttling=false`, revision `litellm-gateway-00009-r8r` (downsized from 2 vCPU / 4 GiB on 2026-08-29) |
 | `whatsapp-pairing` image | GAR `sha256:d09178dd…` (tag `waversion-1043857760`) on the VM and in Terraform since 2026-09-13; verified identical `server.js` and patched Baileys files to the locally built image it replaced. |
-| Alerting | `infra/monitoring.tf`: email channel (`alert_email` tfvar), uptime check on `/health` (60 s) → "API unreachable", VM memory > 85 %, disk 75/85 %, log-based "orchestrator needs attention" (auto-restart budget exhausted / fleet liveness failure). Orchestrator container logs go to Cloud Logging via `gcplogs` (`logName …/gcplogs-docker-driver`, text in `jsonPayload.message`); pino level-30 lines excluded at the `_Default` sink. `docker logs orchestrator` still works on the VM. |
+| Alerting | `infra/monitoring.tf`: email channel (`alert_email` tfvar), uptime check on `/health` (60 s) → "API unreachable", VM memory > 85 %, disk 75/85 %, log-based "orchestrator needs attention" (log lines: auto restart budget exhausted, most bots failed liveness at once, bot memory high, host unreachable, reconciliation failed). Orchestrator container logs go to Cloud Logging via `gcplogs` (`logName …/gcplogs-docker-driver`, text in `jsonPayload.message`); pino level-30 lines excluded at the `_Default` sink. `docker logs orchestrator` still works on the VM. |
 | Backups | Daily 03:00 snapshots of both disks, 14 days. Restore rehearsed 2026-09-13: disk from snapshot → read-only on a credential-less scratch VM → SQLite `integrity_check` ok. Pre-reboot snapshots `prereboot-{boot,data}-20260913-{2048,2235}` (delete once the daily ones cover them). |
 | Tenant containers | per-tenant `openclaw-<shortId>` + state volume `oc-<shortId>-state` |
-| Supabase `instances` | host-scoped via `host_id` column. Local = `local-dev`, VM = `agent-forall-vm`. |
+| Supabase `instances` | host-scoped via `host_id` column. VM = `agent-forall-vm`. Since 2026-09-15 the dev orchestrator runs against the compose Postgres (`docker compose up -d postgres`, `127.0.0.1:5432`, migrations on startup), never Supabase: a dev process on the prod DB would reconcile prod rows. Two `local-dev` rows from before remain in prod. |
 | Supabase `leads` | preserved (7 rows). Better Auth tables intact. |
 | Daily snapshots | policy `agent-forall-daily-snapshot`, 03:25 UTC, 14-day retention (Terraform-managed). Attached to both disks as of 2026-09-02, but every daily snapshot so far is the 50 GB boot disk; the 80 GB `agent-forall-data` (Docker root `/mnt/docker`, all tenant volumes) has only the manual `pre-openclaw-8-2-20260902-1741`. **Confirm an 80 GB daily snapshot appears on 2026-09-03 before deleting the manual one.** |
 
@@ -413,9 +413,108 @@ mounts `root.crt` read-only into every bot and pairing sidecar with `NODE_EXTRA_
 Verified: bot → alias 404 on /health (TLS ok), host with CA → relay paths 401/401/400, `/api/v1/instances` 404, public site unchanged.
 Found right after (the user asked): Caddy also answered the internal site on the public IP when the client sent SNI `orchestrator.internal`
 (relay path → 401 from the internet). The `@relay` matcher now requires `remote_ip private_ranges`; internet → 404, bots/host → 401.
-Pass 1 pending: `recreate-tenants.sh --force` so every bot carries the CA (still on http). Pass 2: `ORCHESTRATOR_INTERNAL_URL=https://orchestrator.internal`
-in `.env.runtime` + orchestrator restart; bots switch on their next config write. Before the orchestrator ever leaves `tenant-net`, every
-`openclaw.json` must show the https URL. `recreate-tenants.sh` now asserts the relay is reachable through the CA per bot.
+Pass 1 started 2026-09-14 23:11 UTC with one bot (`openclaw-354e4d9e-5e7`, בוב): rebuilt, healthy, CA mounted, relay via
+`https://orchestrator.internal` answers with the CA and is refused without.
+Pass 1 DONE 2026-09-14 23:29 UTC: the other 14 rebuilt (one sequential, then 13 in parallel at the user's request: load ~20 on 4 vCPU,
+~5 min per bot, no failures); 15/15 healthy with the CA mount; 16 volume snapshots (5.8 GB) in `/home/deploy/backups`.
+`recreate-tenants.sh` now asserts the relay is reachable through the CA per bot.
+Pass 2 DONE 2026-09-15 08:27 UTC: `ORCHESTRATOR_INTERNAL_URL=https://orchestrator.internal` in `.env.runtime` (backup
+`.env.runtime.bak-20260915-pass2`) + `compose up -d orchestrator`; same value in the first-boot env of `startup.sh`. A bot takes the new URL on
+its next restart or settings change: verified on בוב via `POST /instances/:id/restart` (204): `openclaw.json` shows the https URL, relay 401
+without token / 200 with it, requests reach the orchestrator with host `orchestrator.internal` from the bot's tenant-net IP. The other 14 still
+held `http://orchestrator:3000` until the fleet restart 09:20-09:35 UTC (user: "align all"): sequential `POST /instances/:id/restart`,
+14 ok + 1 already https, 0 failures, ~1 min each; 15/15 healthy with https in `openclaw.json`. A bot's own MCP traffic then arrived over
+https (18 calls: 200/202, 405 on the client's GET probe = normal for streamable HTTP). Not yet observed on https: a QR pairing (sidecar
+callback to `/internal/pair/:id/completed`).
+2026-09-15 (Phase 2 step 3, slice 1): `hosts` table (`id`, `created_at`) + FK `instances.host_id → hosts.id ON DELETE restrict`; the orchestrator
+registers its own `ORCHESTRATOR_HOST_ID` at boot (`HostRepository.ensure`), so a fresh env needs no seed. Migration `0017_hosts` rehearsed on a
+throwaway `postgres:16-alpine` on the VM (full chain 0000→0017 + all DB suites, which exposed and fixed two fixtures inserting instances with an
+unregistered host), then APPLIED to prod 09:00 UTC: `hosts` = `agent-forall-vm` (72 rows incl. destroyed) and `local-dev` (2 rows from a dev machine
+running against the prod DB — that setup is the reason `InstanceRepository` keeps filtering by host id). Rollback of the migration:
+`ALTER TABLE instances DROP CONSTRAINT instances_host_id_hosts_id_fk; DROP TABLE hosts;`. Deploy order was migration first; the previous image
+keeps working on the new schema. Orchestrator `orchestrator@sha256:862b12c7c7648f9e0e313800a63b3ec2178558252bd870bbdd1f74883dce4ed7` (Cloud Build
+`3f976631`) live 09:07 UTC, boot logs `host registered, queries scoped to it` with `agent-forall-vm`; health and admin API 200. Do not roll back
+past this image once slice 2 adds columns to `hosts`. `test:db` now runs DB test files one at a time (they reset the schema).
+2026-09-15 (Phase 2 step 3, slice 2): worker registration. Migration `0018_host_registration` (`hosts.address`, `hosts.last_registered_at`,
+nullable) rehearsed on a throwaway Postgres (full chain + all DB suites), APPLIED to prod 19:00 UTC. Orchestrator
+`orchestrator@sha256:b995911f0b095719e079efb7512bb91fbbc735daa353ffb25b966d8e7b1f01db` (Cloud Build `bed704fa`) live 19:08 UTC; boot logs
+`host registration enabled` with audience `https://orchestrator.internal/internal/hosts/register` and workers `[agent-forall-vm]`.
+`WORKER_INSTANCE_IDS=agent-forall-vm=4455894191739472555` added to `.env.runtime` by hand (backup `.env.runtime.bak-20260915-slice2`);
+`startup.sh` sets the same from the metadata server (Terraform metadata applied). End-to-end from the VM with its own identity token
+(`format=full`, 1108 bytes, sent via a header file): no token 401 `UNAUTHORIZED`, public address 400, forged token 401 `HOST_NOT_ALLOWED`
+(log reason only: `No pem found for envelope`), real token 204 and `host.registered` with the VM's SA email, instance id and `10.164.0.4`.
+No boot-time caller yet (step 6 writes the worker one); nothing reads `address` until step 4. Rollback of the migration: drop the two columns.
+2026-09-15 (Phase 2 step 3, slice 3): per-host circuit breaker. Orchestrator
+`orchestrator@sha256:ae9c6a7c9ab874a9b67eab226d6ce94fbfc23e91b255e9a7d17290c0ea63af6b` (Cloud Build `4f1fd071`) live 19:33 UTC, healthy, 15/15
+running. Docker ping now has a 5 s abort; `HostReachability` gates the health monitor, reconciler and memory watch (one `host unreachable` warn
+per outage, `host reachable again` on recovery; no status writes, no failure counts, restart budgets kept); reconciler catches per row and a
+failed startup reconcile logs instead of exiting. `/health` now checks the DB only (`{"checks":{"database":"ok"}}`); Docker trouble surfaces
+through the "needs attention" log alert, whose filter (Terraform applied) gained `host unreachable` and `reconciliation failed`. No schema
+change. Live drill (stop `agent-forall-docker-proxy` ~50 s, expect one warn + one info and unchanged statuses) is scripted but was NOT run:
+the session's permission classifier blocked stopping a prod container; unit tests cover the paths.
+OPEN: the "agent-forall orchestrator needs attention" alert policy is DISABLED in Cloud Monitoring (mutated 2026-09-13 21:04 UTC by the
+operator account) and three Terraform applies that report "1 changed" leave it untouched (same policy id in state, live `mutateTime`
+unchanged, old filter). Re-enable it in the console or find why the provider's update is a no-op; until then `host unreachable` and
+`reconciliation failed` page nobody.
+2026-09-15 (Phase 2 step 4, slice 4a-1): orchestrator
+`orchestrator@sha256:ed95a061930b38e53e5b23eb1853f13362591e142b75983c3bfa0485275835c4` (Cloud Build `4655d130`) live 19:55 UTC, healthy,
+15/15 running, no warnings at boot. Pure refactor: InstanceManager, PairingManager and OwnerIdentityManager resolve `{ runtime, adapters,
+gate }` per instance through `HostRuntimes.for(instance.hostId)` (one host today; unknown host = 503 `HOST_UNAVAILABLE`); pairing sessions
+carry `hostId`. Reviewed (SHIP), 483 tests.
+2026-09-15 (Phase 2 step 4, slice 4a-2): orchestrator
+`orchestrator@sha256:7b2af8743e61f46e14d77cda9e18e5cfb57b9eda2222351fe960da5fe4e66f0c` (Cloud Build `5c3963c3`) live 20:11 UTC, healthy,
+15/15 running. Health monitor, reconciler and memory watch group rows by host and gate each host once per pass (hosts in parallel, one
+concurrency number per host); pairing expiry waits while any host is unreachable (the pairing manager cannot skip per host yet). Reviewed
+(SHIP), 485 tests. Behaviour-identical on one host.
+2026-09-15 (Phase 2 step 4, slice 4a-3): orchestrator
+`orchestrator@sha256:b509ac68fd45521fb83548a87f2fb44d2cb809dabf825ad21b9e6c48e61cb582` (Cloud Build `d45ec7ab`) live 20:26 UTC, healthy,
+15/15 listed and running, boot logs `hosts registered, queries scoped to them` with `[agent-forall-vm]`. Repository filter is now
+`host_id IN (managed)` where managed = `ORCHESTRATOR_HOST_ID` ∪ hosts in `WORKER_INSTANCE_IDS` (on prod both are `agent-forall-vm`, so the
+SQL is equivalent to before); an insert for an unmanaged host is refused; `getActiveGatewayPorts(hostId)`; `Placement.choose()` returns the
+first host (local first). Any managed host that is not the local one gets a stub runtime behind a closed gate until 4b. New DB tests
+(repository boundary) ran on a throwaway Postgres: 21/21 orchestrator, 5/5 web. Reviewed (SHIP), 489 unit tests. STEP 4a COMPLETE.
+2026-09-15 (Phase 2 step 4, slice 4b-1): orchestrator
+`orchestrator@sha256:8f993606be3a433a5ada5ce0130f21de358020358d0b3fbf75de0e96597c3286` (Cloud Build `c8ea7933`) live 20:48 UTC, healthy,
+15/15 running, 0 health failures. Bots are now addressed through `dialUrl` (local: container name over tenant-net, as before; worker: its
+VPC address + gateway port); containers get the host's restart policy (`unless-stopped` here, `no` on workers) and bind their gateway port
+to the host's address (loopback here); the reconciler starts a stopped container on a `no`-policy host instead of marking the row stopped.
+Docker payload identical here (unit test on the dockerode payload). Reviewed (SHIP WITH FIXES, applied), 497 unit tests.
+2026-09-15 (Phase 2 step 4, slice 4b-2): orchestrator
+`orchestrator@sha256:fd797083afaf16084568d3aa1b0dc1c27fb875e788e2d466866e315e9f020b67` (Cloud Build `1a408637`) live 21:07 UTC, healthy,
+15/15 running. Remote Docker over mTLS is wired (dockerode `ca/cert/key` to `<address>:2376`; `CONTROL_PLANE_CA_PATH`,
+`ORCHESTRATOR_CLIENT_CERT_PATH`, `ORCHESTRATOR_CLIENT_KEY_PATH`, all three or none, read once at boot; boot refuses a configured worker
+without them); remote bundles come from `hosts.address` at boot and from a registration (same address = no rebuild). On prod nothing is
+remote (the only managed host is this VM), so the sole runtime delta is one `SELECT id, address FROM hosts` at boot. Never set `DEBUG=modem`
+on prod: docker-modem prints key material. Reviewed (SHIP WITH FIXES, applied), 506 unit tests. Prod fleet: 15 bots × 4096 MB limit,
+~7.1 GB measured, host 32,089 MB — the numbers 4c's placement rule is built against.
+2026-09-15 (Phase 2 step 4, slice 4c): migration `0019_host_capacity` (`hosts.memory_mb` nullable, `hosts.status` default active)
+rehearsed (full chain + 23/23 orchestrator DB tests, 5/5 web) then APPLIED to prod 21:22 UTC; orchestrator
+`orchestrator@sha256:cf652d35d15aa09557d44bf33733b9d949f8e5172bb3e295ef46d8367c8d1f12` (Cloud Build `8e5609fe`) live 21:27 UTC, healthy,
+15/15 running, boot logs `hosts attached [{agent-forall-vm, capacityMb 32089, active}]`. Every create now goes through placement:
+headroom = 0.9 × (capacity − `HOST_RESERVE_MB` 2048) − measured usage (memory watch) − limit ÷ `PLACEMENT_OVERCOMMIT` (1); with today's
+numbers ≈ 15.8 GB headroom, refusal (503 `NO_PLACEMENT`, logged per host) would start near 22.9 GB measured. Rollback of the image alone
+is safe (the previous image ignores the new columns). Reviewed (SHIP), 515 unit tests. STEP 4 COMPLETE.
+2026-09-16 (Phase 2 step 5, infra): created via Terraform (`infra/moves.tf`) KMS ring `agent-forall-moves` / key `moves-bucket` (europe-west4,
+90-day rotation, `prevent_destroy`), bucket `agent-forall-moves` (CMEK, UBLA, PAP enforced, lifecycle 2 days, no CORS), key IAM for the GCS
+service agent, `objectAdmin` for the platform SA. Objects hold whole bot volumes incl. WhatsApp creds for the minutes a move takes.
+`MOVES_BUCKET=agent-forall-moves` added to `startup.sh` (first boot + re-sync); set it in `.env.runtime` by hand when the move image ships.
+2026-09-16 (Phase 2 step 5, 5a code): `move` / rollback / 24 h sweep written and reviewed fresh-eyes five times (a blocker in each of the first three: re-import
+over a live target, rollback deleting a completed move's volume, `recreate` booting an empty volume; all fixed, rules in the plan §2.5).
+579 unit tests. Migration 0020 (`moved_from_host_id`, `move_object_name`, `moved_at`, `move_imported_at`) rehearsed twice on a throwaway
+Postgres (full chain, 27/27 orchestrator DB tests, 5/5 web).
+2026-09-16 (Phase 2 step 5, DEPLOYED): migration 0020 APPLIED to prod 13:31 UTC (ledger 21); orchestrator
+`orchestrator@sha256:74769e7c047cf8f042635900e200f46c87dc529a67545aafe7307fee7e0b7644` (Cloud Build `69d195b0`) live 13:38 UTC, healthy,
+15/15 running, 0 warnings; `MOVES_BUCKET=agent-forall-moves` appended to `.env.runtime` (backups `.env.runtime.bak-20260916-moves`,
+`.env.bak-20260916-5a`); Terraform metadata pinned. Dry run on בוב `354e4d9e` naming its own host: 204 in 12 s, volume tar 111.7 MB
+exported in 11 s, object deleted (bucket empty), bot back `running` and seen by the health monitor 23 s later. Events
+`move.started`/`move.exported`/`move.dry_run`. STEP 5 COMPLETE; the first real move is step 6's acceptance test. Rollback: previous
+image `cf652d35` ignores the four columns.
+2026-09-16 (pre-commit whole-diff review of steps 3-5, two readers + one scoped pass, no blockers; every finding applied): an
+unregistered worker's stub refuses every Docker call (was sharing the local client); the host breaker opens after two consecutive
+misses and shares one in-flight ping; a bot moved while stopped lands stopped (`keepStopped`, `stopped_at` as the marker); move streams
+carry a 30 min abort; the per-row destroy log line no longer matches the "reconciliation failed" alert; a bot that errored after a
+completed move is swept; bucket IAM narrowed to `objectUser`; S-16 recorded; step 6 gained four review items. 586 unit tests, DB suites
+27/27 + 5/5 rehearsed a third time. NOT YET DEPLOYED: prod runs `74769e7c` (pre-review build); redeploy after commit, no migration.
 2026-09-14 (Caddy): the public site now 404s `/internal/*` (sidecar callbacks travel over tenant-net only); `/api/v1/admin/*` stays
 public because the dashboard's admin panel calls it with the service token. Applied by editing the VM's Caddyfile + `compose restart caddy`
 (~3 s): `sed -i` on a bind-mounted file swaps the inode, so `caddy reload` kept serving the old file until the container was restarted.

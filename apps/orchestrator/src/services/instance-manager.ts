@@ -3,13 +3,14 @@ import type { Readable } from "node:stream";
 import type { FastifyBaseLogger } from "fastify";
 import type { InstanceRepository } from "../storage/instance-repository.js";
 import { isUniqueViolation } from "../storage/pg-errors.js";
-import { isContainerBooting, type ContainerRuntime } from "./container-runtime.js";
+import { isContainerBooting } from "./container-runtime.js";
 import type { PortAllocator } from "./port-allocator.js";
+import type { Placement } from "./placement.js";
 import type { SystemRestartOutcome } from "./auto-restarter.js";
 import type { EventRepository, ProvisioningEvent } from "../storage/event-repository.js";
 import type { PairingManager } from "./pairing-manager.js";
 import type { AppConfig } from "../config.js";
-import type { AgentRuntimeRegistry } from "./agent-runtime/registry.js";
+import { dialUrl, type HostRuntime, type HostRuntimes } from "./host-runtimes.js";
 import type { AgentRuntimeAdapter, ConfigApplyOutcome } from "./agent-runtime/types.js";
 import type {
   LlmKeyProvisioner,
@@ -22,6 +23,9 @@ import {
   QuotaExceededError,
   InvalidBackupError,
   UpstreamUnavailableError,
+  ConflictError,
+  FeatureUnavailableError,
+  UnknownHostError,
   errorMessage,
 } from "../domain/errors.js";
 import {
@@ -59,6 +63,15 @@ export interface AgentBackupRestoreStorage {
   deleteObject(objectName: string): Promise<void>;
 }
 
+// The moves bucket: an unsized tar goes up, the target streams it back down.
+export interface MoveStorage extends AgentBackupRestoreStorage {
+  uploadObjectStream(input: {
+    objectName: string;
+    contentType: string;
+    body: Readable;
+  }): Promise<{ contentLength: number }>;
+}
+
 export interface AgentBackupStream {
   stdout: Readable;
   contentLength: number;
@@ -68,6 +81,12 @@ export interface AgentBackupStream {
 // Docker's healthcheck StartPeriod is 90s; give a booting container that long plus slack before restarting it.
 const STARTUP_SETTLE_MS = 120_000;
 const RESTARTABLE_STATUSES: readonly InstanceStatus[] = ["running", "degraded", "unhealthy"];
+const MOVABLE_STATUSES: readonly InstanceStatus[] = ["running", "degraded", "unhealthy", "stopped"];
+const MOVE_SOURCE_RETENTION_MS = 24 * 60 * 60 * 1000;
+// A whole volume, session and media included; far above any bot seen so far.
+const MOVE_MAX_BYTES = 20 * 1024 * 1024 * 1024;
+// A stalled archive stream must not hold the bot's lock forever; the size cap above bounds the honest case.
+const MOVE_STREAM_TIMEOUT_MS = 30 * 60 * 1000;
 
 const skipped = (reason: string): SystemRestartOutcome => ({ restarted: false, reason, transient: true });
 const blocked = (reason: string): SystemRestartOutcome => ({ restarted: false, reason, transient: false });
@@ -80,9 +99,9 @@ export interface InstanceDetails extends Instance {
 export class InstanceManager {
   constructor(
     private readonly repo: InstanceRepository,
-    private readonly runtime: ContainerRuntime,
-    private readonly runtimes: AgentRuntimeRegistry,
+    private readonly hosts: HostRuntimes,
     private readonly portAllocator: PortAllocator,
+    private readonly placement: Placement,
     private readonly appConfig: AppConfig,
     private readonly eventLog: EventRepository,
     private readonly pairingManager: PairingManager,
@@ -94,6 +113,7 @@ export class InstanceManager {
     private readonly integrationCleanup: IntegrationCleanup | null = null,
     // WhatsApp Business connect takes this before the instance lock; destroy takes it first too, so neither waits on the other.
     private readonly channelLock: InstanceOperationLock | null = null,
+    private readonly moveStorage: MoveStorage | null = null,
   ) {}
 
   async create(userId: string, rawInput: CreateInstanceInput): Promise<Instance> {
@@ -147,27 +167,46 @@ export class InstanceManager {
         });
       }
 
+      if (inst.moveObjectName && inst.moveImportedAt === null) {
+        const state = await this.hosts.for(inst.hostId).runtime.containerState(containerId);
+        if (!state) throw new UpstreamUnavailableError("docker", "target container vanished before the import");
+        // The archive goes into a never-started container only; anything that ran has state of its own by now.
+        if (state.startedAt !== null) throw new ConflictError("target container started before the archive was imported");
+        await this.restoreMovedVolume(inst, containerId, inst.moveObjectName);
+        await this.repo.markMoveImported(id);
+      }
+
       // Restore into the not-yet-started container: one boot, no restart mid-migration.
       if (inst.backupImport.status === "pending") {
         await this.restoreAgentBackup(inst, containerId);
         await this.eventLog.append(id, "provision.backup_restored");
       }
 
-      await this.ensureContainerStarted(containerId);
-      await this.eventLog.append(id, "provision.started");
+      // A bot moved while stopped lands stopped: its volume is in place, nothing boots.
+      const leaveStopped = inst.moveObjectName !== null && inst.stoppedAt !== null;
+      if (!leaveStopped) {
+        await this.ensureContainerStarted(inst, containerId);
+        await this.eventLog.append(id, "provision.started");
 
-      // "running" means the gateway answered its health check, not merely that the process exists.
-      // If it never does, promote anyway so the health monitor owns it from here.
-      if (!(await this.runtime.waitForHealthy(containerId, STARTUP_SETTLE_MS))) {
-        this.logger.warn({ instanceId: id }, "gateway not healthy after start-up window");
+        // "running" means the gateway answered its health check, not merely that the process exists.
+        // If it never does, promote anyway so the health monitor owns it from here.
+        if (!(await this.hosts.for(inst.hostId).runtime.waitForHealthy(containerId, STARTUP_SETTLE_MS))) {
+          this.logger.warn({ instanceId: id }, "gateway not healthy after start-up window");
+        }
       }
 
-      const promoted = await this.repo.updateStatus(id, "running", {
-        expectedStatus: "provisioning",
-      });
-      if (promoted) {
+      const promoted = inst.moveObjectName
+        ? await this.repo.completeMove(id, leaveStopped ? "stopped" : "running")
+        : await this.repo.updateStatus(id, "running", { expectedStatus: "provisioning" });
+      if (promoted && !leaveStopped) {
         await this.eventLog.append(id, "provision.running");
         this.logger.info({ instanceId: id }, "instance provisioned");
+      }
+      // The bucket lifecycle catches what this misses.
+      if (promoted && inst.moveObjectName) {
+        await this.moveStorage
+          ?.deleteObject(inst.moveObjectName)
+          .catch((err) => this.logger.warn({ instanceId: id, err }, "move object cleanup failed"));
       }
 
       return await this.requireInstance(id);
@@ -176,10 +215,10 @@ export class InstanceManager {
       await this.repo.updateStatus(id, "error", {
         errorMessage: errorMessage(err),
       });
+      await this.cleanupPartial(inst);
       await this.eventLog.append(id, "provision.failed", {
         payload: { error: errorMessage(err) },
       });
-      await this.cleanupPartial(inst);
       throw err;
     }
   }
@@ -227,7 +266,7 @@ export class InstanceManager {
 
     try {
       const { containerId } = await this.containerForBoot(inst);
-      await this.runtime.start(containerId);
+      await this.hosts.for(inst.hostId).runtime.start(containerId);
     } catch (err) {
       await this.repo.updateStatus(id, inst.status, {
         expectedStatus: "running",
@@ -257,10 +296,11 @@ export class InstanceManager {
       const inst = await this.requireInstance(id);
       if (!RESTARTABLE_STATUSES.includes(inst.status)) return skipped(`bot is ${inst.status}`);
       if (!inst.containerId) return blocked("bot has no container on record");
-      const state = await this.runtime.containerState(inst.containerId);
+      const host = this.hosts.for(inst.hostId);
+      const state = await host.runtime.containerState(inst.containerId);
       if (!state?.running) return skipped("container is not running");
       if (isContainerBooting(state, Date.now())) return skipped("container is booting");
-      if (!(await this.runtimes.get(inst.runtimeKind).isOnCurrentImage(inst.containerId))) {
+      if (!(await host.adapters.get(inst.runtimeKind).isOnCurrentImage(inst.containerId))) {
         return blocked("container is on another image; recreate is a supervised step");
       }
       if (await this.gatewayAnswers(inst)) return skipped("gateway answered");
@@ -274,9 +314,10 @@ export class InstanceManager {
   }
 
   private async gatewayAnswers(inst: Instance): Promise<boolean> {
-    const probe = await this.runtimes
-      .get(inst.runtimeKind)
-      .probeGateway(inst, this.appConfig.healthRequestTimeoutMs, this.appConfig.useDockerNetwork)
+    const host = this.hosts.for(inst.hostId);
+    const adapter = host.adapters.get(inst.runtimeKind);
+    const probe = await adapter
+      .probeGateway(inst, this.appConfig.healthRequestTimeoutMs, dialUrl(host, inst, adapter.internalPort))
       // A probe that cannot even be sent is one more "no answer" from a bot the monitor already saw down.
       .catch(() => ({ healthy: false }));
     return probe.healthy;
@@ -296,8 +337,8 @@ export class InstanceManager {
 
     try {
       const { containerId, rebuilt } = await this.containerForBoot(inst);
-      if (rebuilt) await this.runtime.start(containerId);
-      else await this.restartContainer(containerId);
+      if (rebuilt) await this.hosts.for(inst.hostId).runtime.start(containerId);
+      else await this.restartContainer(inst, containerId);
     } catch (err) {
       await this.repo.updateStatus(id, opts.failureStatus, { errorMessage: errorMessage(err) });
       throw err;
@@ -310,7 +351,8 @@ export class InstanceManager {
   // it is on the current image, otherwise a rebuilt one, since another image cannot boot this config.
   private async containerForBoot(inst: Instance): Promise<{ containerId: string; rebuilt: boolean }> {
     const existing = await this.existingContainerId(inst);
-    if (existing && (await this.runtimes.get(inst.runtimeKind).isOnCurrentImage(existing))) {
+    const adapter = this.hosts.for(inst.hostId).adapters.get(inst.runtimeKind);
+    if (existing && (await adapter.isOnCurrentImage(existing))) {
       if (existing !== inst.containerId) await this.repo.updateContainerId(inst.id, existing);
       await this.refreshRuntimeConfig({ ...inst, containerId: existing });
       // Guidance changes ship with the orchestrator; a restart is when tenants pick them up.
@@ -335,10 +377,15 @@ export class InstanceManager {
     if (!["running", "degraded", "unhealthy", "error"].includes(inst.status)) {
       throw new InvalidStateError(inst.status, "running");
     }
+    // The volume here is empty or partial; booting it would pass for a finished move and let the sweeper take the real copy.
+    if (inst.moveObjectName !== null) {
+      throw new ConflictError(`the move to host ${inst.hostId} never finished; move the bot back to host ${inst.movedFromHostId} first`);
+    }
 
+    const { runtime } = this.hosts.for(inst.hostId);
     try {
       const containerId = await this.recreateContainer(inst);
-      await this.runtime.start(containerId);
+      await runtime.start(containerId);
       // The migration can outlast the reconciler's patience (row marked stopped or error meanwhile);
       // the container is running now, so the row says so regardless.
       await this.repo.updateStatus(id, "running");
@@ -346,12 +393,12 @@ export class InstanceManager {
         actor: userId,
         payload: { containerId },
       });
-      if (!(await this.runtime.waitForHealthy(containerId, STARTUP_SETTLE_MS))) {
+      if (!(await runtime.waitForHealthy(containerId, STARTUP_SETTLE_MS))) {
         this.logger.warn({ instanceId: id }, "gateway not healthy after recreate");
       }
     } catch (err) {
       // Old or new, a container under the bot's name boots on the next start; unknown counts as none.
-      const bootable = await this.runtime.findContainerByName(inst.containerName).catch(() => null);
+      const bootable = await runtime.findContainerByName(inst.containerName).catch(() => null);
       await this.repo.updateStatus(id, bootable ? "stopped" : "error", {
         errorMessage: errorMessage(err),
       });
@@ -364,13 +411,14 @@ export class InstanceManager {
   // Stop, migrate the volume, only then remove: a failed migration leaves the bot startable as it was.
   private async recreateContainer(current: Instance): Promise<string> {
     const inst = await this.ensureIntegrationsBinding(current);
-    const adapter = this.runtimes.get(inst.runtimeKind);
+    const { runtime, adapters } = this.hosts.for(inst.hostId);
+    const adapter = adapters.get(inst.runtimeKind);
     const existing = await this.existingContainerId(inst);
-    if (existing && (await this.runtime.isRunning(existing))) {
-      await this.runtime.stop(existing);
+    if (existing && (await runtime.isRunning(existing))) {
+      await runtime.stop(existing);
     }
     await adapter.prepareState(inst);
-    if (existing) await this.runtime.remove(existing);
+    if (existing) await runtime.remove(existing);
     const containerId = await this.ensureContainerExists({ ...inst, containerId: null });
     await this.repo.updateContainerId(inst.id, containerId);
     return containerId;
@@ -378,14 +426,15 @@ export class InstanceManager {
 
   // The row's id can be stale after a crash mid-rebuild; the name is the durable handle.
   private async existingContainerId(inst: Instance): Promise<string | null> {
-    if (inst.containerId && (await this.runtime.containerState(inst.containerId))) return inst.containerId;
-    return this.runtime.findContainerByName(inst.containerName);
+    const { runtime } = this.hosts.for(inst.hostId);
+    if (inst.containerId && (await runtime.containerState(inst.containerId))) return inst.containerId;
+    return runtime.findContainerByName(inst.containerName);
   }
 
   // Best effort: guidance missing from a workspace is a support ticket, not a broken bot.
   private async seedWorkspace(inst: Instance, containerId: string): Promise<void> {
     try {
-      await this.runtimes.get(inst.runtimeKind).seedWorkspace(containerId);
+      await this.hosts.for(inst.hostId).adapters.get(inst.runtimeKind).seedWorkspace(containerId);
     } catch (err) {
       this.logger.warn({ instanceId: inst.id, err }, "workspace guidance seed failed");
     }
@@ -419,7 +468,7 @@ export class InstanceManager {
     if (!updated) throw new InvalidStateError(inst.status, "stopped");
 
     try {
-      await this.runtime.stop(inst.containerId);
+      await this.hosts.for(inst.hostId).runtime.stop(inst.containerId);
     } catch (err) {
       await this.repo.updateStatus(id, inst.status, {
         expectedStatus: "stopped",
@@ -471,17 +520,201 @@ export class InstanceManager {
     );
 
     try {
+      const { runtime, adapters } = this.hosts.for(inst.hostId);
       if (inst.containerId) {
-        await this.runtime.remove(inst.containerId);
+        await runtime.remove(inst.containerId);
       }
-      await this.runtime.removeVolume(
-        this.runtimes.get(inst.runtimeKind).stateVolumeName(inst.id),
-      );
+      await runtime.removeVolume(adapters.get(inst.runtimeKind).stateVolumeName(inst.id));
       await this.repo.updateStatus(id, "destroyed");
       this.logger.info({ instanceId: id }, "instance destroyed");
     } catch (err) {
       this.logger.error({ instanceId: id, err }, "destroy failed");
       await this.repo.updateStatus(id, "error", { errorMessage: errorMessage(err) });
+      throw err;
+    }
+  }
+
+  // Operator-only; same row and identity, a new port on the target, the volume via the moves bucket. Lock order as destroy.
+  async move(id: string, targetHostId: string, options: { dryRun?: boolean } = {}): Promise<void> {
+    const move = () => this.operationLock.run(id, () => this.moveLocked(id, targetHostId, options.dryRun ?? false));
+    return this.channelLock ? this.channelLock.run(id, move) : move();
+  }
+
+  private async moveLocked(id: string, targetHostId: string, dryRun: boolean): Promise<void> {
+    const storage = this.moveStorage;
+    if (!storage) throw new FeatureUnavailableError("moves");
+    const inst = await this.requireInstance(id);
+    // On the same host, a failed target boot would delete the only volume (cleanupPartial); a dry run flips nothing.
+    if (targetHostId === inst.hostId && !dryRun) throw new ValidationError("bot is already on that host");
+    if (inst.pairingStatus === "awaiting_qr" || inst.pairingStatus === "awaiting_code") {
+      throw new InvalidStateError(inst.pairingStatus, "move");
+    }
+    if (inst.status === "error" && inst.movedFromHostId === targetHostId) {
+      if (dryRun) throw new ValidationError("a rollback has no dry run");
+      // Once promoted the target held the live state; the retained copy is stale and no longer a rollback.
+      if (inst.moveObjectName === null) {
+        throw new ConflictError(`the move to host ${inst.hostId} completed; recreate the bot there first`);
+      }
+      return this.moveBackLocked(inst, targetHostId);
+    }
+    if (!MOVABLE_STATUSES.includes(inst.status)) throw new InvalidStateError(inst.status, "move");
+    // A second hop would overwrite the reference to the retained volume and leak it; an own-host dry run skips the target checks.
+    if (inst.movedFromHostId !== null && inst.movedFromHostId !== targetHostId && !(dryRun && targetHostId === inst.hostId)) {
+      throw new ConflictError(`the previous move's volume is still retained on host ${inst.movedFromHostId}`);
+    }
+
+    if (targetHostId !== inst.hostId) await this.prepareTarget(inst, targetHostId);
+    const source = this.hosts.for(inst.hostId);
+    const containerId = await this.resolveContainerId(inst);
+    if (!containerId) throw new InvalidStateError(inst.status, "move");
+
+    // An already-stopped bot keeps its "stopped since" stamp.
+    if (inst.status !== "stopped") {
+      const stopped = await this.repo.updateStatus(id, "stopped", { expectedStatus: inst.status });
+      if (!stopped) throw new InvalidStateError(inst.status, "stopped");
+    }
+    await this.eventLog.append(id, "move.started", { payload: { from: inst.hostId, to: targetHostId, dryRun } });
+    const objectName = `moves/${id}/${new Date().toISOString()}.tar`;
+
+    let gatewayPort: number | null = null;
+    try {
+      if (await source.runtime.isRunning(containerId)) await source.runtime.stop(containerId);
+      const { contentLength } = await storage.uploadObjectStream({
+        objectName,
+        contentType: "application/x-tar",
+        body: await source.adapters.get(inst.runtimeKind).exportVolume(containerId, AbortSignal.timeout(MOVE_STREAM_TIMEOUT_MS)),
+      });
+      if (contentLength <= 0 || contentLength > MOVE_MAX_BYTES) {
+        throw new Error(`exported volume archive is ${contentLength} bytes`);
+      }
+      await this.eventLog.append(id, "move.exported", { payload: { objectName, contentLength } });
+      if (!dryRun) gatewayPort = await this.flipToHost(inst, targetHostId, objectName);
+    } catch (err) {
+      // A flip whose acknowledgement was lost has committed; unknown counts as flipped: the source stays stopped either way.
+      const now = dryRun
+        ? inst
+        : await this.repo.findById(id).catch((readErr) => {
+            this.logger.warn({ instanceId: id, err: readErr }, "row read after the failed move failed");
+            return null;
+          });
+      if (now === null || now.hostId !== inst.hostId) {
+        this.logger.warn({ instanceId: id, err }, "move flip unconfirmed; the source stays stopped, start it by hand if the row kept its host");
+        if (now) {
+          await this.eventLog.append(id, "move.flipped", { payload: { from: inst.hostId, to: targetHostId, gatewayPort: now.gatewayPort } });
+        }
+        throw err;
+      }
+      await this.eventLog.append(id, "move.failed", { payload: { to: targetHostId, error: errorMessage(err) } });
+      // Nothing has moved: the bot is whole on its host, so it goes back to how it was.
+      await storage.deleteObject(objectName).catch((cleanupErr) =>
+        this.logger.warn({ instanceId: id, err: cleanupErr }, "move object cleanup failed"),
+      );
+      await this.resumeSource(inst, containerId).catch((resumeErr) =>
+        this.logger.warn({ instanceId: id, err: resumeErr }, "source did not resume after a failed move"),
+      );
+      throw err;
+    }
+
+    if (gatewayPort === null) {
+      await storage.deleteObject(objectName).catch((err) =>
+        this.logger.warn({ instanceId: id, err }, "move object cleanup failed"),
+      );
+      await this.resumeSource(inst, containerId);
+      await this.eventLog.append(id, "move.dry_run", { payload: { to: targetHostId } });
+      this.logger.info({ instanceId: id, targetHostId }, "move dry run passed");
+      return;
+    }
+    await this.eventLog.append(id, "move.flipped", { payload: { from: inst.hostId, to: targetHostId, gatewayPort } });
+
+    // The named volume survives the removal; the sweeper deletes it after the retention window.
+    await source.runtime.remove(containerId).catch((err) =>
+      this.logger.warn({ instanceId: id, err }, "source container removal failed; the sweeper retries it"),
+    );
+    try {
+      await this.resumeProvisioningLocked(id);
+    } catch (err) {
+      // The object stays for the rollback path; the bucket lifecycle deletes it otherwise.
+      await this.eventLog.append(id, "move.failed", { payload: { to: targetHostId, error: errorMessage(err) } });
+      throw err;
+    }
+    await this.eventLog.append(id, "move.completed", { payload: { from: inst.hostId, to: targetHostId, gatewayPort } });
+    this.logger.info({ instanceId: id, from: inst.hostId, to: targetHostId, gatewayPort }, "instance moved");
+  }
+
+  private async prepareTarget(inst: Instance, targetHostId: string): Promise<void> {
+    const target = this.managedHost(targetHostId);
+    if (!(await target.gate.check())) throw new UpstreamUnavailableError("docker", `host ${targetHostId} is unreachable`);
+    await this.placement.assertFits(targetHostId, inst.config.resources.memoryMb);
+    const adapter = target.adapters.get(inst.runtimeKind);
+    await target.runtime.ensureImagePulled(adapter.image);
+    if (!(await target.runtime.hasVolume(adapter.stateVolumeName(inst.id)))) return;
+    if (inst.movedFromHostId !== targetHostId || inst.moveObjectName !== null) {
+      throw new ConflictError(`host ${targetHostId} already holds a state volume for this bot`);
+    }
+    // Moving back within retention: the copy left there is older than what the bot has now.
+    await this.removeBotFromHost(target, inst);
+  }
+
+  // A failed target boot: the row returns, still `error`, to the host whose retained volume is the state; a recreate boots it there.
+  private async moveBackLocked(inst: Instance, toHostId: string): Promise<void> {
+    this.managedHost(toHostId);
+    const target = this.hosts.for(inst.hostId);
+    if (!(await target.gate.check())) throw new UpstreamUnavailableError("docker", `host ${inst.hostId} is unreachable`);
+    const left = await target.runtime.findContainerByName(inst.containerName);
+    const state = left ? await target.runtime.containerState(left) : null;
+    // A container that ran on the imported archive wrote the live copy; the retained one is stale.
+    if (state && state.startedAt !== null && inst.moveImportedAt !== null) {
+      throw new ConflictError(`the target container ran on host ${inst.hostId}; recreate the bot there instead`);
+    }
+    // Whatever the failed boot left there would otherwise run beside the bot, or block a later move to that host.
+    await this.removeBotFromHost(target, inst);
+    const gatewayPort = await this.portAllocator.allocate(toHostId);
+    const restored = await this.repo.moveBack(inst.id, { toHostId, gatewayPort });
+    if (!restored) throw new InvalidStateError(inst.status, "move");
+    await this.eventLog.append(inst.id, "move.rolled_back", { payload: { from: inst.hostId, to: toHostId, gatewayPort } });
+    this.logger.warn(
+      { instanceId: inst.id, from: inst.hostId, to: toHostId, gatewayPort },
+      "move rolled back; recreate boots the bot on its old host",
+    );
+  }
+
+  // The (host, port) index raises 23505 when a create on the target took the port first; try another.
+  private async flipToHost(inst: Instance, targetHostId: string, objectName: string): Promise<number> {
+    let lastError: Error | null = null;
+    for (let attempt = 0; attempt < this.appConfig.maxProvisionRetries; attempt++) {
+      const gatewayPort = await this.portAllocator.allocate(targetHostId);
+      try {
+        const flipped = await this.repo.moveTo(inst.id, {
+          fromHostId: inst.hostId,
+          toHostId: targetHostId,
+          gatewayPort,
+          objectName,
+          keepStopped: inst.status === "stopped",
+        });
+        if (!flipped) throw new InvalidStateError("stopped", "provisioning");
+        return gatewayPort;
+      } catch (err) {
+        if (!isUniqueViolation(err)) throw err;
+        lastError = err instanceof Error ? err : new Error(String(err));
+        this.logger.warn({ instanceId: inst.id, port: gatewayPort, attempt }, "port conflict on the target; retrying");
+      }
+    }
+    throw lastError ?? new Error("failed to place the bot on the target host");
+  }
+
+  // The source is intact after a dry run or a failure before the flip: a bot that was up comes back up.
+  private async resumeSource(inst: Instance, containerId: string): Promise<void> {
+    if (!isContainerUp(inst.status)) return;
+    await this.hosts.for(inst.hostId).runtime.start(containerId);
+    const resumed = await this.repo.updateStatus(inst.id, "running", { expectedStatus: "stopped" });
+    if (!resumed) this.logger.warn({ instanceId: inst.id }, "source started but its row did not return to running");
+  }
+
+  private managedHost(hostId: string): HostRuntime {
+    try {
+      return this.hosts.for(hostId);
+    } catch (err) {
+      if (err instanceof UnknownHostError) throw new ValidationError(err.message);
       throw err;
     }
   }
@@ -585,7 +818,8 @@ export class InstanceManager {
     // itself; restarting it would only cause an outage (and can wedge a still-booting container).
     // The container has to take the config before the row claims it: persisting first would leave
     // the DB describing a bot that does not exist.
-    const adapter = inst.containerId ? this.runtimes.get(inst.runtimeKind) : null;
+    const host = this.hosts.for(inst.hostId);
+    const adapter = inst.containerId ? host.adapters.get(inst.runtimeKind) : null;
     let outcome: ConfigApplyOutcome | null = null;
     if (adapter && inst.containerId) {
       outcome = await adapter.applyConfig(inst.containerId, { ...inst, config: merged });
@@ -600,9 +834,9 @@ export class InstanceManager {
     if (
       outcome === "restart_required" &&
       inst.containerId &&
-      (await this.runtime.isRunning(inst.containerId))
+      (await host.runtime.isRunning(inst.containerId))
     ) {
-      await this.restartContainer(inst.containerId);
+      await this.restartContainer(inst, inst.containerId);
     }
 
     return this.requireOwnedInstance(id, userId);
@@ -685,7 +919,7 @@ export class InstanceManager {
 
       // Restart so the runtime drops its in-memory socket; start() won't re-inject creds anymore.
       if (inst.containerId && containerUp) {
-        await this.restartContainer(inst.containerId);
+        await this.restartContainer(inst, inst.containerId);
       }
       return this.requireOwnedInstance(id, userId);
     });
@@ -719,7 +953,7 @@ export class InstanceManager {
   ): Promise<AgentBackupStream> {
     const inst = await this.requireOwnedInstance(id, userId);
     const containerId = await this.resolveExportContainerId(inst);
-    const adapter = this.runtimes.get(inst.runtimeKind);
+    const adapter = this.hosts.for(inst.hostId).adapters.get(inst.runtimeKind);
 
     const archive = await adapter.exportState(containerId);
     return {
@@ -755,9 +989,11 @@ export class InstanceManager {
     ) {
       const id = randomUUID();
       const runtimeKind = this.appConfig.agentRuntimeKind as AgentRuntimeKind;
-      const containerName = this.runtimes.get(runtimeKind).containerName(id);
+      const memoryMb = input.resources?.memoryMb ?? DEFAULT_RESOURCE_LIMITS.memoryMb;
+      const hostId = await this.placement.choose(memoryMb);
+      const containerName = this.hosts.for(hostId).adapters.get(runtimeKind).containerName(id);
       const gatewayToken = randomBytes(32).toString("hex");
-      const gatewayPort = await this.portAllocator.allocate();
+      const gatewayPort = await this.portAllocator.allocate(hostId);
       let litellmProvision: LiteLlmProvisionResult | null = null;
 
       try {
@@ -779,7 +1015,7 @@ export class InstanceManager {
           provider,
           channels: input.channels,
           resources: {
-            memoryMb: input.resources?.memoryMb ?? DEFAULT_RESOURCE_LIMITS.memoryMb,
+            memoryMb,
             cpuShares:
               input.resources?.cpuShares ?? DEFAULT_RESOURCE_LIMITS.cpuShares,
           },
@@ -789,6 +1025,7 @@ export class InstanceManager {
           {
             id,
             userId,
+            hostId,
             displayName: config.displayName,
             runtimeKind,
             status: "provisioning",
@@ -846,7 +1083,7 @@ export class InstanceManager {
   // Config and guidance are written whether the container was found or created, so one left
   // behind by a crash between create and write never boots on whatever the volume held.
   private async ensureContainerExists(inst: Instance): Promise<string> {
-    const adapter = this.runtimes.get(inst.runtimeKind);
+    const adapter = this.hosts.for(inst.hostId).adapters.get(inst.runtimeKind);
     const containerId = await this.findOrCreateContainer(inst, adapter);
     await adapter.writeConfig(containerId, { ...inst, containerId });
     await this.seedWorkspace(inst, containerId);
@@ -854,29 +1091,32 @@ export class InstanceManager {
   }
 
   private async findOrCreateContainer(inst: Instance, adapter: AgentRuntimeAdapter): Promise<string> {
+    const { runtime, restartPolicy, address } = this.hosts.for(inst.hostId);
     const existing = await this.existingContainerId(inst);
     if (existing && (await adapter.isOnCurrentImage(existing))) return existing;
     // Left by an orchestrator on the previous image (a crash mid-provision): its volume needs the
     // migration too, and the container itself cannot take this config.
     if (existing) {
-      await this.runtime.remove(existing);
+      await runtime.remove(existing);
       await adapter.prepareState(inst);
     }
 
-    await this.runtime.ensureVolumeExists(adapter.stateVolumeName(inst.id));
-    return this.runtime.create(withTenantCa(await adapter.buildContainerOptions(inst), this.appConfig.tenantCaCertPath));
+    await runtime.ensureVolumeExists(adapter.stateVolumeName(inst.id));
+    const options = { ...(await adapter.buildContainerOptions(inst)), restartPolicy, bindIp: address ?? "127.0.0.1" };
+    return runtime.create(withTenantCa(options, this.appConfig.tenantCaCertPath));
   }
 
-  private async ensureContainerStarted(containerId: string): Promise<void> {
-    if (await this.runtime.isRunning(containerId)) return;
-    await this.runtime.start(containerId);
+  private async ensureContainerStarted(inst: Instance, containerId: string): Promise<void> {
+    const { runtime } = this.hosts.for(inst.hostId);
+    if (await runtime.isRunning(containerId)) return;
+    await runtime.start(containerId);
   }
 
   private async restoreAgentBackup(
     inst: Instance,
     containerId: string,
   ): Promise<void> {
-    const adapter = this.runtimes.get(inst.runtimeKind);
+    const adapter = this.hosts.for(inst.hostId).adapters.get(inst.runtimeKind);
     const backup = inst.backupImport;
     if (!backup.objectName) throw new InvalidBackupError("backup object is missing");
     if (!this.backupRestoreStorage) {
@@ -931,9 +1171,62 @@ export class InstanceManager {
       );
   }
 
+  // As restoreAgentBackup: import into the never-started container, migrate to this image, put our fields and guidance back on top.
+  private async restoreMovedVolume(inst: Instance, containerId: string, objectName: string): Promise<void> {
+    if (!this.moveStorage) throw new FeatureUnavailableError("moves");
+    const adapter = this.hosts.for(inst.hostId).adapters.get(inst.runtimeKind);
+    const source = await this.moveStorage.openObjectStream(objectName, MOVE_MAX_BYTES);
+    try {
+      await adapter.importVolume(containerId, source.body, AbortSignal.timeout(MOVE_STREAM_TIMEOUT_MS));
+    } catch (err) {
+      source.body.destroy();
+      throw err;
+    }
+    await adapter.prepareState(inst);
+    await this.refreshRuntimeConfig({ ...inst, containerId });
+    await this.seedWorkspace(inst, containerId);
+  }
+
+  // The old host keeps the volume, and any container left under the name, for the retention window as the rollback.
+  async purgeMovedSources(): Promise<void> {
+    const cutoff = Date.now() - MOVE_SOURCE_RETENTION_MS;
+    for (const due of await this.repo.findMovedSourcesDue(MOVE_SOURCE_RETENTION_MS)) {
+      if (this.isOperating(due.id)) continue;
+      try {
+        await this.operationLock.run(due.id, () => this.purgeMovedSourceLocked(due.id, cutoff));
+      } catch (err) {
+        this.logger.warn(
+          { instanceId: due.id, hostId: due.movedFromHostId, err: errorMessage(err) },
+          "moved source purge failed",
+        );
+      }
+    }
+  }
+
+  // Re-read under the lock: a move that landed meanwhile holds a fresh reference this must not clear.
+  private async purgeMovedSourceLocked(id: string, cutoff: number): Promise<void> {
+    const inst = await this.repo.findById(id);
+    if (!inst?.movedFromHostId || !inst.movedAt || inst.movedAt.getTime() >= cutoff) return;
+    if (inst.movedFromHostId === inst.hostId) return;
+    // A destroyed row has nothing left to roll back to; every other unfinished move keeps its old copy.
+    if (inst.status !== "destroyed" && (inst.status === "provisioning" || inst.moveObjectName !== null)) return;
+    const host = this.hosts.for(inst.movedFromHostId);
+    if (!(await host.gate.check())) return;
+    await this.removeBotFromHost(host, inst);
+    // Only a destroyed row still carries an object here: the deleted bot's archive goes with its volume.
+    if (inst.moveObjectName) {
+      await this.moveStorage
+        ?.deleteObject(inst.moveObjectName)
+        .catch((err) => this.logger.warn({ instanceId: inst.id, err }, "move object cleanup failed"));
+    }
+    await this.repo.clearMove(inst.id);
+    this.logger.info({ instanceId: inst.id, hostId: inst.movedFromHostId }, "moved source purged");
+  }
+
   private async resolveContainerId(inst: Instance): Promise<string | null> {
-    if (inst.containerId && (await this.runtime.containerState(inst.containerId))) return inst.containerId;
-    const byName = await this.runtime.findContainerByName(inst.containerName);
+    const { runtime } = this.hosts.for(inst.hostId);
+    if (inst.containerId && (await runtime.containerState(inst.containerId))) return inst.containerId;
+    const byName = await runtime.findContainerByName(inst.containerName);
     if (byName) await this.repo.updateContainerId(inst.id, byName);
     return byName;
   }
@@ -950,28 +1243,30 @@ export class InstanceManager {
 
   // Restarting mid-first-boot leaves OpenClaw's startup-migration lock behind (5-minute lease) and
   // crash-loops the container, so let the start-up window finish first; an unhealthy one restarts at once.
-  private async restartContainer(containerId: string): Promise<void> {
-    await this.runtime.waitForHealthy(containerId, STARTUP_SETTLE_MS);
-    await this.runtime.restart(containerId);
+  private async restartContainer(inst: Instance, containerId: string): Promise<void> {
+    const { runtime } = this.hosts.for(inst.hostId);
+    await runtime.waitForHealthy(containerId, STARTUP_SETTLE_MS);
+    await runtime.restart(containerId);
   }
 
   private async refreshRuntimeConfig(inst: Instance): Promise<void> {
     if (!inst.containerId) return;
-    await this.runtimes.get(inst.runtimeKind).writeConfig(inst.containerId, inst);
+    await this.hosts.for(inst.hostId).adapters.get(inst.runtimeKind).writeConfig(inst.containerId, inst);
   }
 
   private async cleanupPartial(inst: Instance): Promise<void> {
     try {
-      const id = await this.runtime.findContainerByName(inst.containerName);
-      if (id) {
-        await this.runtime.remove(id);
-      }
-      await this.runtime.removeVolume(
-        this.runtimes.get(inst.runtimeKind).stateVolumeName(inst.id),
-      );
+      await this.removeBotFromHost(this.hosts.for(inst.hostId), inst);
     } catch {
       // best-effort cleanup
     }
+  }
+
+  // Container first: Docker refuses to remove a volume a container still references.
+  private async removeBotFromHost(host: HostRuntime, inst: Instance): Promise<void> {
+    const containerId = await host.runtime.findContainerByName(inst.containerName);
+    if (containerId) await host.runtime.remove(containerId);
+    await host.runtime.removeVolume(host.adapters.get(inst.runtimeKind).stateVolumeName(inst.id));
   }
 
   private async requireInstance(id: string): Promise<Instance> {

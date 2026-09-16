@@ -120,6 +120,34 @@
       "when": 1789426982455,
       "tag": "0016_drop_whatsapp_creds",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789461917698,
+      "tag": "0017_hosts",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789498495077,
+      "tag": "0018_host_registration",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789506619797,
+      "tag": "0019_host_capacity",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1789559311709,
+      "tag": "0020_instance_move",
+      "breakpoints": true
     }
   ]
 }

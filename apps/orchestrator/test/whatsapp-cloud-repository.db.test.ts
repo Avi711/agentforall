@@ -5,7 +5,7 @@ import { Pool } from "pg";
 import { eq, inArray, sql } from "drizzle-orm";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { instances, user, whatsappCloudConversations, whatsappCloudInbox, whatsappCloudNumbers } from "@agent-forall/db";
+import { hosts, instances, user, whatsappCloudConversations, whatsappCloudInbox, whatsappCloudNumbers } from "@agent-forall/db";
 import { ConflictError } from "../src/domain/errors.js";
 import { isCustomerMessage, isOwnerEcho, isPartnerRemoved, type InboundMessage } from "../src/domain/whatsapp-cloud.js";
 import { WhatsappCloudRepository, type LeasedMessage } from "../src/storage/whatsapp-cloud-repository.js";
@@ -36,6 +36,7 @@ before(async () => {
   await db.execute(sql`create schema public`);
   await migrate(db, { migrationsFolder: fileURLToPath(new URL("../../../packages/db/drizzle", import.meta.url)) });
   await db.insert(user).values({ id: "u1", email: "u1@example.com" });
+  await db.insert(hosts).values({ id: "host" });
   for (const [id, status] of [
     [A, "running"],
     [B, "running"],

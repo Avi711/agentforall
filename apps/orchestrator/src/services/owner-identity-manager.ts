@@ -18,7 +18,7 @@ import {
   type WhatsappChannelConfig,
 } from "../domain/types.js";
 import type { EventRepository } from "../storage/event-repository.js";
-import type { AgentRuntimeRegistry } from "./agent-runtime/registry.js";
+import type { HostRuntimes } from "./host-runtimes.js";
 import type { WhatsappPairingRequest } from "./agent-runtime/types.js";
 import type { InstanceManager } from "./instance-manager.js";
 
@@ -49,7 +49,7 @@ const NO_CANDIDATES: Candidates = { list: [], unavailable: false };
 export class OwnerIdentityManager {
   constructor(
     private readonly manager: InstanceManager,
-    private readonly runtimes: AgentRuntimeRegistry,
+    private readonly hosts: HostRuntimes,
     private readonly eventLog: EventRepository,
     private readonly logger: FastifyBaseLogger,
   ) {}
@@ -95,7 +95,7 @@ export class OwnerIdentityManager {
   private async syncState(inst: Instance, identity: OwnerIdentity): Promise<OwnerSyncState> {
     if (!inst.containerId || !isContainerUp(inst.status)) return "unavailable";
     try {
-      const live = await this.runtimes.get(inst.runtimeKind).readOwnerIds(inst.containerId);
+      const live = await this.hosts.for(inst.hostId).adapters.get(inst.runtimeKind).readOwnerIds(inst.containerId);
       if (live === null) return "unavailable";
       return sameOwnerIds(live, ownerPeerIds(identity)) ? "applied" : "pending";
     } catch (err) {
@@ -111,8 +111,9 @@ export class OwnerIdentityManager {
     const claiming = whatsapp?.dmAccess === "owner" && !whatsapp.ownerNumber;
     if (!claiming || !inst.containerId || !isContainerUp(inst.status)) return NO_CANDIDATES;
     try {
-      const list = await this.runtimes
-        .get(inst.runtimeKind)
+      const list = await this.hosts
+        .for(inst.hostId)
+        .adapters.get(inst.runtimeKind)
         .listWhatsappPairingRequests(inst.containerId);
       return { list, unavailable: false };
     } catch (err) {

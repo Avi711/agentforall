@@ -72,6 +72,33 @@ export class AuthenticationError extends DomainError {
   }
 }
 
+export class HostNotAllowedError extends DomainError {
+  readonly statusCode = 401;
+  readonly code = "HOST_NOT_ALLOWED";
+
+  constructor() {
+    super("host identity not accepted");
+  }
+}
+
+export class UnknownHostError extends DomainError {
+  readonly statusCode = 503;
+  readonly code = "HOST_UNAVAILABLE";
+
+  constructor(hostId: string) {
+    super(`host ${hostId} is not managed by this orchestrator`);
+  }
+}
+
+export class NoPlacementError extends DomainError {
+  readonly statusCode = 503;
+  readonly code = "NO_PLACEMENT";
+
+  constructor() {
+    super("no host can take a new bot");
+  }
+}
+
 export class FeatureUnavailableError extends DomainError {
   readonly statusCode = 503;
   readonly code = "FEATURE_UNAVAILABLE";

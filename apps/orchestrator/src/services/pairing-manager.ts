@@ -1,10 +1,9 @@
 ﻿import { randomBytes } from "node:crypto";
 import type { FastifyBaseLogger } from "fastify";
 import type { InstanceRepository } from "../storage/instance-repository.js";
-import type { ContainerRuntime } from "./container-runtime.js";
 import type { EventRepository } from "../storage/event-repository.js";
 import type { Instance } from "../domain/types.js";
-import type { AgentRuntimeRegistry } from "./agent-runtime/registry.js";
+import { dialUrl, type HostRuntime, type HostRuntimes } from "./host-runtimes.js";
 import {
   AuthenticationError,
   InvalidStateError,
@@ -42,8 +41,7 @@ export interface StartPairingResult {
 export class PairingManager {
   constructor(
     private readonly repo: InstanceRepository,
-    private readonly runtime: ContainerRuntime,
-    private readonly runtimes: AgentRuntimeRegistry,
+    private readonly hosts: HostRuntimes,
     private readonly eventLog: EventRepository,
     private readonly pairing: PairingConfig,
     private readonly logger: FastifyBaseLogger,
@@ -69,9 +67,11 @@ export class PairingManager {
       return this.startPairingLocked({ ...instance, pairingStatus: "failed" });
     }
 
+    const host = this.hosts.for(instance.hostId);
+    const { runtime } = host;
     const existing = this.sessions.get(instance.id);
     if (existing) {
-      const running = await this.runtime.isRunning(existing.sidecarContainerId);
+      const running = await runtime.isRunning(existing.sidecarContainerId);
       if (running) {
         return {
           status: "already_active",
@@ -100,12 +100,14 @@ export class PairingManager {
     const shortId = instance.id.slice(0, 12);
     const sidecarName = `pairing-${shortId}`;
     const authToken = randomBytes(32).toString("hex");
+    // Docker DNS only resolves from inside the local network; anywhere else the sidecar publishes a port.
+    const publish = host.address !== null || !host.dockerNetwork;
 
     try {
-      await this.runtime.removeIfExists(sidecarName);
+      await runtime.removeIfExists(sidecarName);
 
       // tmpfs session dir ג€” sidecar tars and POSTs creds on success; nothing on host disk.
-      const sidecarId = await this.runtime.createSidecar(withTenantCa({
+      const sidecarId = await runtime.createSidecar(withTenantCa({
         name: sidecarName,
         image: this.pairing.image,
         envVars: this.buildSidecarEnv(instance.id, authToken),
@@ -122,30 +124,28 @@ export class PairingManager {
             options: tmpfsOptions(PAIRING_USER, SIDECAR_TMPFS_SIZE_MB),
           },
         ],
-        ...(this.pairing.publishSidecarPort
-          ? { publishPort: this.pairing.port }
+        ...(publish
+          ? { publish: { port: this.pairing.port, bindIp: host.address ?? "127.0.0.1" } }
           : {}),
       }, this.pairing.tenantCaCertPath));
 
       try {
-        await this.runtime.start(sidecarId);
+        await runtime.start(sidecarId);
       } catch (err) {
-        await this.runtime.remove(sidecarId).catch(() => undefined);
+        await runtime.remove(sidecarId).catch(() => undefined);
         throw err;
       }
 
-      const sidecarHostPort = this.pairing.publishSidecarPort
-        ? await this.runtime.getPublishedHostPort(sidecarId, this.pairing.port)
-        : null;
-      if (this.pairing.publishSidecarPort && sidecarHostPort === null) {
-        throw new UpstreamUnavailableError("pairing sidecar port");
-      }
+      const sidecarBaseUrl = publish
+        ? await this.publishedSidecarUrl(host, sidecarId)
+        : `http://${sidecarName}:${this.pairing.port}`;
 
       this.sessions.set({
         instanceId: instance.id,
+        hostId: instance.hostId,
         sidecarContainerId: sidecarId,
         sidecarContainerName: sidecarName,
-        sidecarHostPort,
+        sidecarBaseUrl,
         authToken,
         createdAt: new Date(),
       });
@@ -166,6 +166,12 @@ export class PairingManager {
         .catch(() => undefined);
       throw err;
     }
+  }
+
+  private async publishedSidecarUrl(host: HostRuntime, sidecarId: string): Promise<string> {
+    const hostPort = await host.runtime.getPublishedHostPort(sidecarId, this.pairing.port);
+    if (hostPort === null) throw new UpstreamUnavailableError("pairing sidecar port");
+    return `http://${host.address ?? "127.0.0.1"}:${hostPort}`;
   }
 
   private buildSidecarEnv(instanceId: string, authToken: string): string[] {
@@ -205,9 +211,11 @@ export class PairingManager {
   // Resolves true once the stored session is gone; never throws so destroy paths stay best-effort.
   async logoutWhatsapp(instanceId: string, containerId: string): Promise<boolean> {
     try {
-      const inst = await this.repo.findById(instanceId);
-      if (!inst) throw new NotFoundError("instance", instanceId);
-      const { unlinked, cleared } = await this.runtimes.get(inst.runtimeKind).logoutWhatsapp(containerId);
+      const inst = await this.requireInstance(instanceId);
+      const { unlinked, cleared } = await this.hosts
+        .for(inst.hostId)
+        .adapters.get(inst.runtimeKind)
+        .logoutWhatsapp(containerId);
       if (!unlinked) this.logger.warn({ instanceId }, "whatsapp device unlink did not complete server-side");
       if (cleared) {
         await this.eventLog.append(instanceId, "pair.logged_out");
@@ -303,7 +311,8 @@ export class PairingManager {
     containerId: string,
     creds: Buffer,
   ): Promise<void> {
-    const adapter = this.runtimes.get(instance.runtimeKind);
+    const { runtime, adapters } = this.hosts.for(instance.hostId);
+    const adapter = adapters.get(instance.runtimeKind);
     let linked = false;
     let injected = false;
     try {
@@ -323,7 +332,7 @@ export class PairingManager {
           payload: { reason: started.status === "started" ? "link_timeout" : started.reason },
         });
         await adapter.writeConfig(containerId, instance);
-        await this.runtime.restart(containerId);
+        await runtime.restart(containerId);
         linked = await this.waitForLink(instance);
       }
     } catch (err) {
@@ -351,11 +360,13 @@ export class PairingManager {
   }
 
   private async waitForLink(instance: Instance): Promise<boolean> {
-    const adapter = this.runtimes.get(instance.runtimeKind);
+    const host = this.hosts.for(instance.hostId);
+    const adapter = host.adapters.get(instance.runtimeKind);
+    const baseUrl = dialUrl(host, instance, adapter.internalPort);
     const deadline = Date.now() + LINK_WAIT_MS;
     while (Date.now() < deadline) {
       const state = await adapter
-        .probeWhatsapp(instance, LINK_PROBE_TIMEOUT_MS, this.pairing.useDockerNetwork)
+        .probeWhatsapp(instance, LINK_PROBE_TIMEOUT_MS, baseUrl)
         .catch(() => "probe_failed" as const);
       if (state === "connected") return true;
       await sleep(LINK_POLL_MS);
@@ -368,7 +379,7 @@ export class PairingManager {
   private async sendHello(instance: Instance, containerId: string): Promise<boolean> {
     const ownerNumber = findWhatsappChannel(instance.config.channels)?.ownerNumber;
     if (!ownerNumber) return false;
-    const adapter = this.runtimes.get(instance.runtimeKind);
+    const adapter = this.hosts.for(instance.hostId).adapters.get(instance.runtimeKind);
     const text = helloMessage(instance.displayName);
     for (let attempt = 1; attempt <= HELLO_ATTEMPTS; attempt++) {
       try {
@@ -419,9 +430,10 @@ export class PairingManager {
     }
     if (this.sessions.has(instance.id)) return false;
 
+    const { runtime } = this.hosts.for(instance.hostId);
     const shortId = instance.id.slice(0, 12);
-    const sidecarId = await this.runtime.findContainerByName(`pairing-${shortId}`);
-    if (sidecarId && (await this.runtime.isRunning(sidecarId))) {
+    const sidecarId = await runtime.findContainerByName(`pairing-${shortId}`);
+    if (sidecarId && (await runtime.isRunning(sidecarId))) {
       return false;
     }
 
@@ -437,10 +449,11 @@ export class PairingManager {
   // doesn't strand a live Baileys socket we can no longer name.
   async teardownSidecar(instanceId: string, reason: string): Promise<void> {
     const session = this.sessions.get(instanceId);
+    const { runtime } = this.hosts.for(session?.hostId ?? (await this.requireInstance(instanceId)).hostId);
     let containerId = session?.sidecarContainerId ?? null;
     if (!containerId) {
       const shortId = instanceId.slice(0, 12);
-      containerId = await this.runtime.findContainerByName(`pairing-${shortId}`);
+      containerId = await runtime.findContainerByName(`pairing-${shortId}`);
     }
     if (!containerId) {
       this.sessions.delete(instanceId);
@@ -448,7 +461,7 @@ export class PairingManager {
     }
 
     try {
-      await this.runtime.remove(containerId);
+      await runtime.remove(containerId);
       this.sessions.delete(instanceId);
       this.logger.info({ instanceId, reason }, "sidecar torn down");
     } catch (err) {
@@ -459,6 +472,11 @@ export class PairingManager {
     }
   }
 
+  private async requireInstance(instanceId: string): Promise<Instance> {
+    const inst = await this.repo.findById(instanceId);
+    if (!inst) throw new NotFoundError("instance", instanceId);
+    return inst;
+  }
 }
 
 function sleep(ms: number): Promise<void> {

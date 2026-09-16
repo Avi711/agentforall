@@ -1,4 +1,4 @@
-import { eq, ne, inArray, or, sql, asc, and } from "drizzle-orm";
+import { eq, ne, inArray, isNotNull, or, sql, asc, and } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { instances } from "@agent-forall/db";
 import {
@@ -48,6 +48,20 @@ export interface LiteLlmKeyUpdate {
   budgetDuration: string;
 }
 
+export interface MoveToInput {
+  fromHostId: string;
+  toHostId: string;
+  gatewayPort: number;
+  objectName: string;
+  // A bot that was stopped before the move stays stopped on the target; `stopped_at` survives as the marker.
+  keepStopped: boolean;
+}
+
+export interface MoveBackInput {
+  toHostId: string;
+  gatewayPort: number;
+}
+
 type InsertInstanceFields = Omit<
   Instance,
   | "createdAt"
@@ -56,10 +70,13 @@ type InsertInstanceFields = Omit<
   | "pairingStatus"
   | "whatsappAccountId"
   | "lastSeenAt"
-  | "hostId"
   | "runtimeKind"
   | "backupImport"
   | "litellm"
+  | "movedFromHostId"
+  | "moveObjectName"
+  | "movedAt"
+  | "moveImportedAt"
 > & {
   pairingStatus?: PairingStatus;
   runtimeKind?: Instance["runtimeKind"];
@@ -68,14 +85,17 @@ type InsertInstanceFields = Omit<
 };
 
 export class InstanceRepository {
+  private readonly managedHostIds: readonly string[];
+
   constructor(
     private readonly db: DB,
     private readonly encryptionKey: Buffer,
-    private readonly hostId: string,
-  ) {}
+    managedHostIds: ReadonlySet<string>,
+  ) {
+    this.managedHostIds = [...managedHostIds];
+    if (this.managedHostIds.length === 0) throw new Error("InstanceRepository needs at least one managed host");
+  }
 
-  // Caller never sets host_id — repo stamps its own. Prevents an upper-layer
-  // bug from writing rows owned by another orchestrator.
   async insert(fields: InsertInstanceFields): Promise<Instance> {
     return this.insertWithDb(this.db, fields);
   }
@@ -105,6 +125,7 @@ export class InstanceRepository {
     db: Pick<DB, "insert">,
     fields: InsertInstanceFields,
   ): Promise<Instance> {
+    this.assertManaged(fields.hostId);
     const encrypted = encryptConfig(fields.config, this.encryptionKey);
     const encryptedToken = encrypt(fields.gatewayToken, this.encryptionKey);
 
@@ -113,7 +134,7 @@ export class InstanceRepository {
       .values({
         id: fields.id,
         userId: fields.userId,
-        hostId: this.hostId,
+        hostId: fields.hostId,
         runtimeKind: fields.runtimeKind ?? "openclaw",
         displayName: fields.displayName,
         status: fields.status,
@@ -210,19 +231,24 @@ export class InstanceRepository {
     return this.toDomainSafe(rows);
   }
 
-  async getActiveGatewayPorts(): Promise<number[]> {
+  async getActiveGatewayPorts(hostId: string): Promise<number[]> {
     const rows = await this.db
       .select({ gatewayPort: instances.gatewayPort })
       .from(instances)
-      .where(and(this.ownedByHost(), this.isActive()));
+      .where(and(this.ownedByHost(), eq(instances.hostId, hostId), this.isActive()));
     return rows.map((r) => r.gatewayPort);
   }
 
-  // Defense-in-depth: every read filters by host so an orchestrator can never
-  // see — let alone mutate — rows owned by a different host. Writes are scoped
-  // by ID lookups, which themselves go through ownedByHost.
+  // Every read and write filters by the managed set, so a second orchestrator sharing the DB (e.g. a dev machine) never touches these rows.
   private ownedByHost() {
-    return eq(instances.hostId, this.hostId);
+    return inArray(instances.hostId, this.managedHostIds);
+  }
+
+  // Refuses a host outside the managed set so an upper-layer bug can never write a row another orchestrator owns.
+  private assertManaged(hostId: string): void {
+    if (!this.managedHostIds.includes(hostId)) {
+      throw new Error(`host ${hostId} is not managed by this orchestrator`);
+    }
   }
 
   // Single definition of "active" — shared by quota count and port allocation. An `error` row keeps
@@ -361,6 +387,106 @@ export class InstanceRepository {
       .where(and(eq(instances.id, id), this.ownedByHost()));
   }
 
+  // One CAS flip, `stopped` on the source to `provisioning` on the target; a (host, port) race raises 23505 for the caller to retry.
+  async moveTo(id: string, input: MoveToInput): Promise<boolean> {
+    this.assertManaged(input.toHostId);
+    const now = new Date();
+    const result = await this.db
+      .update(instances)
+      .set({
+        hostId: input.toHostId,
+        gatewayPort: input.gatewayPort,
+        status: "provisioning",
+        containerId: null,
+        healthFailures: 0,
+        errorMessage: null,
+        movedFromHostId: input.fromHostId,
+        moveObjectName: input.objectName,
+        movedAt: now,
+        moveImportedAt: null,
+        ...(input.keepStopped ? {} : { stoppedAt: null }),
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(instances.id, id),
+          this.ownedByHost(),
+          eq(instances.hostId, input.fromHostId),
+          eq(instances.status, "stopped"),
+        ),
+      )
+      .returning({ id: instances.id });
+    return result.length > 0;
+  }
+
+  // Rollback of a failed move: the `error` row returns to the host holding its volume, with no move columns for the sweeper to act on.
+  async moveBack(id: string, input: MoveBackInput): Promise<boolean> {
+    this.assertManaged(input.toHostId);
+    const result = await this.db
+      .update(instances)
+      .set({
+        hostId: input.toHostId,
+        gatewayPort: input.gatewayPort,
+        containerId: null,
+        movedFromHostId: null,
+        moveObjectName: null,
+        movedAt: null,
+        moveImportedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(instances.id, id),
+          this.ownedByHost(),
+          eq(instances.status, "error"),
+          eq(instances.movedFromHostId, input.toHostId),
+          isNotNull(instances.moveObjectName),
+        ),
+      )
+      .returning({ id: instances.id });
+    return result.length > 0;
+  }
+
+  async findMovedSourcesDue(olderThanMs: number): Promise<Instance[]> {
+    const cutoff = new Date(Date.now() - olderThanMs);
+    const rows = await this.db
+      .select()
+      .from(instances)
+      .where(
+        and(
+          this.ownedByHost(),
+          isNotNull(instances.movedFromHostId),
+          sql`${instances.movedAt} < ${cutoff}`,
+        ),
+      );
+    return this.toDomainSafe(rows);
+  }
+
+  async clearMove(id: string): Promise<void> {
+    await this.db
+      .update(instances)
+      .set({ movedFromHostId: null, moveObjectName: null, movedAt: null, moveImportedAt: null, updatedAt: new Date() })
+      .where(and(eq(instances.id, id), this.ownedByHost()));
+  }
+
+  async markMoveImported(id: string): Promise<void> {
+    const now = new Date();
+    await this.db
+      .update(instances)
+      .set({ moveImportedAt: now, updatedAt: now })
+      .where(and(eq(instances.id, id), this.ownedByHost()));
+  }
+
+  // Promotion and the end of the rollback window are one write: a set `move_object_name` means "never ran on the target".
+  async completeMove(id: string, status: "running" | "stopped"): Promise<boolean> {
+    const result = await this.db
+      .update(instances)
+      .set({ status, moveObjectName: null, moveImportedAt: null, updatedAt: new Date() })
+      .where(and(eq(instances.id, id), this.ownedByHost(), eq(instances.status, "provisioning")))
+      .returning({ id: instances.id });
+    return result.length > 0;
+  }
+
   async findStaleProvisioning(olderThanMs: number): Promise<Instance[]> {
     const cutoff = new Date(Date.now() - olderThanMs);
     const rows = await this.db
@@ -436,6 +562,10 @@ export class InstanceRepository {
         budgetCents: row.litellmBudgetCents,
         budgetDuration: row.litellmBudgetDuration,
       },
+      movedFromHostId: row.movedFromHostId,
+      moveObjectName: row.moveObjectName,
+      movedAt: row.movedAt,
+      moveImportedAt: row.moveImportedAt,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       stoppedAt: row.stoppedAt,

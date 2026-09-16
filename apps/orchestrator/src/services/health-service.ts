@@ -1,4 +1,3 @@
-import type { ContainerRuntime } from "./container-runtime.js";
 import type { HealthRepository } from "../storage/health-repository.js";
 
 export type CheckResult = "ok" | "error";
@@ -9,16 +8,13 @@ export interface HealthReport {
   httpStatus: 200 | 503;
 }
 
+// Process + database only: a host whose Docker is down is that host's problem, reported per host, not an outage of the API.
 export class HealthService {
-  constructor(
-    private readonly healthRepo: HealthRepository,
-    private readonly runtime: ContainerRuntime,
-  ) {}
+  constructor(private readonly healthRepo: HealthRepository) {}
 
   async check(): Promise<HealthReport> {
     const checks: Record<string, CheckResult> = {
       database: await this.probe(() => this.healthRepo.ping()),
-      docker: await this.probe(() => this.runtime.ping()),
     };
     const allOk = Object.values(checks).every((v) => v === "ok");
     return {

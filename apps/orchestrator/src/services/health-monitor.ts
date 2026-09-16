@@ -1,8 +1,8 @@
 import type { FastifyBaseLogger } from "fastify";
 import type { InstanceRepository } from "../storage/instance-repository.js";
 import type { Instance, InstanceStatus } from "../domain/types.js";
-import { isContainerBooting, type ContainerRuntime, type ContainerState } from "./container-runtime.js";
-import type { AgentRuntimeRegistry } from "./agent-runtime/registry.js";
+import { isContainerBooting, type ContainerState } from "./container-runtime.js";
+import { dialUrl, groupByHost, type HostRuntimes } from "./host-runtimes.js";
 import type { AgentRuntimeAdapter, WhatsappLinkState } from "./agent-runtime/types.js";
 import { mapWithConcurrency } from "./concurrency.js";
 
@@ -15,7 +15,6 @@ interface HealthMonitorConfig {
   unhealthyThreshold: number;
   requestTimeoutMs: number;
   channelProbeTimeoutMs: number;
-  useDockerNetwork: boolean;
   maxConcurrentChecks: number;
 }
 
@@ -42,6 +41,14 @@ interface LocatedContainer {
   state: ContainerState;
 }
 
+// health is null when the bot's host did not answer: nothing was probed, nothing is written.
+interface CheckedInstance {
+  inst: Instance;
+  health: HealthResult | null;
+}
+
+const UNKNOWN_HEALTH: HealthResult = { healthy: false, liveness: "unknown", whatsappDisconnected: false };
+
 // A healthy row is rewritten only this often; every poll writing every bot is what does not scale.
 const LAST_SEEN_REFRESH_MS = 60_000;
 
@@ -62,8 +69,7 @@ export class HealthMonitor {
 
   constructor(
     private readonly repo: InstanceRepository,
-    private readonly runtime: ContainerRuntime,
-    private readonly runtimes: AgentRuntimeRegistry,
+    private readonly hosts: HostRuntimes,
     private readonly logger: FastifyBaseLogger,
     private readonly config: HealthMonitorConfig,
     private readonly now: () => number = Date.now,
@@ -117,22 +123,14 @@ export class HealthMonitor {
       ]);
       this.pruneChannelStates(active);
 
-      const results = await mapWithConcurrency(
-        active,
-        this.config.maxConcurrentChecks,
-        (inst) => this.checkOne(inst),
+      const checked = await Promise.all(
+        [...groupByHost(active)].map(([hostId, group]) => this.checkHost(hostId, group)),
       );
 
       const report: LivenessReport[] = [];
-      for (let i = 0; i < active.length; i++) {
-        const inst = active[i]!;
-        const result = results[i]!;
-        const health: HealthResult =
-          result.status === "fulfilled"
-            ? result.value
-            : { healthy: false, liveness: "unknown", whatsappDisconnected: false };
-        report.push({ instance: inst, sample: health.liveness });
-
+      for (const { inst, health } of checked.flat()) {
+        report.push({ instance: inst, sample: health?.liveness ?? "unknown" });
+        if (!health) continue;
         try {
           await this.processResult(inst, health);
         } catch (err) {
@@ -146,6 +144,21 @@ export class HealthMonitor {
     } catch (err) {
       this.logger.error({ err }, "health monitor poll failed");
     }
+  }
+
+  // The observer still sees every bot of an unreachable host (as unknown): an empty report would reset restart budgets.
+  private async checkHost(hostId: string, group: readonly Instance[]): Promise<CheckedInstance[]> {
+    const host = this.hosts.for(hostId);
+    if (!(await host.gate.check())) return group.map((inst) => ({ inst, health: null }));
+    const results = await mapWithConcurrency(
+      group,
+      this.config.maxConcurrentChecks,
+      (inst) => this.checkOne(inst),
+    );
+    return group.map((inst, i) => {
+      const result = results[i]!;
+      return { inst, health: result.status === "fulfilled" ? result.value : UNKNOWN_HEALTH };
+    });
   }
 
   private notifyObserver(report: readonly LivenessReport[]): void {
@@ -215,20 +228,18 @@ export class HealthMonitor {
 
   // Docker is asked about a healthy bot once a minute (to repair a lagging container id), not every poll.
   private async checkOne(instance: Instance): Promise<HealthResult> {
-    const adapter = this.runtimes.get(instance.runtimeKind);
+    const host = this.hosts.for(instance.hostId);
+    const adapter = host.adapters.get(instance.runtimeKind);
     let located: LocatedContainer | "lookup_failed" | null | undefined;
     if (!instance.containerId || this.needsHealthyWrite(instance)) {
       located = await this.tryLocate(instance);
     }
     const resolved =
       located && located !== "lookup_failed" ? { ...instance, containerId: located.containerId } : instance;
+    const baseUrl = dialUrl(host, resolved, adapter.internalPort);
 
     const liveness = await adapter
-      .probeGateway(
-        resolved,
-        this.config.requestTimeoutMs,
-        this.config.useDockerNetwork,
-      )
+      .probeGateway(resolved, this.config.requestTimeoutMs, baseUrl)
       .catch((err: unknown) => {
         this.logger.warn(
           { instanceId: instance.id, err },
@@ -250,7 +261,7 @@ export class HealthMonitor {
       return { healthy: true, liveness: "live", whatsappDisconnected: false };
     }
 
-    const state = await this.resolveWhatsappState(resolved, adapter);
+    const state = await this.resolveWhatsappState(resolved, adapter, baseUrl);
     // Only a definite "disconnected" degrades the instance: a probe that could not answer says
     // nothing about the channel, and must never take a live tenant down.
     if (state === "disconnected") {
@@ -275,6 +286,7 @@ export class HealthMonitor {
   private async resolveWhatsappState(
     instance: Instance,
     adapter: AgentRuntimeAdapter,
+    baseUrl: string,
   ): Promise<WhatsappLinkState> {
     const now = this.now();
     const entry = this.channelStates.get(instance.id);
@@ -283,11 +295,7 @@ export class HealthMonitor {
     }
 
     const probed = await adapter
-      .probeWhatsapp(
-        instance,
-        this.config.channelProbeTimeoutMs,
-        this.config.useDockerNetwork,
-      )
+      .probeWhatsapp(instance, this.config.channelProbeTimeoutMs, baseUrl)
       .catch((err: unknown) => {
         this.logger.warn({ instanceId: instance.id, err }, "whatsapp probe threw");
         return "probe_failed" as const;
@@ -353,14 +361,15 @@ export class HealthMonitor {
   }
 
   private async locateContainer(instance: Instance): Promise<LocatedContainer | null> {
+    const { runtime } = this.hosts.for(instance.hostId);
     if (instance.containerId) {
-      const current = await this.runtime.containerState(instance.containerId);
+      const current = await runtime.containerState(instance.containerId);
       if (current?.running) return { containerId: instance.containerId, state: current };
     }
 
-    const byName = await this.runtime.findContainerByName(instance.containerName);
+    const byName = await runtime.findContainerByName(instance.containerName);
     if (!byName) return null;
-    const state = await this.runtime.containerState(byName);
+    const state = await runtime.containerState(byName);
     if (!state) return null;
     if (byName !== instance.containerId) await this.repo.updateContainerId(instance.id, byName);
     return { containerId: byName, state };

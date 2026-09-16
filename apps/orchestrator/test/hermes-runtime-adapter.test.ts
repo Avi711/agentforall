@@ -177,6 +177,10 @@ const instance: Instance = {
   },
   createdAt: new Date(),
   updatedAt: new Date(),
+  movedFromHostId: null,
+  moveObjectName: null,
+  moveImportedAt: null,
+  movedAt: null,
   stoppedAt: null,
   destroyedAt: null,
 };

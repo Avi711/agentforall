@@ -12,8 +12,8 @@ export class PortAllocator {
     this.capacity = rangeEnd - rangeStart + 1;
   }
 
-  async allocate(): Promise<number> {
-    const usedPorts = new Set(await this.repo.getActiveGatewayPorts());
+  async allocate(hostId: string): Promise<number> {
+    const usedPorts = new Set(await this.repo.getActiveGatewayPorts(hostId));
 
     for (let port = this.rangeStart; port <= this.rangeEnd; port++) {
       if (!usedPorts.has(port)) {

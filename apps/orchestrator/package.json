@@ -12,7 +12,7 @@
     "dev": "tsx watch --env-file=.env src/main.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "test": "node --import tsx --test \"test/**/*.test.ts\"",
-    "test:db": "node --import tsx --test \"test/**/*.db.test.ts\""
+    "test:db": "node --import tsx --test --test-concurrency=1 \"test/**/*.db.test.ts\""
   },
   "dependencies": {
     "@agent-forall/db": "*",
@@ -22,6 +22,7 @@
     "dockerode": "^5.0.0",
     "drizzle-orm": "^0.45.0",
     "fastify": "^5.8.5",
+    "google-auth-library": "^9.15.1",
     "pg": "^8.13.1",
     "tar-stream": "^3.1.7",
     "undici": "^7.29.0",

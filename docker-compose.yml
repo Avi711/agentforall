@@ -40,8 +40,11 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: agentforall
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      # Dev only; prod renders its own compose in infra/startup.sh.
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-agentforall}"
       POSTGRES_DB: agentforall
+    ports:
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:

@@ -12,6 +12,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { user } from "./auth.js";
+import { hosts } from "./hosts.js";
 
 export const INSTANCE_STATUSES = [
   "provisioning",
@@ -48,7 +49,9 @@ export const instances = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
-    hostId: text("host_id").notNull(),
+    hostId: text("host_id")
+      .notNull()
+      .references(() => hosts.id, { onDelete: "restrict" }),
     displayName: varchar("display_name", { length: 255 }).notNull(),
     runtimeKind: varchar("runtime_kind", {
       length: 32,
@@ -93,6 +96,12 @@ export const instances = pgTable(
     litellmKeyHash: varchar("litellm_key_hash", { length: 128 }),
     litellmBudgetCents: integer("litellm_budget_cents"),
     litellmBudgetDuration: varchar("litellm_budget_duration", { length: 32 }),
+
+    // Set while the previous host still retains the volume (24 h); the object outlives a failed target boot.
+    movedFromHostId: text("moved_from_host_id").references(() => hosts.id),
+    moveObjectName: text("move_object_name"),
+    movedAt: timestamp("moved_at", { withTimezone: true }),
+    moveImportedAt: timestamp("move_imported_at", { withTimezone: true }),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

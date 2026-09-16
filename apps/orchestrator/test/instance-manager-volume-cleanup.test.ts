@@ -9,6 +9,7 @@ import type { AppConfig } from "../src/config.js";
 import type { AgentRuntimeRegistry } from "../src/services/agent-runtime/registry.js";
 import type { AgentRuntimeAdapter } from "../src/services/agent-runtime/types.js";
 import type { Instance } from "../src/domain/types.js";
+import { singleHost } from "./helpers/host-runtimes.js";
 
 test("destroy removes the runtime state volume even for errored instances", async () => {
   const repo = new FakeRepo({ ...baseInstance, status: "error" });
@@ -92,9 +93,8 @@ test("reconciler removes state volume before resolving orphaned destroys", async
   } as unknown as AgentRuntimeRegistry;
   const reconciler = new Reconciler({
     repo: repo as never,
-    runtime: runtime as unknown as ContainerRuntime,
-    runtimes: registry,
-    manager: {} as never,
+    hosts: singleHost(runtime as unknown as ContainerRuntime, registry),
+    manager: { purgeMovedSources: async () => {} } as never,
     pairingManager: { expireStale: async () => {} } as never,
     logger: fakeLogger,
     pairingStaleThresholdMs: 60_000,
@@ -185,6 +185,7 @@ class FakeRuntime {
 const openclawAdapter: AgentRuntimeAdapter = {
   kind: "openclaw",
   image: "openclaw-image",
+  internalPort: 18789,
   maxBackupBytes: 1024,
   containerName: (id) => `openclaw-${id.slice(0, 12)}`,
   stateVolumeName: (id) => `oc-${id.slice(0, 12)}-state`,
@@ -199,6 +200,10 @@ const openclawAdapter: AgentRuntimeAdapter = {
     throw new Error("not implemented");
   },
   restoreState: async () => {},
+  exportVolume: async () => {
+    throw new Error("not implemented");
+  },
+  importVolume: async () => {},
   probeGateway: async () => ({ healthy: true, degraded: null }),
   prepareState: async () => {},
   seedWorkspace: async () => {},
@@ -223,9 +228,9 @@ function createManager(
   } as unknown as AgentRuntimeRegistry;
   return new InstanceManager(
     repo as never,
-    runtime as unknown as ContainerRuntime,
-    registry,
+    singleHost(runtime as unknown as ContainerRuntime, registry),
     {} as never,
+    { choose: () => "test-host" } as never,
     { maxProvisionRetries: 3 } as AppConfig,
     { append: async () => {} } as never,
     {
@@ -293,6 +298,10 @@ const baseInstance: Instance = {
   },
   createdAt: new Date(),
   updatedAt: new Date(),
+  movedFromHostId: null,
+  moveObjectName: null,
+  moveImportedAt: null,
+  movedAt: null,
   stoppedAt: null,
   destroyedAt: null,
 };

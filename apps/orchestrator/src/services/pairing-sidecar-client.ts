@@ -26,9 +26,7 @@ export class PairingSidecarClient {
       };
     }
 
-    const url = session.sidecarHostPort
-      ? `http://127.0.0.1:${session.sidecarHostPort}${path}`
-      : `http://${session.sidecarContainerName}:${this.pairing.port}${path}`;
+    const url = `${session.sidecarBaseUrl}${path}`;
     const headers: Record<string, string> = {
       authorization: `Bearer ${session.authToken}`,
       ...(init.headers ?? {}),

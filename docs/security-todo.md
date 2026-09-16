@@ -20,6 +20,16 @@ Verified from inside a bot: `169.254.169.254` answered with the VM service accou
 - **Fix:** before the orchestrator leaves `tenant-net`: `@private remote_ip private_ranges` → `respond @private 404` on the public site (check the VM's own ops curls first: they arrive as the VM's private IP).
 - **Files:** `infra/startup.sh` (Caddyfile).
 
+### S-15. Bots can reach each other's gateway on tenant-net (found 2026-09-15, step 4 review)
+- **Risk:** `tenant-net` is a plain bridge with inter-container communication on; any bot can open `http://openclaw-<other>:18789` and needs only that bot's bearer token. Pre-existing, not new to Phase 2.
+- **Fix:** create `tenant-net` with `com.docker.network.bridge.enable_icc=false` once the orchestrator probes bots by the host's VPC IP (step 4b); the orchestrator and Caddy keep reaching bots because they are not subject to ICC on that bridge only if they sit on another network — verify on the second VM first.
+- **Files:** `apps/orchestrator/src/services/docker-container-runtime.ts` (`ensureNetworkExists`).
+
+### S-16. Worker registration binds no address to the identity (found 2026-09-16, whole-diff review)
+- **Risk:** a listed worker's identity token lets that VM register any private IPv4 as its address; the orchestrator then dials Docker there with its client cert. A compromised worker A could point its record at worker B and have A's rows managed on B. Bounded to already-trusted workers.
+- **Fix (step 6):** derive the address from the GCE API by instance id instead of the request body, or check that the dialed server cert carries the host id.
+- **Files:** `apps/orchestrator/src/services/host-registrar.ts`, `apps/orchestrator/src/routes/hosts.ts`, `apps/orchestrator/src/services/remote-host.ts`.
+
 ### S-1. Per-tenant rate limit on pair endpoints
 - **Risk:** one user spamming `POST /api/v1/instances/:id/pair` can exhaust the
   `PORT_RANGE_START..PORT_RANGE_END` pool and DoS new pairings.

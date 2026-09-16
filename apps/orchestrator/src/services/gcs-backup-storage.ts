@@ -11,7 +11,7 @@ export class GcsBackupStorage {
 
   constructor(
     bucket: string,
-    private readonly uploadOrigin: string,
+    private readonly uploadOrigin: string | null = null,
     storage = new Storage(),
   ) {
     this.bucketRef = storage.bucket(bucket);
@@ -22,6 +22,7 @@ export class GcsBackupStorage {
     contentType: string;
     contentLength: number;
   }): Promise<string> {
+    if (!this.uploadOrigin) throw new Error("this bucket takes streamed uploads only");
     try {
       const [uploadUrl] = await this.file(input.objectName).createResumableUpload({
         origin: this.uploadOrigin,
@@ -55,12 +56,13 @@ export class GcsBackupStorage {
     }
   }
 
+  // contentLength omitted = unsized stream (a Docker archive); the stored size is returned instead of asserted.
   async uploadObjectStream(input: {
     objectName: string;
     contentType: string;
-    contentLength: number;
+    contentLength?: number;
     body: Readable;
-  }): Promise<void> {
+  }): Promise<{ contentLength: number }> {
     const file = this.file(input.objectName);
     try {
       await pipeline(
@@ -76,7 +78,11 @@ export class GcsBackupStorage {
           },
         }),
       );
-      await this.assertUploadedSize(file, input.contentLength);
+      const stored = await this.objectMetadata(file);
+      if (input.contentLength !== undefined && stored.size !== input.contentLength) {
+        throw new Error("backup archive upload size mismatch");
+      }
+      return { contentLength: stored.size };
     } catch (err) {
       throw toGcsStorageError("upload", err);
     }
@@ -126,13 +132,6 @@ export class GcsBackupStorage {
       };
     } catch (err) {
       throw toGcsStorageError("metadata", err);
-    }
-  }
-
-  private async assertUploadedSize(file: File, expectedBytes: number): Promise<void> {
-    const metadata = await this.objectMetadata(file);
-    if (metadata.size !== expectedBytes) {
-      throw new Error("backup archive upload size mismatch");
     }
   }
 }

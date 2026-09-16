@@ -5,9 +5,10 @@ const DUMMY_TOKEN_BUFFER = Buffer.alloc(AUTH_TOKEN_LENGTH, 0);
 
 export interface PairSession {
   instanceId: string;
+  hostId: string;
   sidecarContainerId: string;
   sidecarContainerName: string;
-  sidecarHostPort: number | null;
+  sidecarBaseUrl: string;
   authToken: string;
   createdAt: Date;
 }

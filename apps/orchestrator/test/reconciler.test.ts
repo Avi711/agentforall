@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import type { FastifyBaseLogger } from "fastify";
 import { Reconciler } from "../src/services/reconciler.js";
 import type { Instance, InstanceStatus } from "../src/domain/types.js";
+import type { RestartPolicy } from "../src/services/container-runtime.js";
 import { makeInstance } from "./helpers/fixtures.js";
+import { singleHost } from "./helpers/host-runtimes.js";
 
 const OLD = new Date("2026-08-21T00:00:00.000Z");
 
@@ -11,9 +13,11 @@ function harness(
   rows: Instance[],
   docker: { known: Record<string, boolean>; byName: string | null },
   operating: (id: string) => boolean = () => false,
+  restartPolicy: RestartPolicy = "unless-stopped",
 ) {
   const statusUpdates: { id: string; status: InstanceStatus }[] = [];
   const containerIdUpdates: { id: string; containerId: string }[] = [];
+  const started: string[] = [];
   const repo = {
     findStaleProvisioning: async () => [],
     findByStatuses: async (statuses: InstanceStatus[]) => rows.filter((r) => statuses.includes(r.status)),
@@ -36,18 +40,39 @@ function harness(
     },
     remove: async () => {},
     removeVolume: async () => {},
+    start: async (id: string) => {
+      started.push(id);
+    },
   };
   const reconciler = new Reconciler({
     repo: repo as never,
-    runtime: runtime as never,
-    runtimes: { get: () => ({ stateVolumeName: (id: string) => `oc-${id}-state` }) } as never,
-    manager: { resumeProvisioning: async () => undefined, isOperating: operating } as never,
+    hosts: singleHost(
+      runtime as never,
+      { get: () => ({ stateVolumeName: (id: string) => `oc-${id}-state` }) } as never,
+      undefined,
+      { restartPolicy },
+    ),
+    manager: { resumeProvisioning: async () => undefined, isOperating: operating, purgeMovedSources: async () => {} } as never,
     pairingManager: { expireStale: async () => {} } as never,
     logger: { info: () => {}, warn: () => {}, error: () => {} } as unknown as FastifyBaseLogger,
     pairingStaleThresholdMs: 900_000,
   });
-  return { reconciler, statusUpdates, containerIdUpdates, byNameLookups };
+  return { reconciler, statusUpdates, containerIdUpdates, byNameLookups, started };
 }
+
+test("a stopped container on a no-policy host is started and the row stays running; an unless-stopped host marks it stopped", async () => {
+  const row = makeInstance([], { containerId: "container-1", updatedAt: OLD });
+
+  const remote = harness([row], { known: { "container-1": false }, byName: null }, undefined, "no");
+  await remote.reconciler.run();
+  assert.deepEqual(remote.started, ["container-1"]);
+  assert.deepEqual(remote.statusUpdates, []);
+
+  const local = harness([row], { known: { "container-1": false }, byName: null }, undefined, "unless-stopped");
+  await local.reconciler.run();
+  assert.deepEqual(local.started, []);
+  assert.deepEqual(local.statusUpdates, [{ id: row.id, status: "stopped" }]);
+});
 
 test("a known container that is not running marks the row stopped without a name lookup", async () => {
   const row = makeInstance([], { containerId: "container-1", updatedAt: OLD });

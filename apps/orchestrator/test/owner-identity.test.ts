@@ -12,8 +12,10 @@ import { OwnerIdentityManager } from "../src/services/owner-identity-manager.js"
 import type { AgentRuntimeRegistry } from "../src/services/agent-runtime/registry.js";
 import type { WhatsappPairingRequest } from "../src/services/agent-runtime/types.js";
 import type { EventRepository } from "../src/storage/event-repository.js";
+import type { ContainerRuntime } from "../src/services/container-runtime.js";
 import type { ChannelConfig, Instance } from "../src/domain/types.js";
 import { RELAY_URLS, configWith, fakeChannelManager, makeInstance } from "./helpers/fixtures.js";
+import { singleHost } from "./helpers/host-runtimes.js";
 
 const TELEGRAM: ChannelConfig = {
   type: "telegram",
@@ -135,7 +137,7 @@ function harness(initial: Instance, adapter: FakeAdapter) {
   } as unknown as EventRepository;
   const logger = { warn: () => {} } as unknown as FastifyBaseLogger;
   return {
-    owner: new OwnerIdentityManager(channels.manager, runtimes, eventLog, logger),
+    owner: new OwnerIdentityManager(channels.manager, singleHost({} as ContainerRuntime, runtimes), eventLog, logger),
     writes: channels.writes,
     events,
   };

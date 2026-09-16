@@ -7,20 +7,11 @@ import {
 } from "./gateway-probe.js";
 import {
   OPENCLAW_HEALTH_PATH,
-  OPENCLAW_INTERNAL_PORT,
   OPENCLAW_STARTUP_PATH,
   OPENCLAW_WHATSAPP_CHANNEL,
 } from "./constants.js";
 
-export async function probeOpenclawGateway(
-  instance: Instance,
-  timeoutMs: number,
-  useDockerNetwork: boolean,
-): Promise<GatewayLiveness> {
-  const host = useDockerNetwork ? instance.containerName : "127.0.0.1";
-  const port = useDockerNetwork ? OPENCLAW_INTERNAL_PORT : instance.gatewayPort;
-  const base = `http://${host}:${port}`;
-
+export async function probeOpenclawGateway(base: string, timeoutMs: number): Promise<GatewayLiveness> {
   if (!(await isOk(`${base}${OPENCLAW_HEALTH_PATH}`, timeoutMs))) {
     return { healthy: false, degraded: null };
   }

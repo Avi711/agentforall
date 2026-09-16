@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { Readable } from "node:stream";
 import { OpenClawRuntimeAdapter } from "../src/services/agent-runtime/openclaw/adapter.js";
 import { HermesRuntimeAdapter } from "../src/services/agent-runtime/hermes/adapter.js";
 import type { AgentRuntimeAdapter } from "../src/services/agent-runtime/types.js";
@@ -25,10 +26,37 @@ test("Hermes adapter satisfies the agent runtime container contract", async () =
   await assertAgentRuntimeContainerContract(adapter, {
     containerName: "hermes-4b86fc8b-ef1",
     image: "hermes-image",
+    internalPort: 8642,
     stateVolumeName: "hm-4b86fc8b-ef1-state",
     envPattern: /API_SERVER_KEY=token/,
     configPattern: /"custom_providers"|"model"/,
   });
+});
+
+// A move carries the whole state tree: the archive is taken at the state root and put back under its parent.
+test("both adapters export the state root as a Docker archive and import it under the state parent", async () => {
+  for (const [make, root, parent] of [
+    [(rt: ContainerRuntime) => new OpenClawRuntimeAdapter(rt, "img", "http://orchestrator:3000"), "/home/node/.openclaw", "/home/node"],
+    [(rt: ContainerRuntime) => new HermesRuntimeAdapter(rt, "img"), "/opt/data", "/opt"],
+  ] as const) {
+    const calls: string[] = [];
+    const tar = Readable.from([Buffer.from("tar")]);
+    const runtime = {
+      getArchive: async (containerId: string, path: string) => {
+        calls.push(`get:${containerId}:${path}`);
+        return tar;
+      },
+      putArchive: async (containerId: string, targetPath: string, archive: Readable) => {
+        calls.push(`put:${containerId}:${targetPath}:${archive === tar ? "same-stream" : "rewrapped"}`);
+      },
+    } as unknown as ContainerRuntime;
+    const adapter = make(runtime);
+
+    const exported = await adapter.exportVolume("c-1");
+    await adapter.importVolume("c-2", exported);
+
+    assert.deepEqual(calls, [`get:c-1:${root}`, `put:c-2:${parent}:same-stream`]);
+  }
 });
 
 async function assertAgentRuntimeContainerContract(
@@ -36,12 +64,14 @@ async function assertAgentRuntimeContainerContract(
   expected: {
     containerName: string;
     image: string;
+    internalPort: number;
     stateVolumeName: string;
     envPattern: RegExp;
     configPattern: RegExp;
   } = {
     containerName: "openclaw-4b86fc8b-ef1",
     image: "openclaw-image",
+    internalPort: 18789,
     stateVolumeName: "oc-4b86fc8b-ef1-state",
     envPattern: /OPENCLAW_GATEWAY_TOKEN=token/,
     configPattern: /"gateway"/,
@@ -53,6 +83,8 @@ async function assertAgentRuntimeContainerContract(
   assert.equal(adapter.stateVolumeName(instance.id), expected.stateVolumeName);
   assert.equal(options.name, instance.containerName);
   assert.equal(options.image, expected.image);
+  assert.equal(options.internalPort, expected.internalPort);
+  assert.equal(adapter.internalPort, expected.internalPort);
   assert.equal(options.hostPort, instance.gatewayPort);
   assert.equal(options.labels["agent-forall.runtime"], adapter.kind);
   assert.ok(options.volumeMounts?.length);
@@ -99,6 +131,10 @@ const instance: Instance = {
   },
   createdAt: new Date(),
   updatedAt: new Date(),
+  movedFromHostId: null,
+  moveObjectName: null,
+  moveImportedAt: null,
+  movedAt: null,
   stoppedAt: null,
   destroyedAt: null,
 };

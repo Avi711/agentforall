@@ -37,6 +37,7 @@ import {
 
 export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
   readonly kind = "hermes" as const;
+  readonly internalPort = HERMES_INTERNAL_PORT;
   readonly maxBackupBytes = HERMES_MAX_BACKUP_BYTES;
   // Hermes reads config at boot only.
 
@@ -142,20 +143,20 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
     );
   }
 
-  probeGateway(
-    instance: Instance,
-    timeoutMs: number,
-    useDockerNetwork: boolean,
-  ): Promise<GatewayLiveness> {
-    return probeHermesGateway(instance, timeoutMs, useDockerNetwork);
+  exportVolume(containerId: string, signal?: AbortSignal): Promise<Readable> {
+    return this.runtime.getArchive(containerId, HERMES_STATE_ROOT, signal);
   }
 
-  probeWhatsapp(
-    instance: Instance,
-    timeoutMs: number,
-    useDockerNetwork: boolean,
-  ): Promise<WhatsappLinkState> {
-    return probeHermesWhatsapp(instance, timeoutMs, useDockerNetwork);
+  importVolume(containerId: string, tar: Readable, signal?: AbortSignal): Promise<void> {
+    return this.runtime.putArchive(containerId, HERMES_STATE_PARENT, tar, signal);
+  }
+
+  probeGateway(_instance: Instance, timeoutMs: number, baseUrl: string): Promise<GatewayLiveness> {
+    return probeHermesGateway(baseUrl, timeoutMs);
+  }
+
+  probeWhatsapp(_instance: Instance, timeoutMs: number, baseUrl: string): Promise<WhatsappLinkState> {
+    return probeHermesWhatsapp(baseUrl, timeoutMs);
   }
 
   async logoutWhatsapp(containerId: string): Promise<WhatsappLogoutResult> {

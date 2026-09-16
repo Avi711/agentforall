@@ -9,6 +9,8 @@ import {
 import type { Instance } from "../src/domain/types.js";
 import type { ContainerRuntime, ContainerState } from "../src/services/container-runtime.js";
 import type { AgentRuntimeRegistry } from "../src/services/agent-runtime/registry.js";
+import type { HostRuntime, HostRuntimes } from "../src/services/host-runtimes.js";
+import { singleHost } from "./helpers/host-runtimes.js";
 import type {
   AgentRuntimeAdapter,
   GatewayLiveness,
@@ -101,6 +103,7 @@ const silentLogger = createLogger().logger;
 function makeInstance(overrides: Partial<Instance> = {}): Instance {
   return {
     id: "instance-1",
+    hostId: "test-host",
     containerId: "container-1",
     containerName: "openclaw-instance-1",
     runtimeKind: "openclaw",
@@ -122,7 +125,7 @@ function createMonitor(
   },
   clock: { now: number },
   logger: unknown = silentLogger,
-  options: { observer?: LivenessObserver; runtime?: ContainerRuntime } = {},
+  options: { observer?: LivenessObserver; runtime?: ContainerRuntime; reachable?: () => boolean } = {},
 ) {
   let whatsappCalls = 0;
   const adapter = {
@@ -136,27 +139,31 @@ function createMonitor(
 
   const monitor = new HealthMonitor(
     repo as never,
-    options.runtime ?? runtime,
-    { get: () => adapter } as unknown as AgentRuntimeRegistry,
+    singleHost(
+      options.runtime ?? runtime,
+      { get: () => adapter } as unknown as AgentRuntimeRegistry,
+      { check: async () => options.reachable?.() ?? true },
+    ),
     logger as never,
-    {
-      pollIntervalMs: 15_000,
-      channelPollIntervalMs: CHANNEL_INTERVAL_MS,
-      channelStateMaxAgeMs: 600_000,
-      channelProbeMaxBackoffMs: 900_000,
-      degradedThreshold: 5,
-      unhealthyThreshold: 10,
-      requestTimeoutMs: 10_000,
-      channelProbeTimeoutMs: 10_000,
-      useDockerNetwork: true,
-      maxConcurrentChecks: 4,
-    },
+    MONITOR_CONFIG,
     () => clock.now,
     options.observer ?? null,
   );
 
   return { monitor, whatsappCalls: () => whatsappCalls };
 }
+
+const MONITOR_CONFIG = {
+  pollIntervalMs: 15_000,
+  channelPollIntervalMs: CHANNEL_INTERVAL_MS,
+  channelStateMaxAgeMs: 600_000,
+  channelProbeMaxBackoffMs: 900_000,
+  degradedThreshold: 5,
+  unhealthyThreshold: 10,
+  requestTimeoutMs: 10_000,
+  channelProbeTimeoutMs: 10_000,
+  maxConcurrentChecks: 4,
+};
 
 test("a healthy row seen less than a minute ago is not rewritten; stale, degraded or recovering rows are", async () => {
   const clock = { now: 10_000_000 };
@@ -680,4 +687,100 @@ test("a runtime with no readiness signal never logs readiness at all", async () 
 
   assert.equal(warnings.filter((m) => m.includes("ready")).length, 0);
   assert.equal(infos.filter((m) => m.includes("ready")).length, 0);
+});
+
+test("an unreachable host: nothing is probed or written, and every bot is reported unknown", async () => {
+  const rows = [makeInstance({ id: "a", status: "degraded", healthFailures: 6 }), makeInstance({ id: "b" })];
+  const repo = new FakeRepo(rows);
+  const observer = new RecordingObserver();
+  const { rt, calls } = countingRuntime();
+  let reachable = false;
+  const { monitor, whatsappCalls } = createMonitor(
+    repo,
+    { gateway: async () => ({ healthy: true, degraded: null }), whatsapp: async () => "connected" },
+    { now: 0 },
+    silentLogger,
+    { observer, runtime: rt, reachable: () => reachable },
+  );
+
+  await monitor.pollAll();
+  assert.deepEqual(calls, { state: 0, byName: 0 });
+  assert.equal(repo.healthUpdates.length, 0);
+  assert.equal(whatsappCalls(), 0);
+  assert.deepEqual(observer.reports, [[{ id: "a", sample: "unknown" }, { id: "b", sample: "unknown" }]]);
+
+  reachable = true;
+  await monitor.pollAll();
+  assert.deepEqual(repo.healthUpdates.map((u) => [u.id, u.failures, u.status]), [["a", 0, "running"], ["b", 0, "running"]]);
+  assert.deepEqual(observer.reports.at(-1), [{ id: "a", sample: "live" }, { id: "b", sample: "live" }]);
+});
+
+test("hosts are gated one by one: an unreachable host reports unknown while a reachable one is probed", async () => {
+  const rows = [
+    makeInstance({ id: "a", hostId: "local-dev", hasWhatsappCreds: false, lastSeenAt: null }),
+    makeInstance({ id: "b", hostId: "worker-1", hasWhatsappCreds: false, lastSeenAt: null }),
+  ];
+  const repo = new FakeRepo(rows);
+  const observer = new RecordingObserver();
+  const probes: Record<string, number> = {};
+  const docker: Record<string, ReturnType<typeof countingRuntime>> = {};
+  const bundle = (hostId: string, reachable: boolean): HostRuntime => {
+    docker[hostId] = countingRuntime();
+    const adapter = {
+      kind: "openclaw",
+      probeGateway: async () => {
+        probes[hostId] = (probes[hostId] ?? 0) + 1;
+        return { healthy: true, degraded: null };
+      },
+    } as unknown as AgentRuntimeAdapter;
+    return {
+      hostId,
+      address: null,
+      capacityMb: null,
+      status: "active",
+      restartPolicy: "unless-stopped",
+      dockerNetwork: true,
+      runtime: docker[hostId].rt,
+      adapters: { get: () => adapter } as unknown as AgentRuntimeRegistry,
+      gate: { check: async () => reachable },
+    };
+  };
+  const bundles = { "local-dev": bundle("local-dev", true), "worker-1": bundle("worker-1", false) };
+  const hosts: HostRuntimes = {
+    for: (hostId) => bundles[hostId as keyof typeof bundles],
+    all: () => Object.values(bundles),
+  };
+  const monitor = new HealthMonitor(repo as never, hosts, silentLogger, MONITOR_CONFIG, () => 1_000, observer);
+
+  await monitor.pollAll();
+
+  assert.deepEqual(probes, { "local-dev": 1 });
+  assert.deepEqual(docker["worker-1"]?.calls, { state: 0, byName: 0 });
+  assert.deepEqual(repo.healthUpdates.map((u) => u.id), ["a"]);
+  assert.deepEqual(observer.reports, [[{ id: "a", sample: "live" }, { id: "b", sample: "unknown" }]]);
+});
+
+test("probes on a worker dial its address and the bot's published port", async () => {
+  const rows = [makeInstance({ id: "a", hostId: "worker-1", gatewayPort: 19042, hasWhatsappCreds: false, lastSeenAt: null })];
+  const repo = new FakeRepo(rows);
+  const dialed: string[] = [];
+  const adapter = {
+    kind: "openclaw",
+    internalPort: 18789,
+    probeGateway: async (_inst: Instance, _timeout: number, baseUrl: string) => {
+      dialed.push(baseUrl);
+      return { healthy: true, degraded: null };
+    },
+  } as unknown as AgentRuntimeAdapter;
+  const hosts = singleHost(
+    countingRuntime().rt,
+    { get: () => adapter } as unknown as AgentRuntimeRegistry,
+    { check: async () => true },
+    { address: "10.0.0.9", restartPolicy: "no" },
+  );
+  const monitor = new HealthMonitor(repo as never, hosts, silentLogger, MONITOR_CONFIG, () => 1_000, null);
+
+  await monitor.pollAll();
+
+  assert.deepEqual(dialed, ["http://10.0.0.9:19042"]);
 });

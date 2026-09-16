@@ -8,6 +8,7 @@ import type { AgentRuntimeRegistry } from "../src/services/agent-runtime/registr
 import type { AgentRuntimeAdapter } from "../src/services/agent-runtime/types.js";
 import type { Instance } from "../src/domain/types.js";
 import { makeInstance } from "./helpers/fixtures.js";
+import { singleHost } from "./helpers/host-runtimes.js";
 
 const SETTLED: ContainerState = { running: true, restarting: false, health: "healthy", startedAt: null };
 
@@ -79,6 +80,7 @@ function harness(options: {
   const adapter = {
     kind: "openclaw",
     image: "openclaw-image",
+    internalPort: 18789,
     probeGateway: async () => {
       probes += 1;
       return { healthy: options.gatewayLive ?? false, degraded: null };
@@ -94,10 +96,10 @@ function harness(options: {
   const logger = { info: () => {}, warn: () => {}, error: () => {} } as unknown as FastifyBaseLogger;
   const manager = new InstanceManager(
     repo as never,
-    runtime as unknown as ContainerRuntime,
-    registry,
+    singleHost(runtime as unknown as ContainerRuntime, registry),
     {} as never,
-    { maxProvisionRetries: 3, healthRequestTimeoutMs: 1_000, useDockerNetwork: false } as AppConfig,
+    { choose: () => "test-host" } as never,
+    { maxProvisionRetries: 3, healthRequestTimeoutMs: 1_000 } as AppConfig,
     { append: async () => {} } as never,
     {} as never,
     {} as never,

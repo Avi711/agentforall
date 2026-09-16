@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PairingManager } from "../src/services/pairing-manager.js";
 import type { InstanceRepository } from "../src/storage/instance-repository.js";
-import type { ContainerRuntime } from "../src/services/container-runtime.js";
+import type { ContainerRuntime, SidecarCreateOptions } from "../src/services/container-runtime.js";
+import type { HostRuntime } from "../src/services/host-runtimes.js";
 import type { EventRepository } from "../src/storage/event-repository.js";
 import type { Instance, PairingStatus } from "../src/domain/types.js";
 import type { PairingConfig } from "../src/config.js";
@@ -10,6 +11,7 @@ import { PairingSessionRegistry } from "../src/services/pairing-session-registry
 import { PairingSidecarClient } from "../src/services/pairing-sidecar-client.js";
 import { AgentRuntimeRegistry } from "../src/services/agent-runtime/registry.js";
 import type { AgentRuntimeAdapter } from "../src/services/agent-runtime/types.js";
+import { singleHost } from "./helpers/host-runtimes.js";
 
 test("startPairing serializes concurrent calls for the same instance", async () => {
   let pairingStatus: PairingStatus = "none";
@@ -212,6 +214,10 @@ const instance: Instance = {
   },
   createdAt: new Date(),
   updatedAt: new Date(),
+  movedFromHostId: null,
+  moveObjectName: null,
+  moveImportedAt: null,
+  movedAt: null,
   stoppedAt: null,
   destroyedAt: null,
 };
@@ -224,8 +230,6 @@ const pairingConfig: PairingConfig = {
   staleThresholdMs: 60_000,
   logLevel: "silent",
   orchestratorInternalUrl: "http://orchestrator:3000",
-  publishSidecarPort: false,
-  useDockerNetwork: false,
 };
 
 const logger = {
@@ -239,8 +243,9 @@ function createPairingManager(
   runtime: ContainerRuntime,
   eventLog: EventRepository,
   adapter?: AgentRuntimeAdapter,
+  host: Partial<Pick<HostRuntime, "address" | "dockerNetwork">> = {},
+  sessions = new PairingSessionRegistry(),
 ): PairingManager {
-  const sessions = new PairingSessionRegistry();
   const sidecarClient = new PairingSidecarClient(
     sessions,
     pairingConfig,
@@ -248,8 +253,7 @@ function createPairingManager(
   );
   return new PairingManager(
     repo,
-    runtime,
-    new AgentRuntimeRegistry(adapter ? [adapter] : []),
+    singleHost(runtime, new AgentRuntimeRegistry(adapter ? [adapter] : []), undefined, host),
     eventLog,
     pairingConfig,
     logger,
@@ -257,6 +261,38 @@ function createPairingManager(
     sidecarClient,
   );
 }
+
+test("the sidecar is dialed by name over the Docker network, by loopback in dev, and by the worker's address remotely", async () => {
+  const cases: {
+    host: Partial<Pick<HostRuntime, "address" | "dockerNetwork">>;
+    publish: SidecarCreateOptions["publish"] | undefined;
+    baseUrl: string;
+  }[] = [
+    { host: {}, publish: undefined, baseUrl: "http://pairing-4b86fc8b-ef1:18790" },
+    { host: { dockerNetwork: false }, publish: { port: 18790, bindIp: "127.0.0.1" }, baseUrl: "http://127.0.0.1:41000" },
+    { host: { address: "10.0.0.9" }, publish: { port: 18790, bindIp: "10.0.0.9" }, baseUrl: "http://10.0.0.9:41000" },
+  ];
+  for (const c of cases) {
+    const created: SidecarCreateOptions[] = [];
+    const repo = { updatePairing: async () => true } as unknown as InstanceRepository;
+    const runtime = {
+      removeIfExists: async () => undefined,
+      createSidecar: async (opts: SidecarCreateOptions) => {
+        created.push(opts);
+        return "sidecar-1";
+      },
+      start: async () => undefined,
+      getPublishedHostPort: async () => 41000,
+    } as unknown as ContainerRuntime;
+    const sessions = new PairingSessionRegistry();
+    const manager = createPairingManager(repo, runtime, { append: async () => undefined } as never, undefined, c.host, sessions);
+
+    await manager.startPairing(instance);
+
+    assert.deepEqual(created[0]?.publish, c.publish);
+    assert.equal(sessions.get(instance.id)?.sidecarBaseUrl, c.baseUrl);
+  }
+});
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

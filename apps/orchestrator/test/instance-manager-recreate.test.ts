@@ -2,11 +2,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { FastifyBaseLogger } from "fastify";
 import { InstanceManager } from "../src/services/instance-manager.js";
-import type { ContainerRuntime, ContainerState } from "../src/services/container-runtime.js";
+import type { ContainerCreateOptions, ContainerRuntime, ContainerState, RestartPolicy } from "../src/services/container-runtime.js";
 import type { AppConfig } from "../src/config.js";
 import type { AgentRuntimeRegistry } from "../src/services/agent-runtime/registry.js";
 import type { AgentRuntimeAdapter } from "../src/services/agent-runtime/types.js";
 import type { Instance } from "../src/domain/types.js";
+import { singleHost } from "./helpers/host-runtimes.js";
 
 test("recreate replaces the container and preserves the state volume", async () => {
   const repo = new FakeRepo({ ...baseInstance });
@@ -390,6 +391,17 @@ test("recreate marks error when the new container cannot be created", async () =
   assert.equal(repo.instance.status, "error");
 });
 
+test("the new container carries the host's restart policy", async () => {
+  for (const policy of ["unless-stopped", "no"] as const) {
+    const runtime = new FakeRuntime();
+    const manager = createManager(new FakeRepo({ ...baseInstance }), runtime, adapter(), {}, policy);
+
+    await manager.recreate(baseInstance.id, baseInstance.userId);
+
+    assert.deepEqual(runtime.createdPolicies, [policy]);
+  }
+});
+
 test("recreate rejects invalid states", async () => {
   const repo = new FakeRepo({ ...baseInstance, status: "provisioning" });
   const runtime = new FakeRuntime();
@@ -440,6 +452,7 @@ class FakeRuntime {
   readonly stoppedContainers: string[] = [];
   readonly removedContainers: string[] = [];
   readonly createdContainers: string[] = [];
+  readonly createdPolicies: RestartPolicy[] = [];
   readonly startedContainers: string[] = [];
   readonly createdVolumes: string[] = [];
   readonly removedVolumes: string[] = [];
@@ -467,8 +480,9 @@ class FakeRuntime {
     this.removedContainers.push(containerId);
   }
 
-  async create(): Promise<string> {
+  async create(opts: ContainerCreateOptions): Promise<string> {
     this.createdContainers.push("container-2");
+    this.createdPolicies.push(opts.restartPolicy);
     return "container-2";
   }
 
@@ -503,6 +517,7 @@ function adapter(options: { staleImage?: boolean; staleContainers?: string[] } =
   return {
     kind: "openclaw",
     image: "openclaw-image",
+    internalPort: 18789,
     maxBackupBytes: 1024,
     containerName: (id) => `openclaw-${id.slice(0, 12)}`,
     stateVolumeName: (id) => `oc-${id.slice(0, 12)}-state`,
@@ -515,6 +530,10 @@ function adapter(options: { staleImage?: boolean; staleContainers?: string[] } =
       throw new Error("not implemented");
     },
     restoreState: async () => {},
+    exportVolume: async () => {
+      throw new Error("not implemented");
+    },
+    importVolume: async () => {},
     probeGateway: async () => ({ healthy: true, degraded: null }),
     probeWhatsapp: async () => "unknown" as const,
     logoutWhatsapp: async () => ({ unlinked: true, cleared: true }),
@@ -533,15 +552,16 @@ function createManager(
   runtime: FakeRuntime,
   adapterImpl: AgentRuntimeAdapter,
   config: Partial<AppConfig> = {},
+  restartPolicy: RestartPolicy = "unless-stopped",
 ): InstanceManager {
   const registry = {
     get: () => adapterImpl,
   } as unknown as AgentRuntimeRegistry;
   return new InstanceManager(
     repo as never,
-    runtime as unknown as ContainerRuntime,
-    registry,
+    singleHost(runtime as unknown as ContainerRuntime, registry, undefined, { restartPolicy }),
     {} as never,
+    { choose: () => "test-host" } as never,
     { maxProvisionRetries: 3, ...config } as AppConfig,
     { append: async () => {} } as never,
     {
@@ -604,6 +624,10 @@ const baseInstance: Instance = {
   },
   createdAt: new Date(),
   updatedAt: new Date(),
+  movedFromHostId: null,
+  moveObjectName: null,
+  moveImportedAt: null,
+  movedAt: null,
   stoppedAt: null,
   destroyedAt: null,
 };
