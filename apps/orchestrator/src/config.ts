@@ -215,11 +215,12 @@ const AppConfigSchema = z.object({
     .min(60_000)
     .default(10 * 60_000),
   pairingRequestTimeoutMs: z.coerce.number().int().min(1000).default(5_000),
+  // A backstop for a dead pairing, measured from its start. The sidecar's idle timer is the live timeout, so this sits far above any real session.
   pairingStaleThresholdMs: z.coerce
     .number()
     .int()
     .min(60_000)
-    .default(15 * 60_000),
+    .default(60 * 60_000),
   pairingLogLevel: z
     .enum(["trace", "debug", "info", "warn", "error"])
     .default("info"),

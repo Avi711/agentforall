@@ -99,7 +99,8 @@ test("a number is claimed once, re-claimed by its own bot, refused to another, a
 });
 
 test("leases are oldest first per bot, capped per bot, skip rows another connection holds, and come back after expiry", { skip }, async () => {
-  const t0 = new Date("2026-09-10T10:00:00Z");
+  // Relative, never a fixed date: these rows outlive the test, and the sweeper test drops anything a week old.
+  const t0 = new Date(Date.now() - 10 * 60 * 1000);
   const a1 = await seedInbox(A, "wamid.a1", new Date(t0.getTime() + 1000));
   const a2 = await seedInbox(A, "wamid.a2", new Date(t0.getTime() + 2000));
   const a3 = await seedInbox(A, "wamid.a3", new Date(t0.getTime() + 3000));
@@ -157,6 +158,7 @@ test("the sweeper drops by age, retires old markers, reports a stale backlog and
   const now = Date.now();
   await seedInbox(A, "wamid.old", new Date(now - 8 * DAY));
   const acked = await seedInbox(A, "wamid.acked", new Date(now - 9 * DAY), null, { ackedAt: new Date(now - 9 * DAY), payload: null });
+  await seedInbox(A, "wamid.a-stale", new Date(now - 2 * 60 * 60 * 1000));
   await seedInbox(B, "wamid.stale", new Date(now - 2 * 60 * 60 * 1000));
   await db.insert(whatsappCloudNumbers).values({ phoneNumberId: "9000", instanceId: C, wabaId: "1000", pinEncrypted: "x" });
 
@@ -181,7 +183,7 @@ test("the sweeper drops by age, retires old markers, reports a stale backlog and
 });
 
 test("an owner-echo row is leased as an echo, in order with customer messages, never dropped as malformed", { skip }, async () => {
-  const t0 = new Date("2026-09-11T10:00:00Z");
+  const t0 = new Date(Date.now() - 60 * 1000);
   await seedInbox(D, "wamid.d1", t0);
   await seedInbox(D, "wamid.d2", new Date(t0.getTime() + 1000), { kind: "owner_echo", to: "972501234567" });
 

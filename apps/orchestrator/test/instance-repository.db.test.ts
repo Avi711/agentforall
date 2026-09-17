@@ -96,16 +96,24 @@ test("reads cover every managed host and nothing outside the set", { skip }, asy
   assert.equal((await both.findById(ON_B))?.status, "running");
 });
 
-test("findStalePairings returns only rows on the given hosts", { skip }, async () => {
+test("findStalePairings measures from the pairing start, per host, and a health heartbeat never keeps a pairing alive", { skip }, async () => {
   const repo = new InstanceRepository(db, KEY, new Set(["ir-a", "ir-b"]));
-  await repo.updatePairing(ON_A, { pairingStatus: "awaiting_qr" });
-  await repo.updatePairing(ON_B, { pairingStatus: "awaiting_qr" });
-  // updated_at is stamped by a trigger, so staleness is measured with a small threshold after a wait that beats clock skew.
-  await new Promise((resolve) => setTimeout(resolve, 3_000));
-  assert.deepEqual((await repo.findStalePairings(1_000, ["ir-a"])).map((i) => i.id), [ON_A]);
-  assert.deepEqual((await repo.findStalePairings(1_000, ["ir-a", "ir-b"])).map((i) => i.id).sort(), [ON_A, ON_B]);
-  assert.deepEqual(await repo.findStalePairings(1_000, []), []);
-  assert.deepEqual(await repo.findStalePairings(3_600_000, ["ir-a", "ir-b"]), [], "a fresh pairing is not stale");
+  const longAgo = new Date(Date.now() - 60 * 60 * 1000);
+  await repo.updatePairing(ON_A, { pairingStatus: "awaiting_qr", pairingStartedAt: longAgo });
+  await repo.updatePairing(ON_B, { pairingStatus: "awaiting_qr", pairingStartedAt: longAgo });
+  await repo.updateHealth(ON_A, 0, "running", { markSeen: true });
+
+  assert.deepEqual((await repo.findStalePairings(900_000, ["ir-a"])).map((i) => i.id), [ON_A]);
+  assert.deepEqual((await repo.findStalePairings(900_000, ["ir-a", "ir-b"])).map((i) => i.id).sort(), [ON_A, ON_B]);
+  assert.deepEqual(await repo.findStalePairings(900_000, []), []);
+
+  await repo.updatePairing(ON_B, { pairingStartedAt: new Date() });
+  assert.deepEqual((await repo.findStalePairings(900_000, ["ir-a", "ir-b"])).map((i) => i.id), [ON_A], "a fresh pairing is not stale");
+
+  // A pairing claimed before the column existed has no start: it is stale by definition.
+  await repo.updatePairing(ON_B, { pairingStartedAt: null });
+  assert.deepEqual((await repo.findStalePairings(900_000, ["ir-b"])).map((i) => i.id), [ON_B]);
+
   await repo.updatePairing(ON_A, { pairingStatus: "none" });
   await repo.updatePairing(ON_B, { pairingStatus: "none" });
 });

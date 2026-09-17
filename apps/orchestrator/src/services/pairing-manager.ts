@@ -83,7 +83,7 @@ export class PairingManager {
     // Mark DB before container creation so the reconciler can find orphans after a crash.
     const claimed = await this.repo.updatePairing(
       instance.id,
-      { pairingStatus: "awaiting_qr" },
+      { pairingStatus: "awaiting_qr", pairingStartedAt: new Date() },
       { expectedPairingStatus: ["none", "expired", "failed"] },
     );
     if (!claimed) {
@@ -410,14 +410,19 @@ export class PairingManager {
     const stale = await this.repo.findStalePairings(olderThanMs, hostIds);
     for (const inst of stale) {
       this.logger.warn({ instanceId: inst.id }, "expiring stale pairing");
-      const updated = await this.repo.updatePairing(
-        inst.id,
-        { pairingStatus: "expired" },
-        { expectedPairingStatus: ["awaiting_qr", "awaiting_code"] },
-      );
-      if (!updated) continue;
-      await this.eventLog.append(inst.id, "pair.timeout");
-      await this.teardownSidecar(inst.id, "expired");
+      try {
+        const updated = await this.repo.updatePairing(
+          inst.id,
+          { pairingStatus: "expired" },
+          { expectedPairingStatus: ["awaiting_qr", "awaiting_code"] },
+        );
+        if (!updated) continue;
+        await this.eventLog.append(inst.id, "pair.timeout");
+        await this.teardownSidecar(inst.id, "expired");
+      } catch (err) {
+        // One bot's failure must not keep the sweep from the rest; the next startPairing removes a leftover sidecar by name.
+        this.logger.warn({ instanceId: inst.id, err: errorMessage(err) }, "stale pairing not fully expired");
+      }
     }
   }
 

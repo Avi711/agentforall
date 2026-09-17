@@ -501,3 +501,51 @@ test("a pairing never starts on a bot whose whatsapp channel is gone, and the cl
   assert.equal(created, 0);
   assert.deepEqual(patches.at(-1), { pairingStatus: "failed" });
 });
+
+test("claiming a pairing stamps its start, the moment expiry is measured from", async () => {
+  const patches: Record<string, unknown>[] = [];
+  const repo = {
+    updatePairing: async (_id: string, patch: Record<string, unknown>) => {
+      patches.push(patch);
+      return true;
+    },
+    findById: async () => instance,
+  } as unknown as InstanceRepository;
+  const runtime = {
+    ensureImagePresent: async () => {
+      throw new UpstreamUnavailableError("image", "stop here");
+    },
+  } as unknown as ContainerRuntime;
+  const manager = createPairingManager(repo, runtime, { append: async () => undefined } as never);
+  const before = Date.now();
+
+  await assert.rejects(manager.startPairing(instance), UpstreamUnavailableError);
+  const claim = patches[0] as { pairingStatus: string; pairingStartedAt: Date };
+  assert.equal(claim.pairingStatus, "awaiting_qr");
+  assert.ok(claim.pairingStartedAt instanceof Date && claim.pairingStartedAt.getTime() >= before);
+});
+
+test("one pairing that cannot be torn down never keeps the sweep from expiring the next", async () => {
+  const expired: string[] = [];
+  const first = { ...instance, id: "11111111-1111-4111-8111-111111111111", pairingStatus: "awaiting_qr" as const };
+  const second = { ...instance, id: "22222222-2222-4222-8222-222222222222", pairingStatus: "awaiting_qr" as const };
+  const repo = {
+    findStalePairings: async () => [first, second],
+    updatePairing: async (id: string) => {
+      expired.push(id);
+      return true;
+    },
+    findById: async (id: string) => (id === first.id ? first : second),
+  } as unknown as InstanceRepository;
+  const runtime = {
+    findContainerByName: async (name: string) => {
+      if (name === `pairing-${first.id.slice(0, 12)}`) throw new Error("docker is not answering");
+      return null;
+    },
+  } as unknown as ContainerRuntime;
+  const manager = createPairingManager(repo, runtime, { append: async () => undefined } as never);
+
+  await manager.expireStale(1, [instance.hostId]);
+
+  assert.deepEqual(expired, [first.id, second.id]);
+});

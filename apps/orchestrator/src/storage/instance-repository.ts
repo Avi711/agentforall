@@ -1,4 +1,4 @@
-import { eq, ne, inArray, isNotNull, or, sql, asc, and } from "drizzle-orm";
+import { eq, ne, inArray, isNotNull, isNull, lt, or, sql, asc, and } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { instances, instanceSettings } from "@agent-forall/db";
 import {
@@ -31,6 +31,7 @@ export interface PairingUpdate {
   whatsappAccountId?: string | null;
   whatsappPaired?: boolean;
   lastSeenAt?: Date | null;
+  pairingStartedAt?: Date | null;
 }
 
 export interface PairingUpdateOptions {
@@ -368,6 +369,7 @@ export class InstanceRepository {
       set.whatsappAccountId = patch.whatsappAccountId;
     if (patch.whatsappPaired !== undefined) set.whatsappPaired = patch.whatsappPaired;
     if (patch.lastSeenAt !== undefined) set.lastSeenAt = patch.lastSeenAt;
+    if (patch.pairingStartedAt !== undefined) set.pairingStartedAt = patch.pairingStartedAt;
 
     const conditions = [eq(instances.id, id), this.ownedByHost()];
     if (options.expectedPairingStatus) {
@@ -528,7 +530,8 @@ export class InstanceRepository {
           this.ownedByHost(),
           inArray(instances.hostId, [...hostIds]),
           inArray(instances.pairingStatus, ["awaiting_qr", "awaiting_code"]),
-          sql`${instances.updatedAt} < ${cutoff}`,
+          // Never `updated_at`: every health heartbeat refreshes it. No start = claimed before the column existed.
+          or(isNull(instances.pairingStartedAt), lt(instances.pairingStartedAt, cutoff)),
         ),
       );
     return rows.map(toFleet);

@@ -1,0 +1,1 @@
+ALTER TABLE "instances" ADD COLUMN "pairing_started_at" timestamp with time zone;

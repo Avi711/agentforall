@@ -14,6 +14,7 @@ const migration0018 = readFileSync(new URL("../drizzle/0018_host_registration.sq
 const migration0019 = readFileSync(new URL("../drizzle/0019_host_capacity.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const migration0020 = readFileSync(new URL("../drizzle/0020_instance_move.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const migration0021 = readFileSync(new URL("../drizzle/0021_instance_settings.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const migration0022 = readFileSync(new URL("../drizzle/0022_pairing_started_at.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const journal = readFileSync(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 
 test("duplicate bootstrap migration is idempotent for clean databases", () => {
@@ -150,4 +151,11 @@ test("instance settings migration copies the two ciphertext columns before dropp
   assert.match(migration0021, /REFERENCES "public"\."instances"\("id"\) ON DELETE cascade/);
   assert.equal((migration0021.match(/DROP COLUMN/g) ?? []).length, 2);
   assert.match(journal, /"tag": "0021_instance_settings"/);
+});
+
+test("pairing start migration adds one nullable timestamp and nothing else", () => {
+  assert.match(migration0022, /ALTER TABLE "instances" ADD COLUMN "pairing_started_at" timestamp with time zone;/);
+  assert.equal((migration0022.match(/ALTER TABLE/g) ?? []).length, 1);
+  assert.doesNotMatch(migration0022, /NOT NULL/);
+  assert.match(journal, /"tag": "0022_pairing_started_at"/);
 });

@@ -73,6 +73,8 @@ export const instances = pgTable(
     })
       .notNull()
       .default("none"),
+    // Expiry is measured from here: `updated_at` is refreshed by every health heartbeat.
+    pairingStartedAt: timestamp("pairing_started_at", { withTimezone: true }),
     whatsappAccountId: varchar("whatsapp_account_id", { length: 64 }),
     whatsappPaired: boolean("whatsapp_paired").notNull().default(false),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),

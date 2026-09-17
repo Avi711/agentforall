@@ -14,7 +14,8 @@ if (url && /supabase|prod/i.test(url)) throw new Error("refusing to run the DB t
 
 const A = "11111111-1111-4111-8111-111111111111";
 const GONE = "33333333-3333-4333-8333-333333333333";
-const RECEIVED = new Date("2026-09-10T08:00:00Z");
+// Relative, never a calendar date: age-based sweeps elsewhere would start to bite.
+const RECEIVED = new Date(Date.now() - 60 * 60 * 1000);
 
 let pool: Pool;
 let db: Database;
