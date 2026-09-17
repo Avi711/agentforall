@@ -5,6 +5,8 @@ locals {
   )
   # Agent metrics come from every VM carrying the app label.
   fleet_filter = "resource.type=\"gce_instance\" AND metadata.user_labels.app=\"agent-forall\""
+  # Snap images mount as read-only loop devices that always report 100% used.
+  disk_used_filter = "${local.fleet_filter} AND metric.type=\"agent.googleapis.com/disk/percent_used\" AND metric.labels.state=\"used\" AND metric.labels.device != monitoring.regex.full_match(\"/dev/loop[0-9]+\")"
 }
 
 resource "google_monitoring_notification_channel" "email" {
@@ -127,7 +129,7 @@ resource "google_monitoring_alert_policy" "vm_disk_warning" {
   conditions {
     display_name = "Disk used above 75 percent"
     condition_threshold {
-      filter          = "${local.fleet_filter} AND metric.type=\"agent.googleapis.com/disk/percent_used\" AND metric.labels.state=\"used\""
+      filter          = local.disk_used_filter
       comparison      = "COMPARISON_GT"
       threshold_value = 75
       duration        = "300s"
@@ -149,7 +151,7 @@ resource "google_monitoring_alert_policy" "vm_disk_critical" {
   conditions {
     display_name = "Disk used above 85 percent"
     condition_threshold {
-      filter          = "${local.fleet_filter} AND metric.type=\"agent.googleapis.com/disk/percent_used\" AND metric.labels.state=\"used\""
+      filter          = local.disk_used_filter
       comparison      = "COMPARISON_GT"
       threshold_value = 85
       duration        = "300s"
