@@ -314,6 +314,14 @@ function buildPlugins(channels: InstanceConfig["channels"]): OpenclawConfig["plu
   };
 }
 
+// What a bot needs loaded to work: the business-number plugin is rendered everywhere, but only a bot with that channel depends on it.
+export function expectedOpenclawPlugins(channels: InstanceConfig["channels"]): string[] {
+  const hasBusinessNumber = channels.some((ch) => ch.type === "whatsapp_cloud");
+  return Object.keys(buildPlugins(channels)?.entries ?? {}).filter(
+    (id) => id !== WHATSAPP_CLOUD_PLUGIN_ID || hasBusinessNumber,
+  );
+}
+
 function buildChannels(channels: InstanceConfig["channels"], whatsappCloudRelayUrl: string): ChannelsConfig {
   const block: ChannelsConfig = {};
 

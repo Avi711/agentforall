@@ -5,6 +5,7 @@ import type { FleetInstance, Instance } from "../../../domain/types.js";
 import type {
   AgentRuntimeAdapter,
   ConfigApplyOutcome,
+  RuntimeCheck,
   RuntimeConfigFiles,
   GatewayLiveness,
   WhatsappLinkState,
@@ -184,6 +185,11 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
 
   async isOnCurrentImage(): Promise<boolean> {
     return true;
+  }
+
+  // Nothing beyond the gateway's health, which the manager already reports.
+  async verify(): Promise<RuntimeCheck[]> {
+    return [];
   }
 
   // Hermes has no owner concept in its config, so there is nothing to read back.

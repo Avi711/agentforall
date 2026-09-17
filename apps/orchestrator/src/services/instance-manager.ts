@@ -11,7 +11,7 @@ import type { EventRepository, ProvisioningEvent } from "../storage/event-reposi
 import type { PairingManager } from "./pairing-manager.js";
 import type { AppConfig } from "../config.js";
 import { dialUrl, type HostRuntime, type HostRuntimes } from "./host-runtimes.js";
-import type { AgentRuntimeAdapter, ConfigApplyOutcome } from "./agent-runtime/types.js";
+import type { AgentRuntimeAdapter, ConfigApplyOutcome, RuntimeCheck } from "./agent-runtime/types.js";
 import type {
   LlmKeyProvisioner,
   LiteLlmProvisionResult,
@@ -70,6 +70,16 @@ export interface MoveStorage extends AgentBackupRestoreStorage {
     contentType: string;
     body: Readable;
   }): Promise<{ contentLength: number }>;
+  deleteObjectsWithPrefix(prefix: string): Promise<void>;
+}
+
+// image is what the orchestrator builds bots from, so an operator can assert they are rolling what they think.
+export interface InstanceVerification {
+  status: InstanceStatus;
+  image: string;
+  onCurrentImage: boolean;
+  running: boolean;
+  checks: RuntimeCheck[];
 }
 
 export interface AgentBackupStream {
@@ -84,6 +94,7 @@ const RESTARTABLE_STATUSES: readonly InstanceStatus[] = ["running", "degraded", 
 const MOVABLE_STATUSES: readonly InstanceStatus[] = ["running", "degraded", "unhealthy", "stopped"];
 // A whole volume, session and media included; far above any bot seen so far.
 const MOVE_MAX_BYTES = 20 * 1024 * 1024 * 1024;
+const SNAPSHOT_PREFIX = "snapshots/";
 // A stalled archive stream must not hold the bot's lock forever; the size cap above bounds the honest case.
 const MOVE_STREAM_TIMEOUT_MS = 30 * 60 * 1000;
 
@@ -366,13 +377,20 @@ export class InstanceManager {
   }
 
   async recreate(id: string, userId: string): Promise<void> {
-    return this.operationLock.run(id, () => this.recreateLocked(id, userId));
+    return this.operationLock.run(id, async () =>
+      this.recreateLocked(await this.requireOwnedInstance(id, userId), userId),
+    );
+  }
+
+  // The operator's path (fleet image rollouts): no owner to check, and the event log records the system.
+  async recreateBySystem(id: string): Promise<void> {
+    return this.operationLock.run(id, async () => this.recreateLocked(await this.requireInstance(id)));
   }
 
   // Rebuilds the container from the currently configured runtime image; the state volume persists and,
   // once paired, owns the WhatsApp session: the pairing-time copy in the DB is never written over it.
-  private async recreateLocked(id: string, userId: string): Promise<void> {
-    const inst = await this.requireOwnedInstance(id, userId);
+  private async recreateLocked(inst: Instance, actor?: string): Promise<void> {
+    const id = inst.id;
     if (!["running", "degraded", "unhealthy", "error"].includes(inst.status)) {
       throw new InvalidStateError(inst.status, "running");
     }
@@ -389,7 +407,7 @@ export class InstanceManager {
       // the container is running now, so the row says so regardless.
       await this.repo.updateStatus(id, "running");
       await this.eventLog.append(id, "instance.recreated", {
-        actor: userId,
+        actor,
         payload: { containerId },
       });
       if (!(await runtime.waitForHealthy(containerId, STARTUP_SETTLE_MS))) {
@@ -417,11 +435,46 @@ export class InstanceManager {
     if (existing && (await runtime.isRunning(existing))) {
       await runtime.stop(existing);
     }
+    if (existing) await this.snapshotBeforeMigration(inst, existing);
     await adapter.prepareState(inst);
     if (existing) await runtime.remove(existing);
     const containerId = await this.ensureContainerExists({ ...inst, containerId: null });
     await this.repo.updateContainerId(inst.id, containerId);
     return containerId;
+  }
+
+  // Read-only, so it takes no lock; a bot mid-operation has no stable answer.
+  async verify(id: string): Promise<InstanceVerification> {
+    if (this.isOperating(id)) throw new ConflictError("the bot is under an operation");
+    const inst = await this.requireInstance(id);
+    const { runtime, adapters } = this.hosts.for(inst.hostId);
+    const adapter = adapters.get(inst.runtimeKind);
+    const containerId = await this.existingContainerId(inst);
+    const running = containerId !== null && (await runtime.isRunning(containerId));
+    return {
+      status: inst.status,
+      image: adapter.image,
+      onCurrentImage: containerId !== null && (await adapter.isOnCurrentImage(containerId)),
+      running,
+      checks: running && containerId ? await adapter.verify(containerId, inst) : [],
+    };
+  }
+
+  // A migration onto another image cannot be undone, so the stopped volume goes to the bucket first; a failure here fails the rebuild.
+  private async snapshotBeforeMigration(inst: Instance, containerId: string): Promise<void> {
+    if (!this.moveStorage) return;
+    const adapter = this.hosts.for(inst.hostId).adapters.get(inst.runtimeKind);
+    if (await adapter.isOnCurrentImage(containerId)) return;
+    const objectName = `${SNAPSHOT_PREFIX}${inst.id}/${new Date().toISOString()}.tar`;
+    const { contentLength } = await this.moveStorage.uploadObjectStream({
+      objectName,
+      contentType: "application/x-tar",
+      body: await adapter.exportVolume(containerId, AbortSignal.timeout(MOVE_STREAM_TIMEOUT_MS)),
+    });
+    if (contentLength <= 0 || contentLength > MOVE_MAX_BYTES) {
+      throw new Error(`volume snapshot is ${contentLength} bytes`);
+    }
+    await this.eventLog.append(inst.id, "instance.snapshot", { payload: { objectName, contentLength } });
   }
 
   // The row's id can be stale after a crash mid-rebuild; the name is the durable handle.
@@ -525,6 +578,10 @@ export class InstanceManager {
         await runtime.remove(inst.containerId);
       }
       await runtime.removeVolume(adapters.get(inst.runtimeKind).stateVolumeName(inst.id));
+      // Snapshots hold the bot's sessions; the bucket's 14-day rule is only the backstop.
+      await this.moveStorage
+        ?.deleteObjectsWithPrefix(`${SNAPSHOT_PREFIX}${inst.id}/`)
+        .catch((err) => this.logger.warn({ instanceId: id, err }, "volume snapshots not deleted"));
       await this.repo.updateStatus(id, "destroyed");
       this.logger.info({ instanceId: id }, "instance destroyed");
     } catch (err) {

@@ -46,7 +46,19 @@ resource "google_storage_bucket" "moves" {
       type = "Delete"
     }
     condition {
-      age = 2
+      age            = 2
+      matches_prefix = ["moves/"]
+    }
+  }
+
+  # The volume as it was before a rebuild onto another image: the rollback of an irreversible migration.
+  lifecycle_rule {
+    action {
+      type = "Delete"
+    }
+    condition {
+      age            = 14
+      matches_prefix = ["snapshots/"]
     }
   }
 

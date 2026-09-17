@@ -35,8 +35,8 @@ RUN openclaw plugins install "@openclaw/whatsapp@${OPENCLAW_VERSION}" --pin --ac
 COPY --chown=node:node packages/openclaw-plugin-credit /opt/agentforall/src/agentforall-credit
 COPY --chown=node:node packages/openclaw-plugin-media /opt/agentforall/src/agentforall-media
 COPY --chown=node:node packages/openclaw-channel-whatsapp-cloud /opt/agentforall/src/agentforall-whatsapp-cloud
-# The sources stay for rollout-plugin.sh; the tarballs stay because the install records their path
-# as its source. --force confirms a non-registry source and overwrites an existing install; --accept-
+# The tarballs stay: the install records their path as its source, and every rebuild converges a
+# bot's volume from them. --force confirms a non-registry source and overwrites an existing install; --accept-
 # capabilities is the non-interactive consent. One command per loop body, not an && chain: errexit
 # does not abort on a non-final member of a list.
 # `npm install` first: a plugin that declares bundleDependencies (the WhatsApp Business channel

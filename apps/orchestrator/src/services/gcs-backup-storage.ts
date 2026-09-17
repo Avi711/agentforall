@@ -114,6 +114,14 @@ export class GcsBackupStorage {
     }
   }
 
+  async deleteObjectsWithPrefix(prefix: string): Promise<void> {
+    try {
+      await this.bucketRef.deleteFiles({ prefix, force: true });
+    } catch (err) {
+      throw toGcsStorageError("delete", err);
+    }
+  }
+
   private file(objectName: string): File {
     return this.bucketRef.file(objectName);
   }

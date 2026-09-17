@@ -20,7 +20,7 @@ cat > /usr/local/sbin/agent-forall-admin <<'ADMINEOF'
 # Usage: agent-forall-admin <method> <path> [json]
 set -euo pipefail
 TOKEN=$(grep ^SERVICE_TOKENS= /home/deploy/agent-forall/.env.runtime | cut -d= -f2- | cut -d, -f1)
-curl -sS -X "$1" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" $${3:+--data "$3"} \
+curl -sS -X "$1" -H "Authorization: Bearer $TOKEN" $${3:+-H "Content-Type: application/json" --data "$3"} \
   -w "\nhttp %%{http_code} in %%{time_total}s\n" "http://${orchestrator_frontend_ip}:3000$2"
 ADMINEOF
 chmod 0755 /usr/local/sbin/agent-forall-admin

@@ -26,7 +26,7 @@ Open, in order:
    `whatsapp_cloud` channel instead of `withWhatsappOwnerNumber` adding a Baileys channel (`owner.ts:17`) and show
    "המספר שלי" for it (`BotCard.tsx:528`, `OwnerIdentityDialog` `whatsappAvailable`).
 5. Tech Provider (§12): business verification, access verification, app review; then publish the app.
-6. `WHATSAPP_CLOUD_ENABLED=true`; each tenant gets the plugin by `rollout-plugin.sh` before its own connect (§10).
+6. `WHATSAPP_CLOUD_ENABLED=true`; each tenant gets the plugin at its next rebuild (`infra/ops/recreate-tenants.sh`; every rebuild converges the image's plugins into the volume) before its own connect (§10).
 
 ## 1. Why not Baileys for business clients
 
@@ -406,7 +406,7 @@ denies `agentforall-customers__*`.
 
 Layout and packaging mirror `packages/openclaw-plugin-credit` (ESM JS, `openclaw.plugin.json`, `npm pack`
 → `openclaw plugins install "npm-pack:…" --force --accept-capabilities` in the Dockerfile; existing
-tenants via `infra/ops/rollout-plugin.sh --plugin agentforall-whatsapp-cloud --sentinel …`). Manifest:
+tenants at their next rebuild: `prepareState` installs every tarball the image ships, `infra/ops/recreate-tenants.sh` drives it). Manifest:
 `id`, `channels: ["whatsapp_cloud"]`, `channelConfigs.whatsapp_cloud.schema`, `contracts.tools`. TypeBox
 (the same package the bundled channels use) is bundled with the tarball; the peer range is pinned to
 `>=2026.8.2 <2026.9.0` because 2026.9 renames SDK symbols.

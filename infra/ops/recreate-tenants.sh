@@ -1,223 +1,147 @@
 #!/usr/bin/env bash
-# Rebuilds tenant containers on the orchestrator's currently configured runtime image. A container
-# keeps the image it was created with, so tenants drift apart as AGENT_RUNTIME_IMAGE moves on;
-# this brings them back to one image. The state volume (/home/node/.openclaw: config, credentials,
-# workspace) is not touched — recreate reattaches it by name.
-# Runs on the VM. Safe to rerun; a tenant already on the target image is skipped unless --force.
-# The orchestrator's recreate migrates the volume before the new container boots (doctor, WhatsApp
-# plugin pinned to the core version, config patch); a tarball of the volume is taken here first, as
-# the rollback of last resort next to the disk snapshot. Our own plugins live in the volume too and
-# are NOT refreshed by a recreate: run rollout-plugin.sh for each afterwards when they changed.
-# Stopped tenants are skipped; they are rebuilt on the current image by their next start.
-# Stops at the first failed tenant unless --keep-going.
-# Usage: bash recreate-tenants.sh --image <ref-or-digest> [--only <container|name|display-name>]
-#          [--force] [--keep-going] [--dry-run]
+# Rebuilds bots onto the orchestrator's runtime image, one at a time, through the admin API, on whichever host each
+# lives. The orchestrator snapshots the volume, migrates it and converges our plugins; this only loops and checks.
+# A bot is rebuilt when it is off the image, fails a check, or --force is given. Stopped bots are rebuilt by their next start.
+# Usage: sudo bash recreate-tenants.sh --image <ref> [--only <instanceId|containerName>] [--force] [--keep-going] [--list]
 set -euo pipefail
+# String comparison of ISO timestamps must be byte-wise.
+export LC_ALL=C
 
 IMAGE=""
 ONLY=""
 FORCE=0
 KEEP_GOING=0
-DRY_RUN=0
+LIST_ONLY=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --image) IMAGE="$2"; shift 2 ;;
-    --only) ONLY="$2"; shift 2 ;;
+    --image|--only)
+      [ $# -ge 2 ] || { echo "$1 needs a value" >&2; exit 2; }
+      if [ "$1" = "--image" ]; then IMAGE="$2"; else ONLY="$2"; fi
+      shift 2 ;;
     --force) FORCE=1; shift ;;
     --keep-going) KEEP_GOING=1; shift ;;
-    --dry-run) DRY_RUN=1; shift ;;
+    --list) LIST_ONLY=1; shift ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
-[ -n "$IMAGE" ] || { echo "--image is required: the ref tenants must end up on" >&2; exit 2; }
+[ -n "$IMAGE" ] || { echo "--image is required: the ref the bots must end up on" >&2; exit 2; }
 
-# The VM is a private source, which the public site refuses; the orchestrator's frontend IP is the ops path.
-API="http://172.16.0.10:3000"
-ENV_FILE="/home/deploy/agent-forall/.env.runtime"
-BACKUP_DIR="/home/deploy/backups"
-SNAPSHOT_IMAGE="alpine:3.22"
-MIN_FREE_KB=$((5 * 1024 * 1024))
-STAMP="$(date +%Y%m%d-%H%M%S)"
-TOKEN="$(sudo grep '^SERVICE_TOKENS=' "$ENV_FILE" | cut -d= -f2- | cut -d, -f1 | tr -d '"' || true)"
-[ -n "$TOKEN" ] || { echo "no SERVICE_TOKENS in $ENV_FILE" >&2; exit 1; }
+SETTLE_TIMEOUT_S=300
+POLL_S=10
 
-# The orchestrator creates from its own AGENT_RUNTIME_IMAGE, so a mismatch here would silently
-# rebuild tenants onto something other than what was asked for.
-PINNED="$(sudo grep '^AGENT_RUNTIME_IMAGE=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' || true)"
-[ "$PINNED" = "$IMAGE" ] || { echo "AGENT_RUNTIME_IMAGE is $PINNED, not $IMAGE" >&2; exit 1; }
-TARGET_ID="$(sudo docker image inspect --format '{{.Id}}' "$IMAGE" 2>/dev/null || true)"
-[ -n "$TARGET_ID" ] || { echo "$IMAGE is not pulled on this host" >&2; exit 1; }
-CORE_VERSION="$(sudo docker run --rm "$IMAGE" openclaw --version 2>/dev/null | awk '{ print $2 }' || true)"
-[ -n "$CORE_VERSION" ] || { echo "cannot read the core version from $IMAGE" >&2; exit 1; }
-
-# The snapshots hold WhatsApp credentials and the gateway token: operator-only.
-sudo install -d -m 700 "$BACKUP_DIR"
-sudo docker pull -q "$SNAPSHOT_IMAGE" >/dev/null
-
-admin_listing() {
-  curl -sf -H "Authorization: Bearer $TOKEN" "$API/api/v1/admin/instances"
+# agent-forall-admin prints the body, then a line "http <code> in <seconds>s".
+api() {
+  local out
+  CODE=""
+  out=$(agent-forall-admin "$@")
+  CODE=$(printf '%s\n' "$out" | sed -n 's/^http \([0-9]*\) in .*/\1/p' | tail -1)
+  BODY=$(printf '%s\n' "$out" | sed '/^http [0-9]* in /d')
 }
-row_status() {
-  admin_listing | python3 -c '
+
+# Sets ROWS to "<id> <status> <containerName> <healthFailures> <lastSeenAt|-> <runtimeKind>" per live bot.
+fleet() {
+  api GET /api/v1/admin/instances || return 1
+  [ "$CODE" = "200" ] || return 1
+  ROWS=$(printf '%s' "$BODY" | python3 -c '
 import json, sys
-rows = [r["instance"] for r in json.load(sys.stdin)["data"] if r["instance"]["id"] == sys.argv[1]]
-print(rows[0]["status"] if rows else "missing")' "$1"
-}
-
-LISTING="$(admin_listing)" || { echo "admin listing failed: token rejected or api down" >&2; exit 1; }
-LIST="$(printf '%s' "$LISTING" | python3 -c '
-import sys, json
 for row in json.load(sys.stdin)["data"]:
     i = row["instance"]
-    if i.get("runtimeKind") != "openclaw":
-        continue
-    has_wa = any(c.get("type") == "whatsapp" for c in (i["config"].get("channels") or []))
-    print("\t".join([i["id"], i["userId"], i.get("containerId") or "-", i["status"],
-                     json.dumps(i["config"]["displayName"]), "1" if has_wa else "0"]))
-')"
+    print(i["id"], i["status"], i["containerName"], i["healthFailures"], i.get("lastSeenAt") or "-", i.get("runtimeKind") or "-")
+')
+}
 
-ok=(); failed=(); skipped=(); matched=0
-while IFS=$'\t' read -r ID USER_ID CONTAINER STATUS NAME_JSON HAS_WA; do
-  [ -n "$ID" ] || continue
-  NAME="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]))' "$NAME_JSON")"
-  CNAME=""
-  if [ "$CONTAINER" != "-" ]; then
-    CNAME="$(sudo docker inspect --format '{{.Name}}' "$CONTAINER" 2>/dev/null | sed 's#^/##' || true)"
-  fi
-  # The orchestrator names containers openclaw-<12 hex>; a stale row id must not hide the tenant.
-  CNAME="${CNAME:-openclaw-${ID:0:12}}"
-  LABEL="$CNAME ($NAME)"
-  if [ -n "$ONLY" ] && [ "$ONLY" != "$CONTAINER" ] && [ "$ONLY" != "$CNAME" ] && [ "$ONLY" != "$NAME" ]; then
-    continue
-  fi
-  matched=$((matched + 1))
-  if [ "$CONTAINER" = "-" ]; then
-    echo "=== skipped $LABEL: no container on record, status=$STATUS ==="; skipped+=("$CNAME"); continue
-  fi
-  # recreate only accepts a live instance; a stopped one gets the new image on its next start.
-  case "$STATUS" in
+# Sets V_IMAGE, V_ON_IMAGE and V_FAILED (one failed check per line) from the verify report of bot $1; false when it has none.
+verify() {
+  local parsed
+  api GET "/api/v1/admin/instances/$1/verify" || return 1
+  [ "$CODE" = "200" ] || return 1
+  parsed=$(printf '%s' "$BODY" | python3 -c '
+import json, sys
+v = json.load(sys.stdin)
+print(v["image"])
+print("1" if v["onCurrentImage"] else "0")
+for c in v["checks"]:
+    if not c["ok"]:
+        print("%s: %s" % (c["name"], c["detail"]))
+')
+  V_IMAGE=$(sed -n 1p <<<"$parsed")
+  V_ON_IMAGE=$(sed -n 2p <<<"$parsed")
+  V_FAILED=$(sed -n '3,$p' <<<"$parsed")
+}
+
+print_failed_checks() {
+  [ -n "$V_FAILED" ] || return 0
+  while IFS= read -r line; do echo "  check failed: $line"; done <<<"$V_FAILED"
+}
+
+fleet || { echo "admin list failed (http ${CODE:-none})" >&2; exit 1; }
+mapfile -t BOTS < <(awk -v only="$ONLY" '$6 == "openclaw" && (only == "" || $1 == only || $3 == only) { print $1, $2, $3 }' <<<"$ROWS")
+# A typo in --only must not read as a clean run.
+[ "${#BOTS[@]}" -gt 0 ] || { echo "no openclaw bot${ONLY:+ matches $ONLY}" >&2; exit 1; }
+
+ok=(); skipped=(); failed=()
+for entry in "${BOTS[@]}"; do
+  read -r id status cname <<<"$entry"
+  label="$cname ($id)"
+  # The same set the orchestrator's recreate accepts.
+  case "$status" in
     running|degraded|unhealthy|error) ;;
-    *) echo "=== skipped $LABEL: status=$STATUS ==="; skipped+=("$CNAME"); continue ;;
+    *) echo "=== skipped $label: status=$status ==="; skipped+=("$cname"); continue ;;
   esac
-  CURRENT="$(sudo docker inspect --format '{{.Image}}' "$CONTAINER" 2>/dev/null || true)"
-  if [ "$FORCE" = 0 ] && [ "$CURRENT" = "$TARGET_ID" ]; then
-    echo "=== skipped $LABEL: already on the target image ==="; skipped+=("$CNAME"); continue
+
+  if ! verify "$id"; then
+    echo "=== $label: no verify report (http ${CODE:-none}): $BODY ===" >&2
+    failed+=("$cname")
+    if [ "$KEEP_GOING" = "1" ]; then continue; else break; fi
   fi
-  echo "=== $LABEL, status=$STATUS, ${CURRENT:0:19} -> ${TARGET_ID:0:19} ==="
-  if [ "$DRY_RUN" = 1 ]; then echo "  would recreate"; continue; fi
+  # The orchestrator builds from its own configured image; a mismatch would rebuild bots onto something else than asked.
+  [ "$V_IMAGE" = "$IMAGE" ] || { echo "the orchestrator's runtime image is $V_IMAGE, not $IMAGE" >&2; exit 1; }
+  if [ "$V_ON_IMAGE" = "1" ] && [ -z "$V_FAILED" ] && [ "$FORCE" = "0" ]; then
+    echo "=== skipped $label: on the image, every check passes ==="; skipped+=("$cname"); continue
+  fi
+  echo "=== $label, status=$status, on the image: $V_ON_IMAGE ==="
+  print_failed_checks
+  [ "$LIST_ONLY" = "1" ] && continue
 
-  set +e
-  (
-    set -euo pipefail
-    # The snapshot lands on the disk that holds every tenant volume; never fill it.
-    AVAIL_KB="$(df --output=avail -k "$BACKUP_DIR" | tail -1)"
-    [ "$AVAIL_KB" -ge "$MIN_FREE_KB" ] || { echo "  under 5 GiB free on the disk" >&2; exit 1; }
-    # Live snapshot of the volume as it was under the old image; consistent enough for a rollback
-    # to that image, whose stores are JSON files.
-    VOLUME="$(sudo docker inspect --format '{{range .Mounts}}{{if eq .Destination "/home/node/.openclaw"}}{{.Name}}{{end}}{{end}}' "$CONTAINER")"
-    [ -n "$VOLUME" ] || { echo "  no state volume mounted" >&2; exit 1; }
-    SNAPSHOT="$VOLUME-pre-$STAMP.tar.gz"
-    sudo docker run --rm -v "$VOLUME:/st:ro" -v "$BACKUP_DIR:/out" "$SNAPSHOT_IMAGE" \
-      tar -czf "/out/$SNAPSHOT" -C /st .
-    sudo chmod 600 "$BACKUP_DIR/$SNAPSHOT"
-    echo "  volume snapshot: $BACKUP_DIR/$SNAPSHOT"
-
-    # Worst case server-side: doctor 15 min + plugin install 5 min + 2 min health wait.
-    RESP="$(mktemp)"
-    CODE="$(curl -sS -m 1500 -X POST "$API/api/v1/instances/$ID/recreate" \
-      -H "Authorization: Bearer $TOKEN" -H "x-act-as-user: $USER_ID" -o "$RESP" -w '%{http_code}' || true)"
-    case "$CODE" in
-      2*) rm -f "$RESP" ;;
-      *) echo "  recreate returned ${CODE:-no response}: $(head -c 300 "$RESP")" >&2; rm -f "$RESP"; exit 1 ;;
-    esac
-
-    # The container id changes, so every check below has to resolve it again by name.
-    NEW=""
-    for _ in $(seq 1 30); do
-      NEW="$(sudo docker ps -q --filter "name=^/${CNAME}$")"
-      [ -n "$NEW" ] && break
-      sleep 4
-    done
-    [ -n "$NEW" ] || { echo "  no container came back" >&2; exit 1; }
-    [ "$(sudo docker inspect --format '{{.Image}}' "$NEW")" = "$TARGET_ID" ] \
-      || { echo "  came back on the wrong image" >&2; exit 1; }
-
-    for _ in $(seq 1 45); do
-      [ "$(sudo docker inspect --format '{{.State.Health.Status}}' "$NEW")" = "healthy" ] && break
-      sleep 4
-    done
-    [ "$(sudo docker inspect --format '{{.State.Health.Status}}' "$NEW")" = "healthy" ] \
-      || { echo "  never became healthy" >&2; exit 1; }
-
-    # The tenant's own config must survive the swap: OpenClaw restores its last-good over an
-    # externally written file, so a missing orchestrator-owned key means the patch was reverted.
-    # Doctor keeps plugin entries on its own, so the heartbeat is the key that proves the patch.
-    for key in '"agentforall-credit"' '"agentforall"' '"heartbeat"'; do
-      sudo docker exec "$NEW" grep -q "$key" /home/node/.openclaw/openclaw.json \
-        || { echo "  config lost $key" >&2; exit 1; }
-    done
-    # An entry is not a loaded plugin: one installed from a path that no longer exists stays in
-    # the config and silently fails to load. The boot line names what actually loaded; a channel
-    # plugin is loaded only when its channel is configured.
-    for p in $([ "$HAS_WA" = 1 ] && echo whatsapp) agentforall-credit agentforall-media; do
-      sudo docker logs "$NEW" 2>&1 | grep "http server listening" | tail -1 | grep -qF -- "$p" \
-        || { echo "  plugin $p did not load; run rollout-plugin.sh" >&2; exit 1; }
-    done
-    # The WhatsApp plugin lives in the volume, channel or not, and must match the core.
-    sudo docker exec "$NEW" openclaw plugins list --json 2>/dev/null | python3 -c '
-import json, sys
-want = sys.argv[1]
-found = [p for p in json.load(sys.stdin).get("plugins", []) if p.get("id") == "whatsapp"]
-got = found[0].get("version") if found else None
-if got != want:
-    print("  whatsapp plugin is %s, core is %s" % (got, want))
-    sys.exit(1)' "$CORE_VERSION" || exit 1
-    # The gateway's own startup state, independent of channel links.
-    sudo docker exec "$NEW" curl -fsS http://127.0.0.1:18789/startupz >/dev/null \
-      || { echo "  /startupz not 200" >&2; exit 1; }
-    # A bind of a missing host path is a directory, which Node would ignore: prove the relay trusts our CA.
-    sudo docker exec "$NEW" test -d /etc/agent-forall/ca.crt       && { echo "  /etc/agent-forall/ca.crt is a directory: the host CA file is missing" >&2; exit 1; }
-    if sudo docker exec "$NEW" test -f /etc/agent-forall/ca.crt; then
-      [ "$(sudo docker exec "$NEW" curl -s -m 10 --cacert /etc/agent-forall/ca.crt -o /dev/null -w '%{http_code}' "https://orchestrator.internal/api/v1/mcp/$ID")" = "401" ] \
-        || { echo "  relay via orchestrator.internal not reachable with the tenant CA" >&2; exit 1; }
-    fi
-    # Migration state is proven by the boot (/startupz) and a valid config. Doctor's findings are the
-    # tenant's own policy audit (open DMs, unreachable MCP servers, plaintext tokens): shown, not
-    # fatal; doctor may exit non-zero on warnings alone, hence the || true on its exit code only.
-    sudo docker exec "$NEW" openclaw config validate >/dev/null 2>&1 \
-      || { echo "  config does not validate" >&2; exit 1; }
-    (sudo docker exec "$NEW" openclaw doctor --json 2>/dev/null || true) | python3 -c '
-import json, sys
-try:
-    findings = json.loads(sys.stdin.read()).get("findings", [])
-except ValueError:
-    print("  doctor produced no report")
-    sys.exit(1)
-for f in findings:
-    print("  doctor [%s]: %s" % (f.get("severity") or f.get("level"), str(f.get("message"))[:120]))'
-    sudo docker exec "$NEW" grep -q 'agentforall:begin' /home/node/.openclaw/workspace/AGENTS.md \
-      || { echo "  workspace guidance missing" >&2; exit 1; }
-    # The container is up; the row must agree, or the dashboard shows a healthy bot as off.
-    ROW="$(row_status "$ID")"
-    case "$ROW" in
-      running|degraded|unhealthy) ;;
-      *) echo "  db status is $ROW after a healthy recreate" >&2; exit 1 ;;
-    esac
-    echo "  ok: on the target image, healthy, migrated, config intact, whatsapp plugin $CORE_VERSION"
-  )
-  RC=$?
-  set -e
-  if [ "$RC" -eq 0 ]; then
-    ok+=("$CNAME")
+  rc=0
+  api POST "/api/v1/admin/instances/$id/recreate"
+  if [ "$CODE" != "204" ]; then
+    echo "  recreate failed (http ${CODE:-none}): $BODY" >&2; rc=1
   else
-    failed+=("$CNAME"); echo "  FAILED (rc=$RC)"
-    if [ "$KEEP_GOING" = 0 ]; then echo "stopping at the first failure (--keep-going to continue)"; break; fi
+    # Taken after the call returns: only a heartbeat from the new container counts.
+    started=$(date -u +%Y-%m-%dT%H:%M:%S)
+    waited=0
+    while :; do
+      if fleet; then
+        read -r now failures seen <<<"$(awk -v id="$id" '$1 == id { print $2, $4, $5 }' <<<"$ROWS")"
+        if [ "$now" = "running" ] && [ "$failures" = "0" ] && [ "$seen" != "-" ] && [[ "$seen" > "$started" ]]; then break; fi
+        last="status=$now failures=$failures seen=$seen"
+      else
+        last="the admin API did not answer (http ${CODE:-none})"
+      fi
+      if [ "$waited" -ge "$SETTLE_TIMEOUT_S" ]; then echo "  not healthy after ${SETTLE_TIMEOUT_S}s: $last" >&2; rc=1; break; fi
+      sleep "$POLL_S"
+      waited=$((waited + POLL_S))
+    done
   fi
-done <<< "$LIST"
+  if [ "$rc" = "0" ]; then
+    if ! verify "$id"; then
+      echo "  no verify report after the rebuild (http ${CODE:-none}): $BODY" >&2; rc=1
+    else
+      [ "$V_ON_IMAGE" = "1" ] || { echo "  came back off the image" >&2; rc=1; }
+      [ -z "$V_FAILED" ] || { print_failed_checks >&2; rc=1; }
+    fi
+  fi
 
-if [ -n "$ONLY" ] && [ "$matched" -eq 0 ]; then
-  echo "--only '$ONLY' matched no tenant" >&2; exit 1
-fi
+  if [ "$rc" = "0" ]; then
+    echo "  ok: on the image, healthy, every check passes"; ok+=("$cname")
+  else
+    failed+=("$cname")
+    if [ "$KEEP_GOING" = "0" ]; then echo "stopping at the first failure (--keep-going to continue)"; break; fi
+  fi
+done
+
+[ "$LIST_ONLY" = "1" ] && exit 0
 echo
 echo "ok (${#ok[@]}): ${ok[*]:-}"
 echo "skipped (${#skipped[@]}): ${skipped[*]:-}"

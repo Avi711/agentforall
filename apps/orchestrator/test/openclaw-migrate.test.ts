@@ -110,6 +110,16 @@ test("state preparation runs doctor, then the WhatsApp plugin install, on the ba
       ],
       volumes: ["oc-1-state"],
     },
+    {
+      name: "openclaw-1-own-plugins",
+      cmd: [
+        "sh",
+        "-c",
+        "set -e; ls /opt/agentforall/plugins/*.tgz >/dev/null; " +
+          'for t in /opt/agentforall/plugins/*.tgz; do openclaw plugins install "npm-pack:$t" --force --accept-capabilities; done',
+      ],
+      volumes: ["oc-1-state"],
+    },
   ]);
 });
 

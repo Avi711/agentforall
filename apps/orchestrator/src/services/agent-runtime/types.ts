@@ -45,6 +45,13 @@ export interface WhatsappLogoutResult {
   cleared: boolean;
 }
 
+// One named invariant of a running bot; detail says what is wrong, null when it holds.
+export interface RuntimeCheck {
+  name: string;
+  ok: boolean;
+  detail: string | null;
+}
+
 export interface AgentRuntimeAdapter {
   kind: AgentRuntimeKind;
   image: string;
@@ -88,4 +95,6 @@ export interface AgentRuntimeAdapter {
   seedWorkspace(containerId: string): Promise<void>;
   // false for a container built from another image, or one that is gone; its config is not ours to write.
   isOnCurrentImage(containerId: string): Promise<boolean>;
+  // The runtime's own lasting invariants on a running container; read-only.
+  verify(containerId: string, instance: Instance): Promise<RuntimeCheck[]>;
 }

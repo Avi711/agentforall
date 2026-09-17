@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { Readable } from "node:stream";
 import assert from "node:assert/strict";
 import type { FastifyBaseLogger } from "fastify";
 import { InstanceManager } from "../src/services/instance-manager.js";
@@ -563,6 +564,7 @@ function adapter(options: { staleImage?: boolean; staleContainers?: string[] } =
     prepareState: async () => {},
     seedWorkspace: async () => {},
     isOnCurrentImage: async (containerId) => !stale.has(containerId),
+    verify: async () => [],
   };
 }
 
@@ -572,6 +574,7 @@ function createManager(
   adapterImpl: AgentRuntimeAdapter,
   config: Partial<AppConfig> = {},
   restartPolicy: RestartPolicy = "unless-stopped",
+  extras: { moveStorage?: unknown; events?: { type: string; actor?: string }[] } = {},
 ): InstanceManager {
   const registry = {
     get: () => adapterImpl,
@@ -582,7 +585,11 @@ function createManager(
     {} as never,
     { choose: () => "test-host" } as never,
     { maxProvisionRetries: 3, ...config } as AppConfig,
-    { append: async () => {} } as never,
+    {
+      append: async (_id: string, type: string, opts?: { actor?: string }) => {
+        extras.events?.push({ type, actor: opts?.actor });
+      },
+    } as never,
     {
       logoutWhatsapp: async () => {},
       teardownSidecar: async () => {},
@@ -592,6 +599,12 @@ function createManager(
       revokeKey: async () => {},
     } as never,
     fakeLogger,
+    null,
+    undefined,
+    null,
+    null,
+    null,
+    (extras.moveStorage ?? null) as never,
   );
 }
 
@@ -650,3 +663,112 @@ const baseInstance: Instance = {
   stoppedAt: null,
   destroyedAt: null,
 };
+
+test("an operator's recreate needs no owner and is recorded as the system's, while the owner's route still checks ownership", async () => {
+  const repo = new FakeRepo({ ...baseInstance });
+  const runtime = new FakeRuntime();
+  const events: { type: string; actor?: string }[] = [];
+  const manager = createManager(repo, runtime, adapter(), {}, "unless-stopped", { events });
+
+  await manager.recreateBySystem(baseInstance.id);
+
+  assert.deepEqual(runtime.removedContainers, ["container-1"]);
+  assert.equal(repo.instance.status, "running");
+  assert.deepEqual(events.filter((e) => e.type === "instance.recreated"), [{ type: "instance.recreated", actor: undefined }]);
+  await assert.rejects(manager.recreate(baseInstance.id, "someone-else"));
+});
+
+test("a rebuild onto another image snapshots the stopped volume to the bucket before the migration", async () => {
+  const repo = new FakeRepo({ ...baseInstance });
+  const runtime = new FakeRuntime();
+  const order: string[] = [];
+  const events: { type: string; actor?: string }[] = [];
+  const moveStorage = {
+    uploadObjectStream: async (input: { objectName: string }) => {
+      order.push(`snapshot:${input.objectName.split("/").slice(0, 2).join("/")}:stopped=${runtime.stoppedContainers.length}`);
+      return { contentLength: 1024 };
+    },
+  };
+  const manager = createManager(
+    repo,
+    runtime,
+    {
+      ...adapter({ staleImage: true }),
+      exportVolume: async () => Readable.from(["tar"]),
+      prepareState: async () => void order.push(`prepare:removed=${runtime.removedContainers.length}`),
+    },
+    {},
+    "unless-stopped",
+    { moveStorage, events },
+  );
+
+  await manager.recreateBySystem(baseInstance.id);
+
+  assert.deepEqual(order, [`snapshot:snapshots/${baseInstance.id}:stopped=1`, "prepare:removed=0"]);
+  assert.ok(events.some((e) => e.type === "instance.snapshot"));
+});
+
+test("no snapshot when the container is already on the current image or no bucket is configured", async () => {
+  const uploads: string[] = [];
+  const moveStorage = { uploadObjectStream: async (input: { objectName: string }) => (uploads.push(input.objectName), { contentLength: 1 }) };
+
+  const onImage = createManager(new FakeRepo({ ...baseInstance }), new FakeRuntime(), adapter(), {}, "unless-stopped", { moveStorage });
+  await onImage.recreateBySystem(baseInstance.id);
+
+  const noBucket = createManager(new FakeRepo({ ...baseInstance }), new FakeRuntime(), adapter({ staleImage: true }));
+  await noBucket.recreateBySystem(baseInstance.id);
+
+  assert.deepEqual(uploads, []);
+});
+
+test("a snapshot that fails stops the rebuild before the migration: the old container stays, the bot is stopped", async () => {
+  const repo = new FakeRepo({ ...baseInstance });
+  const runtime = new FakeRuntime();
+  let prepared = 0;
+  const moveStorage = {
+    uploadObjectStream: async () => {
+      throw new Error("bucket unavailable");
+    },
+  };
+  const manager = createManager(
+    repo,
+    runtime,
+    { ...adapter({ staleImage: true }), exportVolume: async () => Readable.from(["tar"]), prepareState: async () => void (prepared += 1) },
+    {},
+    "unless-stopped",
+    { moveStorage },
+  );
+
+  await assert.rejects(manager.recreateBySystem(baseInstance.id), /bucket unavailable/);
+
+  assert.equal(prepared, 0);
+  assert.deepEqual(runtime.removedContainers, []);
+  assert.equal(repo.instance.status, "stopped");
+});
+
+test("verify reports the configured image and whether the bot is on it, and runs the runtime's checks on a running container", async () => {
+  const check = { name: "plugins loaded", ok: true, detail: null };
+  const fresh = createManager(new FakeRepo({ ...baseInstance }), new FakeRuntime(), { ...adapter(), verify: async () => [check] });
+  assert.deepEqual(await fresh.verify(baseInstance.id), {
+    status: "running",
+    image: "openclaw-image",
+    onCurrentImage: true,
+    running: true,
+    checks: [check],
+  });
+
+  const stale = createManager(new FakeRepo({ ...baseInstance }), new FakeRuntime(), { ...adapter({ staleImage: true }), verify: async () => [check] });
+  assert.equal((await stale.verify(baseInstance.id)).onCurrentImage, false);
+});
+
+test("verify refuses a bot that is under an operation", async () => {
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  const manager = createManager(new FakeRepo({ ...baseInstance }), new FakeRuntime(), { ...adapter(), prepareState: () => held });
+
+  const rebuild = manager.recreateBySystem(baseInstance.id);
+  await new Promise((resolve) => setImmediate(resolve));
+  await assert.rejects(manager.verify(baseInstance.id), /under an operation/);
+  release();
+  await rebuild;
+});

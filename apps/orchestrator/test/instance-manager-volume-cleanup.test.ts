@@ -212,6 +212,7 @@ const openclawAdapter: AgentRuntimeAdapter = {
   prepareState: async () => {},
   seedWorkspace: async () => {},
   isOnCurrentImage: async () => true,
+  verify: async () => [],
   probeWhatsapp: async () => "unknown" as const,
   logoutWhatsapp: async () => ({ unlinked: true, cleared: true }),
   listWhatsappPairingRequests: async () => [],
@@ -226,6 +227,7 @@ function createManager(
   adapter: AgentRuntimeAdapter,
   integrationCleanup: IntegrationCleanup | null = null,
   channelLock: InstanceOperationLock | null = null,
+  moveStorage: unknown = null,
 ): InstanceManager {
   const registry = {
     get: () => adapter,
@@ -251,6 +253,7 @@ function createManager(
     null,
     integrationCleanup,
     channelLock,
+    moveStorage as never,
   );
 }
 
@@ -342,4 +345,23 @@ test("destroy takes the channel lock before the instance lock, so a WhatsApp Bus
 
   assert.deepEqual(order, ["connect saved", "destroy cleanup"]);
   assert.equal(repo.instance.status, "destroyed");
+});
+
+test("destroy deletes the bot's volume snapshots, and a bucket failure never blocks the destroy", async () => {
+  const prefixes: string[] = [];
+  const repo = new FakeRepo({ ...baseInstance });
+  const manager = createManager(repo, new FakeRuntime(), openclawAdapter, null, null, {
+    deleteObjectsWithPrefix: async (prefix: string) => void prefixes.push(prefix),
+  });
+  await manager.destroy(baseInstance.id, baseInstance.userId);
+  assert.deepEqual(prefixes, [`snapshots/${baseInstance.id}/`]);
+
+  const failing = new FakeRepo({ ...baseInstance });
+  const stubborn = createManager(failing, new FakeRuntime(), openclawAdapter, null, null, {
+    deleteObjectsWithPrefix: async () => {
+      throw new Error("bucket unavailable");
+    },
+  });
+  await stubborn.destroy(baseInstance.id, baseInstance.userId);
+  assert.equal(failing.instance.status, "destroyed");
 });

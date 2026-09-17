@@ -14,6 +14,7 @@ import type {
   ChannelStartOutcome,
   ConfigApplyOutcome,
   GatewayLiveness,
+  RuntimeCheck,
   RuntimeConfigFiles,
   WhatsappPairingRequest,
   WhatsappLinkState,
@@ -31,9 +32,11 @@ import {
   generateOpenclawFiles,
   generateRuntimePatchedOpenclawFiles,
   configMatches,
+  expectedOpenclawPlugins,
   readOwnerAllowFrom,
 } from "./config.js";
 import { prepareOpenclawState, seedOpenclawWorkspace } from "./migrate.js";
+import { verifyOpenclaw } from "./verify.js";
 import { buildConfigApplyCommand, parseConfigApplyOutput } from "./config-rpc.js";
 import type { ConfigApplyResult } from "./config-rpc.js";
 import {
@@ -320,6 +323,18 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   async readOwnerIds(containerId: string): Promise<string[]> {
     return readOwnerAllowFrom(await this.requireConfig(containerId));
+  }
+
+  async verify(containerId: string, instance: Instance): Promise<RuntimeCheck[]> {
+    return verifyOpenclaw(this.runtime, containerId, {
+      expectedPlugins: expectedOpenclawPlugins(instance.config.channels),
+      ownedConfigInPlace: async () => {
+        const live = await this.readConfig(containerId);
+        if (live === null) return false;
+        const patched = generateRuntimePatchedOpenclawFiles(live, instance.config, instance.gatewayToken, this.relayUrls(instance));
+        return configMatches(live, patched.configJson);
+      },
+    });
   }
 
   // Null means the container genuinely has no config yet, which only a freshly created one can be.

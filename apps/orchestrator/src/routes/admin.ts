@@ -6,7 +6,7 @@ import { sanitizeInstance } from "./instances.js";
 
 export interface AdminRouteDeps {
   overview: AdminOverviewService;
-  manager: Pick<InstanceManager, "move">;
+  manager: Pick<InstanceManager, "move" | "recreateBySystem" | "verify">;
 }
 
 const UuidParam = z.object({ id: z.string().uuid() });
@@ -31,5 +31,16 @@ export const adminRoutes: FastifyPluginAsync<AdminRouteDeps> = async (app, deps)
     const body = MoveBody.parse(request.body);
     await deps.manager.move(id, body.targetHostId, { dryRun: body.dryRun ?? false });
     return reply.status(204).send();
+  });
+
+  app.post("/instances/:id/recreate", { config: { serviceScope: true } }, async (request, reply) => {
+    const { id } = UuidParam.parse(request.params);
+    await deps.manager.recreateBySystem(id);
+    return reply.status(204).send();
+  });
+
+  app.get("/instances/:id/verify", { config: { serviceScope: true } }, async (request, reply) => {
+    const { id } = UuidParam.parse(request.params);
+    return reply.send(await deps.manager.verify(id));
   });
 };

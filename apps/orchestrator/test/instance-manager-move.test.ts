@@ -690,6 +690,7 @@ class FakeRuntime {
       seedWorkspace: async () => {},
       isOnCurrentImage: async (containerId) =>
         containerId !== runtime.options.existing || (runtime.options.existingOnCurrentImage ?? true),
+      verify: async () => [],
     };
   }
 }
@@ -724,6 +725,8 @@ class FakeStorage implements MoveStorage {
     this.order.push("delete");
     this.deleted.push(objectName);
   }
+
+  async deleteObjectsWithPrefix(): Promise<void> {}
 }
 
 function harness(

@@ -15,10 +15,10 @@ LIMIT=0
 LIST_ONLY=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --from) FROM="${2:-}"; shift 2 ;;
-    --to) TO="${2:-}"; shift 2 ;;
-    --only) ONLY="${2:-}"; shift 2 ;;
-    --limit) LIMIT="${2:-}"; shift 2 ;;
+    --from|--to|--only|--limit)
+      [ $# -ge 2 ] || { echo "$1 needs a value" >&2; exit 2; }
+      case "$1" in --from) FROM="$2" ;; --to) TO="$2" ;; --only) ONLY="$2" ;; --limit) LIMIT="$2" ;; esac
+      shift 2 ;;
     --list) LIST_ONLY=1; shift ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac

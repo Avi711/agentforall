@@ -41,13 +41,25 @@ export function buildWhatsappPluginInstallCommand(): string[] {
   return ["sh", "-c", script];
 }
 
-// Doctor migrates stores and config offline; the WhatsApp plugin lives in every volume and is converged explicitly.
+// The image ships our plugins as finished tarballs; whatever it carries is what a volume must hold.
+const OWN_PLUGIN_TARBALLS = "/opt/agentforall/plugins/*.tgz";
+
+// `ls` first: an image without the tarballs must fail the step, not pass with an empty loop.
+export function buildOwnPluginsInstallCommand(): string[] {
+  const script =
+    `set -e; ls ${OWN_PLUGIN_TARBALLS} >/dev/null; ` +
+    `for t in ${OWN_PLUGIN_TARBALLS}; do openclaw plugins install "npm-pack:$t" --force --accept-capabilities; done`;
+  return ["sh", "-c", script];
+}
+
+// Doctor migrates stores and config offline; plugins live in the volume, so each rebuild converges them on the image's.
 export async function prepareOpenclawState(
   runtime: ContainerRuntime,
   opts: { image: string; volumeName: string; containerName: string },
 ): Promise<void> {
   await runOffline(runtime, opts, "doctor", buildDoctorCommand(), DOCTOR_TIMEOUT_MS);
   await runOffline(runtime, opts, "whatsapp-plugin", buildWhatsappPluginInstallCommand(), PLUGIN_INSTALL_TIMEOUT_MS);
+  await runOffline(runtime, opts, "own-plugins", buildOwnPluginsInstallCommand(), PLUGIN_INSTALL_TIMEOUT_MS);
 }
 
 async function runOffline(
