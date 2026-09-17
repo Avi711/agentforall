@@ -1,5 +1,5 @@
 import type { Readable } from "node:stream";
-import type { AgentRuntimeKind, Instance } from "../../domain/types.js";
+import type { AgentRuntimeKind, FleetInstance, Instance } from "../../domain/types.js";
 import type { ContainerCreateOptions, ArchiveStreamResult } from "../container-runtime.js";
 
 export type { AgentRuntimeKind };
@@ -72,9 +72,9 @@ export interface AgentRuntimeAdapter {
   exportVolume(containerId: string, signal?: AbortSignal): Promise<Readable>;
   importVolume(containerId: string, tar: Readable, signal?: AbortSignal): Promise<void>;
   // baseUrl is how this orchestrator reaches the gateway (see dialUrl in host-runtimes.ts).
-  probeGateway(instance: Instance, timeoutMs: number, baseUrl: string): Promise<GatewayLiveness>;
+  probeGateway(instance: FleetInstance, timeoutMs: number, baseUrl: string): Promise<GatewayLiveness>;
   // Runs inside the container: the gateway only grants operator scopes to loopback callers.
-  probeWhatsapp(instance: Instance, timeoutMs: number, baseUrl: string): Promise<WhatsappLinkState>;
+  probeWhatsapp(instance: FleetInstance, timeoutMs: number, baseUrl: string): Promise<WhatsappLinkState>;
   // cleared: the stored session is gone from the container (it cannot resurrect on restart);
   // unlinked: the runtime also dropped the device server-side (best-effort).
   logoutWhatsapp(containerId: string): Promise<WhatsappLogoutResult>;

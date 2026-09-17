@@ -3,7 +3,6 @@ import {
   uuid,
   varchar,
   integer,
-  jsonb,
   timestamp,
   text,
   index,
@@ -62,11 +61,9 @@ export const instances = pgTable(
     status: varchar("status", { length: 32, enum: INSTANCE_STATUSES })
       .notNull()
       .default("provisioning"),
-    config: jsonb("config").notNull(),
     containerId: varchar("container_id", { length: 128 }),
     containerName: varchar("container_name", { length: 128 }).notNull(),
     gatewayPort: integer("gateway_port").notNull(),
-    gatewayToken: varchar("gateway_token", { length: 256 }).notNull(),
     healthFailures: integer("health_failures").notNull().default(0),
     errorMessage: text("error_message"),
 

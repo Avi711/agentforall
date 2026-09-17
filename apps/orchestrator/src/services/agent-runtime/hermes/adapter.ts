@@ -1,7 +1,7 @@
 import type { Readable } from "node:stream";
 import type { ContainerArchiveFile } from "../../container-runtime.js";
 import type { ContainerRuntime } from "../../container-runtime.js";
-import type { Instance } from "../../../domain/types.js";
+import type { FleetInstance, Instance } from "../../../domain/types.js";
 import type {
   AgentRuntimeAdapter,
   ConfigApplyOutcome,
@@ -151,11 +151,11 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
     return this.runtime.putArchive(containerId, HERMES_STATE_PARENT, tar, signal);
   }
 
-  probeGateway(_instance: Instance, timeoutMs: number, baseUrl: string): Promise<GatewayLiveness> {
+  probeGateway(_instance: FleetInstance, timeoutMs: number, baseUrl: string): Promise<GatewayLiveness> {
     return probeHermesGateway(baseUrl, timeoutMs);
   }
 
-  probeWhatsapp(_instance: Instance, timeoutMs: number, baseUrl: string): Promise<WhatsappLinkState> {
+  probeWhatsapp(_instance: FleetInstance, timeoutMs: number, baseUrl: string): Promise<WhatsappLinkState> {
     return probeHermesWhatsapp(baseUrl, timeoutMs);
   }
 

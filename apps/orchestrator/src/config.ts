@@ -199,6 +199,8 @@ const AppConfigSchema = z.object({
   backupImportTtlSeconds: z.coerce.number().int().min(300).default(60 * 60),
   // Unset = host-to-host moves disabled (the admin endpoint answers 503 FEATURE_UNAVAILABLE).
   movesBucket: z.preprocess(emptyToUndefined, z.string().min(3).optional()),
+  // How long the previous host keeps a moved bot's volume as the rollback; the bot cannot move again before it is gone.
+  moveSourceRetentionMs: z.preprocess(emptyToUndefined, z.coerce.number().int().min(5 * 60 * 1000).default(24 * 60 * 60 * 1000)),
 
   rateLimitMax: z.coerce.number().int().min(1).default(100),
   rateLimitWindowMs: z.coerce.number().int().min(1000).default(60_000),
@@ -380,6 +382,7 @@ export function loadConfig(): AppConfig {
     backupImportUploadOrigin: process.env.BACKUP_IMPORT_UPLOAD_ORIGIN,
     backupImportTtlSeconds: process.env.BACKUP_IMPORT_TTL_SECONDS,
     movesBucket: process.env.MOVES_BUCKET,
+    moveSourceRetentionMs: process.env.MOVE_SOURCE_RETENTION_MS,
     rateLimitMax: process.env.RATE_LIMIT_MAX,
     rateLimitWindowMs: process.env.RATE_LIMIT_WINDOW_MS,
     pairingImage: process.env.PAIRING_IMAGE,

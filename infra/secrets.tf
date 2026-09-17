@@ -7,6 +7,7 @@ locals {
     "default-provider-api-key",
     "litellm-master-key",
     "composio-api-key",
+    "telegram-manager-bot-token",
     "caddy-internal-ca-cert",
     "caddy-internal-ca-key",
   ]

@@ -148,6 +148,13 @@
       "when": 1789559311709,
       "tag": "0020_instance_move",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789595838658,
+      "tag": "0021_instance_settings",
+      "breakpoints": true
     }
   ]
 }

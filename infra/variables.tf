@@ -88,7 +88,7 @@ variable "github_repo" {
 variable "orchestrator_image" {
   description = "Immutable orchestrator image ref. Production must use a GAR digest or git-SHA tag, never :latest."
   type        = string
-  default     = "europe-west4-docker.pkg.dev/agent-for-all/agent-forall/orchestrator@sha256:ed5938a6d27d49f68c70c7d8d5e43f5b06fc0ab0971e1e80649f098c5a287aaf"
+  default     = "europe-west4-docker.pkg.dev/agent-for-all/agent-forall/orchestrator@sha256:2a35a7a2e6ee27b4d8711610cc933fec657d77d5e8092ece1cb0ef59f14e0563"
 }
 
 variable "pairing_image" {
@@ -167,4 +167,44 @@ variable "litellm_db_deletion_protection" {
   description = "Deletion protection for the LiteLLM Cloud SQL instance."
   type        = bool
   default     = true
+}
+
+variable "move_source_retention_ms" {
+  description = "How long a moved bot's old volume stays on the previous host as the rollback; lowered only while a host is being drained"
+  type        = number
+  default     = 86400000
+}
+
+variable "control_plane_vm" {
+  description = "Which VM is the control plane (public address, orchestrator.internal record, the only running orchestrator). No default: a missing value must never read as a rollback"
+  type        = string
+
+  validation {
+    condition     = contains(["platform", "orchestrator"], var.control_plane_vm)
+    error_message = "control_plane_vm must be \"platform\" or \"orchestrator\"."
+  }
+}
+
+variable "orchestrator_vm_internal_ip" {
+  description = "Reserved VPC address of the control-plane VM"
+  type        = string
+  default     = "10.164.0.5"
+}
+
+variable "orchestrator_vm_machine_type" {
+  description = "The control plane uses ~150 MB; resizing is a two-minute stop"
+  type        = string
+  default     = "e2-small"
+}
+
+variable "caddy_image" {
+  description = "Caddy image, pinned by digest"
+  type        = string
+  default     = "caddy:2.8-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17"
+}
+
+variable "docker_proxy_image" {
+  description = "Docker socket proxy image, pinned by digest"
+  type        = string
+  default     = "tecnativa/docker-socket-proxy:0.3@sha256:9e4b9e7517a6b660f2cc903a19b257b1852d5b3344794e3ea334ff00ae677ac2"
 }

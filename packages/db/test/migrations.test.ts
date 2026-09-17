@@ -13,6 +13,7 @@ const migration0017 = readFileSync(new URL("../drizzle/0017_hosts.sql", import.m
 const migration0018 = readFileSync(new URL("../drizzle/0018_host_registration.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const migration0019 = readFileSync(new URL("../drizzle/0019_host_capacity.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const migration0020 = readFileSync(new URL("../drizzle/0020_instance_move.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const migration0021 = readFileSync(new URL("../drizzle/0021_instance_settings.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const journal = readFileSync(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 
 test("duplicate bootstrap migration is idempotent for clean databases", () => {
@@ -122,4 +123,31 @@ test("instance move migration adds four nullable columns and the previous-host F
   assert.match(migration0020, /"instances_moved_from_host_id_hosts_id_fk" FOREIGN KEY \("moved_from_host_id"\) REFERENCES "public"\."hosts"\("id"\)/);
   assert.doesNotMatch(migration0020, /NOT NULL/);
   assert.match(journal, /"tag": "0020_instance_move"/);
+});
+
+test("instance settings migration copies the two ciphertext columns before dropping them", () => {
+  const create = migration0021.indexOf('CREATE TABLE "instance_settings"');
+  const copy = migration0021.indexOf(
+    'INSERT INTO "instance_settings" ("instance_id", "config", "gateway_token")\n  SELECT "id", "config", "gateway_token" FROM "instances"',
+  );
+  const dropConfig = migration0021.indexOf('ALTER TABLE "instances" DROP COLUMN "config"');
+  const dropToken = migration0021.indexOf('ALTER TABLE "instances" DROP COLUMN "gateway_token"');
+  assert.ok(create >= 0);
+  // Prod never received 0000's function and trigger, so 0021 installs them itself, safely on a database that has them.
+  const fn = migration0021.indexOf("CREATE OR REPLACE FUNCTION update_updated_at()");
+  const fleetTrigger = migration0021.indexOf("CREATE TRIGGER trg_instances_updated_at");
+  const settingsTrigger = migration0021.indexOf("CREATE TRIGGER trg_instance_settings_updated_at");
+  assert.ok(fn > create);
+  assert.ok(migration0021.indexOf('DROP TRIGGER IF EXISTS trg_instances_updated_at ON "instances"') > fn);
+  assert.ok(fleetTrigger > fn);
+  assert.ok(settingsTrigger > fn);
+  assert.ok(copy > settingsTrigger);
+  assert.ok(dropConfig > copy);
+  assert.ok(dropToken > dropConfig);
+  assert.match(migration0021, /"instance_id" uuid PRIMARY KEY NOT NULL/);
+  assert.match(migration0021, /"config" jsonb NOT NULL/);
+  assert.match(migration0021, /"gateway_token" varchar\(256\) NOT NULL/);
+  assert.match(migration0021, /REFERENCES "public"\."instances"\("id"\) ON DELETE cascade/);
+  assert.equal((migration0021.match(/DROP COLUMN/g) ?? []).length, 2);
+  assert.match(journal, /"tag": "0021_instance_settings"/);
 });

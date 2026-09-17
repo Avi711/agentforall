@@ -41,10 +41,8 @@ before(async () => {
       hostId: "host",
       displayName: id.slice(0, 8),
       status,
-      config: {},
       containerName: `openclaw-${id.slice(0, 8)}`,
       gatewayPort: 19000 + Number(id[0]),
-      gatewayToken: `gw-${id.slice(0, 8)}`,
     });
   }
   await db.insert(whatsappCloudNumbers).values([

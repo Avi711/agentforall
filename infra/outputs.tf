@@ -10,12 +10,12 @@ output "litellm_gateway_url" {
 
 output "instance_name" {
   description = "Name of the GCP Compute Engine instance"
-  value       = google_compute_instance.platform.name
+  value       = google_compute_instance.orchestrator.name
 }
 
 output "ssh_command" {
   description = "SSH into the VM"
-  value       = "gcloud compute ssh ${var.ssh_user}@${google_compute_instance.platform.name} --zone=${var.zone} --project=${var.project_id} --tunnel-through-iap"
+  value       = "gcloud compute ssh ${var.ssh_user}@${google_compute_instance.orchestrator.name} --zone=${var.zone} --project=${var.project_id} --tunnel-through-iap"
 }
 
 output "platform_url" {

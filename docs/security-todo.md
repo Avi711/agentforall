@@ -20,7 +20,10 @@ Verified from inside a bot: `169.254.169.254` answered with the VM service accou
 - **Fix:** before the orchestrator leaves `tenant-net`: `@private remote_ip private_ranges` → `respond @private 404` on the public site (check the VM's own ops curls first: they arrive as the VM's private IP).
 - **Files:** `infra/startup/orchestrator.sh` (Caddyfile).
 
-### S-15. Bots can reach each other's gateway on tenant-net (found 2026-09-15, step 4 review) — closed on workers 2026-09-16 (`enable_icc=false` + INPUT drop on `af-tenant`); still open beside the orchestrator until it leaves tenant-net
+### S-17. The control-plane VM keeps a full-power Docker socket proxy it has no use for (opened 2026-09-17, step 8)
+The orchestrator still requires a local Docker host, so VM `orchestrator` runs the socket proxy (EXEC/POST/DELETE) although no bot ever runs there; a compromised orchestrator process is root on the VM that holds the CA key and every secret. Only the `draining` host row keeps bots off it. Fix: make the local host optional in `main.ts`, then drop the proxy and the runtime image env from `startup/control-plane.sh`. Related: S-7 (single-orchestrator advisory lock) should land before the old VM is retired, because the `stack_enabled` gate acts only when a startup script runs.
+
+### S-15. Bots can reach each other's gateway on tenant-net (found 2026-09-15, step 4 review) — FIXED 2026-09-17: closed on workers 2026-09-16 (`enable_icc=false` + INPUT drop on `af-tenant`); no bot runs beside the orchestrator since the cutover to its own VM, and the control plane is off `tenant-net`
 - **Risk:** `tenant-net` is a plain bridge with inter-container communication on; any bot can open `http://openclaw-<other>:18789` and needs only that bot's bearer token. Pre-existing, not new to Phase 2.
 - **Fix:** create `tenant-net` with `com.docker.network.bridge.enable_icc=false` once the orchestrator probes bots by the host's VPC IP (step 4b); the orchestrator and Caddy keep reaching bots because they are not subject to ICC on that bridge only if they sit on another network — verify on the second VM first.
 - **Files:** `infra/startup/worker.sh`, `infra/startup/guard-worker.rules` (workers); `apps/orchestrator/src/services/docker-container-runtime.ts` (`ensureNetworkExists`, the orchestrator VM).

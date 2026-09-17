@@ -403,3 +403,42 @@ test("a config patch that lists channels keeps the WhatsApp Business channel the
 
   assert.deepEqual(h.instance().config.channels, [{ type: "telegram", botToken: "t2" }, business]);
 });
+
+// The health monitor probes WhatsApp on the paired flag alone, so a paired bot must keep its channel.
+test("updateConfig refuses to drop the whatsapp channel while the bot is paired", async () => {
+  const h = harness({
+    channels: [{ type: "whatsapp", dmAccess: "owner", ownerNumber: "+972501234567" }],
+    pairingStatus: "paired",
+    hasWhatsappCreds: true,
+  });
+
+  await assert.rejects(
+    h.manager.updateConfig(h.instance().id, h.instance().userId, {
+      channels: [{ type: "telegram", botToken: "t" }],
+    }),
+    /disconnect WhatsApp first/,
+  );
+  assert.deepEqual(h.calls.appliedLive, [], "rejected before any container call");
+  assert.deepEqual(h.instance().config.channels, [
+    { type: "whatsapp", dmAccess: "owner", ownerNumber: "+972501234567" },
+  ]);
+
+  const unpaired = harness({ channels: [{ type: "whatsapp", dmAccess: "owner" }] });
+  await unpaired.manager.updateConfig(unpaired.instance().id, unpaired.instance().userId, {
+    channels: [{ type: "telegram", botToken: "t" }],
+  });
+  assert.deepEqual(unpaired.instance().config.channels, [{ type: "telegram", botToken: "t" }]);
+});
+
+test("the whatsapp channel cannot leave while a pairing is in flight, but a paired bot without a channel can still be edited", async () => {
+  const awaiting = harness({ channels: [{ type: "whatsapp", dmAccess: "owner" }], pairingStatus: "awaiting_qr" });
+  await assert.rejects(
+    awaiting.manager.updateConfig(awaiting.instance().id, awaiting.instance().userId, { channels: [] }),
+    /disconnect WhatsApp first/,
+  );
+
+  // A row that predates the rule: renames and model changes must not be locked out.
+  const legacy = harness({ channels: [{ type: "telegram", botToken: "t" }], pairingStatus: "paired", hasWhatsappCreds: true });
+  await legacy.manager.updateConfig(legacy.instance().id, legacy.instance().userId, { displayName: "renamed" });
+  assert.equal(legacy.instance().config.displayName, "renamed");
+});

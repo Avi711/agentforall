@@ -31,6 +31,7 @@ test("startPairing serializes concurrent calls for the same instance", async () 
       if (patch.pairingStatus) pairingStatus = patch.pairingStatus;
       return true;
     },
+    findById: async () => instance,
   } as unknown as InstanceRepository;
 
   const runtime = {
@@ -280,7 +281,7 @@ test("the sidecar is dialed by name over the Docker network, by loopback in dev,
   ];
   for (const c of cases) {
     const created: SidecarCreateOptions[] = [];
-    const repo = { updatePairing: async () => true } as unknown as InstanceRepository;
+    const repo = { updatePairing: async () => true, findById: async () => instance } as unknown as InstanceRepository;
     const runtime = {
       ensureImagePresent: async () => undefined,
       removeIfExists: async () => undefined,
@@ -307,6 +308,7 @@ test("a sidecar image missing from the host fails the pairing with the host's er
       patches.push(patch);
       return true;
     },
+    findById: async () => instance,
   } as unknown as InstanceRepository;
   let created = 0;
   const runtime = {
@@ -472,4 +474,30 @@ test("isReady is false between a fresh link and its activation", async () => {
   } as unknown as EventRepository;
   const manager = createPairingManager({} as InstanceRepository, {} as ContainerRuntime, eventLog);
   assert.equal(await manager.isReady(instance.id), false);
+});
+
+// The pair route adds the channel under one lock and starts pairing under another; a config patch can land between them.
+test("a pairing never starts on a bot whose whatsapp channel is gone, and the claim is rolled back", async () => {
+  const patches: Record<string, unknown>[] = [];
+  const repo = {
+    updatePairing: async (_id: string, patch: Record<string, unknown>) => {
+      patches.push(patch);
+      return true;
+    },
+    findById: async () => ({ ...instance, config: { ...instance.config, channels: [] } }),
+  } as unknown as InstanceRepository;
+  let created = 0;
+  const runtime = {
+    ensureImagePresent: async () => undefined,
+    removeIfExists: async () => undefined,
+    createSidecar: async () => {
+      created += 1;
+      return "sidecar-1";
+    },
+  } as unknown as ContainerRuntime;
+  const manager = createPairingManager(repo, runtime, { append: async () => undefined } as never);
+
+  await assert.rejects(manager.startPairing(instance), /whatsapp channel/);
+  assert.equal(created, 0);
+  assert.deepEqual(patches.at(-1), { pairingStatus: "failed" });
 });

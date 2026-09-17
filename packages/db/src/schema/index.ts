@@ -7,6 +7,7 @@ export {
   PAIRING_STATUSES,
 } from "./instances.js";
 export { hosts, HOST_STATUSES } from "./hosts.js";
+export { instanceSettings } from "./instance-settings.js";
 export { instanceEvents } from "./instance-events.js";
 export { integrationSessions, INTEGRATION_PROVIDERS } from "./integrations.js";
 export { leads, PLATFORMS } from "./leads.js";

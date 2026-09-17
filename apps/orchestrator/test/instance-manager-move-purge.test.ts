@@ -13,7 +13,7 @@ const RETENTION_MS = 24 * 60 * 60 * 1000;
 
 function harness(
   due: Instance[],
-  options: { sourceReachable?: boolean; sourceContainer?: string | null; current?: Instance | null; lock?: InstanceOperationLock } = {},
+  options: { sourceReachable?: boolean; sourceContainer?: string | null; current?: Instance | null; lock?: InstanceOperationLock; retentionMs?: number } = {},
 ) {
   const cleared: string[] = [];
   const warnings: string[] = [];
@@ -37,7 +37,7 @@ function harness(
   );
   const repo = {
     findMovedSourcesDue: async (olderThanMs: number) => {
-      assert.equal(olderThanMs, RETENTION_MS);
+      assert.equal(olderThanMs, options.retentionMs ?? RETENTION_MS);
       return due;
     },
     findById: async (id: string) => (options.current === undefined ? due.find((inst) => inst.id === id) ?? null : options.current),
@@ -48,7 +48,7 @@ function harness(
     hosts,
     {} as never,
     {} as never,
-    {} as AppConfig,
+    { moveSourceRetentionMs: options.retentionMs ?? RETENTION_MS } as AppConfig,
     { append: async () => {} } as never,
     {} as never,
     {} as never,
@@ -169,4 +169,18 @@ test("a row whose previous host is its current host (a hand-edited row) is never
   assert.deepEqual(h.target.removed, []);
   assert.deepEqual(h.target.removedVolumes, []);
   assert.deepEqual(h.cleared, []);
+});
+
+test("the retention window is configuration: a short window purges a copy the default would still keep", async () => {
+  const twentyMinutesAgo = new Date(Date.now() - 20 * 60 * 1000);
+  const recent = { ...moved, movedAt: twentyMinutesAgo, updatedAt: twentyMinutesAgo };
+
+  const kept = harness([recent]);
+  await kept.manager.purgeMovedSources();
+  assert.deepEqual(kept.cleared, []);
+
+  const short = harness([recent], { retentionMs: 15 * 60 * 1000 });
+  await short.manager.purgeMovedSources();
+  assert.deepEqual(short.source.removedVolumes, ["oc-m1-state"]);
+  assert.deepEqual(short.cleared, ["m1"]);
 });

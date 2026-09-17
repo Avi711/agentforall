@@ -6,7 +6,7 @@ import {
   type LivenessReport,
   type LivenessSample,
 } from "../src/services/health-monitor.js";
-import type { Instance } from "../src/domain/types.js";
+import type { FleetInstance } from "../src/domain/types.js";
 import type { ContainerRuntime, ContainerState } from "../src/services/container-runtime.js";
 import type { AgentRuntimeRegistry } from "../src/services/agent-runtime/registry.js";
 import type { HostRuntime, HostRuntimes } from "../src/services/host-runtimes.js";
@@ -30,13 +30,13 @@ class FakeRepo {
   readonly pairingUpdates: { id: string; patch: unknown }[] = [];
   readonly containerIdUpdates: { id: string; containerId: string }[] = [];
 
-  constructor(private instances: Instance[]) {}
+  constructor(private instances: FleetInstance[]) {}
 
-  setInstances(instances: Instance[]): void {
+  setInstances(instances: FleetInstance[]): void {
     this.instances = instances;
   }
 
-  async findByStatuses(): Promise<Instance[]> {
+  async findByStatuses(): Promise<FleetInstance[]> {
     return this.instances;
   }
 
@@ -100,7 +100,7 @@ function createLogger() {
 
 const silentLogger = createLogger().logger;
 
-function makeInstance(overrides: Partial<Instance> = {}): Instance {
+function makeInstance(overrides: Partial<FleetInstance> = {}): FleetInstance {
   return {
     id: "instance-1",
     hostId: "test-host",
@@ -112,9 +112,8 @@ function makeInstance(overrides: Partial<Instance> = {}): Instance {
     status: "running",
     healthFailures: 0,
     lastSeenAt: null,
-    config: { channels: [{ type: "whatsapp" }] },
     ...overrides,
-  } as unknown as Instance;
+  } as unknown as FleetInstance;
 }
 
 function createMonitor(
@@ -167,7 +166,7 @@ const MONITOR_CONFIG = {
 
 test("a healthy row seen less than a minute ago is not rewritten; stale, degraded or recovering rows are", async () => {
   const clock = { now: 10_000_000 };
-  const cases: { inst: Instance; writes: number; why: string }[] = [
+  const cases: { inst: FleetInstance; writes: number; why: string }[] = [
     { inst: makeInstance({ lastSeenAt: new Date(clock.now - 30_000) }), writes: 0, why: "fresh" },
     { inst: makeInstance({ lastSeenAt: new Date(clock.now - 60_000) }), writes: 1, why: "stale" },
     { inst: makeInstance({ lastSeenAt: null }), writes: 1, why: "never seen" },
@@ -767,7 +766,7 @@ test("probes on a worker dial its address and the bot's published port", async (
   const adapter = {
     kind: "openclaw",
     internalPort: 18789,
-    probeGateway: async (_inst: Instance, _timeout: number, baseUrl: string) => {
+    probeGateway: async (_inst: FleetInstance, _timeout: number, baseUrl: string) => {
       dialed.push(baseUrl);
       return { healthy: true, degraded: null };
     },

@@ -1,5 +1,5 @@
 import type { FastifyBaseLogger } from "fastify";
-import type { Instance, InstanceStatus } from "../domain/types.js";
+import type { FleetInstance, InstanceStatus } from "../domain/types.js";
 import type { ContainerMemory, ContainerRuntime } from "./container-runtime.js";
 import { mapWithConcurrency } from "./concurrency.js";
 import { groupByHost, type HostRuntimes } from "./host-runtimes.js";
@@ -11,7 +11,7 @@ export interface MemoryWatchConfig {
 }
 
 export interface RunningInstances {
-  findByStatuses(statuses: InstanceStatus[]): Promise<Instance[]>;
+  findByStatuses(statuses: InstanceStatus[]): Promise<FleetInstance[]>;
 }
 
 const STATS_CONCURRENCY = 4;
@@ -82,7 +82,7 @@ export class MemoryWatch implements HostUsage {
   }
 
   // An unreachable host keeps its last figure: stale beats a zero that placement would read as empty.
-  private async sweepHost(hostId: string, group: readonly Instance[]): Promise<void> {
+  private async sweepHost(hostId: string, group: readonly FleetInstance[]): Promise<void> {
     const host = this.hosts.for(hostId);
     if (!(await host.gate.check())) return;
     const results = await mapWithConcurrency(group, STATS_CONCURRENCY, (inst) => this.check(inst, host.runtime));
@@ -90,7 +90,7 @@ export class MemoryWatch implements HostUsage {
     this.usedByHost.set(hostId, Math.round(usedBytes / MB));
   }
 
-  private async check(inst: Instance, runtime: ContainerRuntime): Promise<number> {
+  private async check(inst: FleetInstance, runtime: ContainerRuntime): Promise<number> {
     if (!inst.containerId) return 0;
     let memory: ContainerMemory | null;
     try {

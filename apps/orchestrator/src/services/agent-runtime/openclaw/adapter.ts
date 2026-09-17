@@ -1,7 +1,7 @@
 import type { Readable } from "node:stream";
 import type { ContainerArchiveFile } from "../../container-runtime.js";
 import type { ContainerRuntime } from "../../container-runtime.js";
-import type { Instance } from "../../../domain/types.js";
+import type { FleetInstance, Instance } from "../../../domain/types.js";
 import { relayUrlsFor, type RelayUrls } from "../../relay.js";
 import {
   RuntimeImageMismatchError,
@@ -293,12 +293,12 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     return this.runtime.putArchive(containerId, OPENCLAW_STATE_PARENT, tar, signal);
   }
 
-  probeGateway(_instance: Instance, timeoutMs: number, baseUrl: string): Promise<GatewayLiveness> {
+  probeGateway(_instance: FleetInstance, timeoutMs: number, baseUrl: string): Promise<GatewayLiveness> {
     return probeOpenclawGateway(baseUrl, timeoutMs);
   }
 
   // The probe runs inside the container, so it never depends on how the host reaches the gateway.
-  probeWhatsapp(instance: Instance, timeoutMs: number, _baseUrl: string): Promise<WhatsappLinkState> {
+  probeWhatsapp(instance: FleetInstance, timeoutMs: number, _baseUrl: string): Promise<WhatsappLinkState> {
     return probeOpenclawWhatsapp(this.runtime, instance, timeoutMs);
   }
 

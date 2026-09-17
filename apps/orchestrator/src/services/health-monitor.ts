@@ -1,6 +1,6 @@
 import type { FastifyBaseLogger } from "fastify";
 import type { InstanceRepository } from "../storage/instance-repository.js";
-import type { Instance, InstanceStatus } from "../domain/types.js";
+import type { FleetInstance, InstanceStatus } from "../domain/types.js";
 import { isContainerBooting, type ContainerState } from "./container-runtime.js";
 import { dialUrl, groupByHost, type HostRuntimes } from "./host-runtimes.js";
 import type { AgentRuntimeAdapter, WhatsappLinkState } from "./agent-runtime/types.js";
@@ -28,7 +28,7 @@ interface HealthResult {
 export type LivenessSample = "live" | "down" | "booting" | "unknown";
 
 export interface LivenessReport {
-  instance: Instance;
+  instance: FleetInstance;
   sample: LivenessSample;
 }
 
@@ -43,7 +43,7 @@ interface LocatedContainer {
 
 // health is null when the bot's host did not answer: nothing was probed, nothing is written.
 interface CheckedInstance {
-  inst: Instance;
+  inst: FleetInstance;
   health: HealthResult | null;
 }
 
@@ -147,7 +147,7 @@ export class HealthMonitor {
   }
 
   // The observer still sees every bot of an unreachable host (as unknown): an empty report would reset restart budgets.
-  private async checkHost(hostId: string, group: readonly Instance[]): Promise<CheckedInstance[]> {
+  private async checkHost(hostId: string, group: readonly FleetInstance[]): Promise<CheckedInstance[]> {
     const host = this.hosts.for(hostId);
     if (!(await host.gate.check())) return group.map((inst) => ({ inst, health: null }));
     const results = await mapWithConcurrency(
@@ -171,7 +171,7 @@ export class HealthMonitor {
   }
 
   private async processResult(
-    inst: Instance,
+    inst: FleetInstance,
     result: HealthResult,
   ): Promise<void> {
     if (result.healthy) {
@@ -224,13 +224,13 @@ export class HealthMonitor {
     }
   }
 
-  private needsHealthyWrite(inst: Instance): boolean {
+  private needsHealthyWrite(inst: FleetInstance): boolean {
     if (inst.status !== "running" || inst.healthFailures > 0) return true;
     return inst.lastSeenAt === null || this.now() - inst.lastSeenAt.getTime() >= LAST_SEEN_REFRESH_MS;
   }
 
   // Docker is asked about a healthy bot once a minute (to repair a lagging container id), not every poll.
-  private async checkOne(instance: Instance): Promise<HealthResult> {
+  private async checkOne(instance: FleetInstance): Promise<HealthResult> {
     const host = this.hosts.for(instance.hostId);
     const adapter = host.adapters.get(instance.runtimeKind);
     let located: LocatedContainer | "lookup_failed" | null | undefined;
@@ -287,7 +287,7 @@ export class HealthMonitor {
   }
 
   private async resolveWhatsappState(
-    instance: Instance,
+    instance: FleetInstance,
     adapter: AgentRuntimeAdapter,
     baseUrl: string,
   ): Promise<WhatsappLinkState> {
@@ -335,7 +335,7 @@ export class HealthMonitor {
     return Math.min(growth, this.config.channelProbeMaxBackoffMs);
   }
 
-  private pruneChannelStates(active: readonly Instance[]): void {
+  private pruneChannelStates(active: readonly FleetInstance[]): void {
     if (this.channelStates.size === 0 && this.degradedInstances.size === 0) return;
     const live = new Set(active.map((inst) => inst.id));
     for (const id of this.channelStates.keys()) {
@@ -346,15 +346,12 @@ export class HealthMonitor {
     }
   }
 
-  private needsWhatsappProbe(instance: Instance): boolean {
-    return (
-      Boolean(instance.containerId) &&
-      instance.hasWhatsappCreds &&
-      instance.config.channels.some((ch) => ch.type === "whatsapp")
-    );
+  // Paired implies a whatsapp channel: updateConfig refuses to remove the channel while creds exist.
+  private needsWhatsappProbe(instance: FleetInstance): boolean {
+    return Boolean(instance.containerId) && instance.hasWhatsappCreds;
   }
 
-  private async tryLocate(instance: Instance): Promise<LocatedContainer | "lookup_failed" | null> {
+  private async tryLocate(instance: FleetInstance): Promise<LocatedContainer | "lookup_failed" | null> {
     try {
       return await this.locateContainer(instance);
     } catch (err) {
@@ -363,7 +360,7 @@ export class HealthMonitor {
     }
   }
 
-  private async locateContainer(instance: Instance): Promise<LocatedContainer | null> {
+  private async locateContainer(instance: FleetInstance): Promise<LocatedContainer | null> {
     const { runtime } = this.hosts.for(instance.hostId);
     if (instance.containerId) {
       const current = await runtime.containerState(instance.containerId);

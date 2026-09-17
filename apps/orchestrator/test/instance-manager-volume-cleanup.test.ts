@@ -8,7 +8,7 @@ import type { ContainerRuntime } from "../src/services/container-runtime.js";
 import type { AppConfig } from "../src/config.js";
 import type { AgentRuntimeRegistry } from "../src/services/agent-runtime/registry.js";
 import type { AgentRuntimeAdapter } from "../src/services/agent-runtime/types.js";
-import type { Instance } from "../src/domain/types.js";
+import type { FleetInstance, Instance } from "../src/domain/types.js";
 import { singleHost } from "./helpers/host-runtimes.js";
 
 test("destroy removes the runtime state volume even for errored instances", async () => {
@@ -149,11 +149,11 @@ class FakeRepo {
 }
 
 class FakeReconcilerRepo extends FakeRepo {
-  async findStaleProvisioning(): Promise<Instance[]> {
+  async findStaleProvisioning(): Promise<FleetInstance[]> {
     return [];
   }
 
-  async findByStatuses(statuses: Instance["status"][]): Promise<Instance[]> {
+  async findByStatuses(statuses: Instance["status"][]): Promise<FleetInstance[]> {
     return statuses.includes(this.instance.status) ? [this.instance] : [];
   }
 }

@@ -50,6 +50,8 @@ locals {
       port_range_start         = local.port_range_start
       port_range_end           = local.port_range_end
       sidecar_port_range_start = local.sidecar_port_range_start
+      move_source_retention_ms = var.move_source_retention_ms
+      stack_enabled            = var.control_plane_vm == "platform"
       worker_instance_ids      = join(",", [for name, worker in module.worker : "${name}=${worker.instance_id}"])
       worker_addresses         = join(",", [for name, worker in module.worker : "${name}=${worker.address}"])
     })),
@@ -100,8 +102,12 @@ resource "google_compute_instance" "platform" {
     network    = "default"
     network_ip = google_compute_address.platform_internal.address
 
-    access_config {
-      nat_ip = google_compute_address.platform.address
+    # Follows control_plane_vm. Terraform cannot order the swap: `delete-access-config` on the other VM first.
+    dynamic "access_config" {
+      for_each = var.control_plane_vm == "platform" ? [1] : []
+      content {
+        nat_ip = google_compute_address.platform.address
+      }
     }
   }
 

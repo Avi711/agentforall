@@ -1,5 +1,5 @@
 import type { FastifyBaseLogger } from "fastify";
-import type { Instance } from "../domain/types.js";
+import type { FleetInstance } from "../domain/types.js";
 import { errorMessage } from "../domain/errors.js";
 import type { LivenessObserver, LivenessReport, LivenessSample } from "./health-monitor.js";
 
@@ -90,7 +90,7 @@ export class AutoRestarter implements LivenessObserver {
     return outage;
   }
 
-  private track(inst: Instance, sample: LivenessSample): void {
+  private track(inst: FleetInstance, sample: LivenessSample): void {
     const state = this.stateFor(inst.id);
     if (sample === "booting" || sample === "unknown" || state.restarting) return;
     if (sample === "live") {
@@ -123,7 +123,7 @@ export class AutoRestarter implements LivenessObserver {
     void guarded.finally(() => this.inFlight.delete(guarded));
   }
 
-  private async restart(inst: Instance, state: BotState, now: number): Promise<void> {
+  private async restart(inst: FleetInstance, state: BotState, now: number): Promise<void> {
     const payload = {
       consecutiveFailures: state.consecutiveFailures,
       restartsInWindow: state.restartsAt.length + 1,
@@ -153,7 +153,7 @@ export class AutoRestarter implements LivenessObserver {
     }
   }
 
-  private async notifyExhausted(inst: Instance, state: BotState): Promise<void> {
+  private async notifyExhausted(inst: FleetInstance, state: BotState): Promise<void> {
     if (state.exhaustedNotified) return;
     state.exhaustedNotified = true;
     const payload = { restartsInWindow: state.restartsAt.length, windowMs: this.config.windowMs };

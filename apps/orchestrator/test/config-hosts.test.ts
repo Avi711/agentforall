@@ -47,3 +47,10 @@ test("the sidecar port range mirrors the gateway range one for one and may not o
   assert.throws(() => withEnv({ SIDECAR_PORT_RANGE_START: "19500" }, loadConfig), /SIDECAR_PORT_RANGE_START/);
   assert.throws(() => withEnv({ SIDECAR_PORT_RANGE_START: "65000" }, loadConfig), /SIDECAR_PORT_RANGE_START/);
 });
+
+test("the move rollback window defaults to a day, takes a shorter value, and refuses anything under five minutes", () => {
+  assert.equal(withEnv({}, loadConfig).moveSourceRetentionMs, 24 * 60 * 60 * 1000);
+  assert.equal(withEnv({ MOVE_SOURCE_RETENTION_MS: "" }, loadConfig).moveSourceRetentionMs, 24 * 60 * 60 * 1000);
+  assert.equal(withEnv({ MOVE_SOURCE_RETENTION_MS: "900000" }, loadConfig).moveSourceRetentionMs, 900_000);
+  assert.throws(() => withEnv({ MOVE_SOURCE_RETENTION_MS: "60000" }, loadConfig));
+});

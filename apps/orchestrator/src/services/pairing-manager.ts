@@ -105,6 +105,9 @@ export class PairingManager {
       : null;
 
     try {
+      // The caller's snapshot can predate a config patch; once claimed, the patch guard keeps the channel in place.
+      const current = await this.repo.findById(instance.id);
+      if (!current || !findWhatsappChannel(current.config.channels)) throw new NotFoundError("whatsapp channel", instance.id);
       await runtime.ensureImagePresent(this.pairing.image);
       await runtime.removeIfExists(sidecarName);
 

@@ -1,6 +1,6 @@
 import { eq, ne, inArray, isNotNull, or, sql, asc, and } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { instances } from "@agent-forall/db";
+import { instances, instanceSettings } from "@agent-forall/db";
 import {
   encrypt,
   decrypt,
@@ -8,6 +8,7 @@ import {
   decryptConfig,
 } from "../services/crypto.js";
 import type {
+  FleetInstance,
   Instance,
   InstanceStatus,
   InstanceConfig,
@@ -17,8 +18,11 @@ import type {
 import { InstanceConfigSchema } from "../domain/types.js";
 import { CorruptedRowError, errorMessage } from "../domain/errors.js";
 
-type Row = typeof instances.$inferSelect;
+type FleetRow = typeof instances.$inferSelect;
+type SettingsRow = typeof instanceSettings.$inferSelect;
+type JoinedRow = { fleet: FleetRow; settings: SettingsRow | null };
 type DB = NodePgDatabase<Record<string, never>>;
+type Writer = Pick<DB, "insert">;
 
 const HEALTH_STATUSES: InstanceStatus[] = ["running", "degraded", "unhealthy"];
 
@@ -97,7 +101,7 @@ export class InstanceRepository {
   }
 
   async insert(fields: InsertInstanceFields): Promise<Instance> {
-    return this.insertWithDb(this.db, fields);
+    return this.db.transaction((tx) => this.insertWithDb(tx, fields));
   }
 
   async insertIfUserActiveBelowLimit(
@@ -121,14 +125,12 @@ export class InstanceRepository {
     });
   }
 
+  // Two rows, one transaction: a fleet row without its settings row is a corrupted instance.
   private async insertWithDb(
-    db: Pick<DB, "insert">,
+    db: Writer,
     fields: InsertInstanceFields,
   ): Promise<Instance> {
     this.assertManaged(fields.hostId);
-    const encrypted = encryptConfig(fields.config, this.encryptionKey);
-    const encryptedToken = encrypt(fields.gatewayToken, this.encryptionKey);
-
     const rows = await db
       .insert(instances)
       .values({
@@ -138,11 +140,9 @@ export class InstanceRepository {
         runtimeKind: fields.runtimeKind ?? "openclaw",
         displayName: fields.displayName,
         status: fields.status,
-        config: encrypted,
         containerId: fields.containerId,
         containerName: fields.containerName,
         gatewayPort: fields.gatewayPort,
-        gatewayToken: encryptedToken,
         healthFailures: fields.healthFailures,
         errorMessage: fields.errorMessage,
         pairingStatus: fields.pairingStatus ?? "none",
@@ -156,16 +156,24 @@ export class InstanceRepository {
         litellmBudgetDuration: fields.litellm?.budgetDuration ?? null,
       })
       .returning();
+    const fleet = rows[0];
+    if (!fleet) throw new Error("insert returned no rows");
 
-    const row = rows[0];
-    if (!row) throw new Error("insert returned no rows");
-    return this.toDomain(row);
+    const settingsRows = await db
+      .insert(instanceSettings)
+      .values({
+        instanceId: fields.id,
+        config: encryptConfig(fields.config, this.encryptionKey),
+        gatewayToken: encrypt(fields.gatewayToken, this.encryptionKey),
+      })
+      .returning();
+    const settings = settingsRows[0];
+    if (!settings) throw new Error("settings insert returned no rows");
+    return this.toDomain({ fleet, settings });
   }
 
   async findById(id: string): Promise<Instance | null> {
-    const rows = await this.db
-      .select()
-      .from(instances)
+    const rows = await this.selectJoined()
       .where(and(eq(instances.id, id), this.ownedByHost()))
       .limit(1);
     const row = rows[0];
@@ -194,9 +202,7 @@ export class InstanceRepository {
         )!,
       );
     }
-    const rows = await this.db
-      .select()
-      .from(instances)
+    const rows = await this.selectJoined()
       .where(and(...conditions))
       .orderBy(asc(instances.createdAt), asc(instances.id))
       .limit(limit);
@@ -205,30 +211,19 @@ export class InstanceRepository {
 
   // Every live instance on this host, regardless of owner — admin reporting only.
   async findAllActive(): Promise<Instance[]> {
-    const rows = await this.db
-      .select()
-      .from(instances)
+    const rows = await this.selectJoined()
       .where(and(this.ownedByHost(), this.isActive()))
       .orderBy(asc(instances.createdAt), asc(instances.id));
     return this.toDomainSafe(rows);
   }
 
-  async findByStatuses(statuses: InstanceStatus[]): Promise<Instance[]> {
+  // Fleet rows only: the loops call this every tick, and it never touches a secret.
+  async findByStatuses(statuses: InstanceStatus[]): Promise<FleetInstance[]> {
     const rows = await this.db
       .select()
       .from(instances)
       .where(and(this.ownedByHost(), inArray(instances.status, statuses)));
-    return this.toDomainSafe(rows);
-  }
-
-  async findByPairingStatus(statuses: PairingStatus[]): Promise<Instance[]> {
-    const rows = await this.db
-      .select()
-      .from(instances)
-      .where(
-        and(this.ownedByHost(), inArray(instances.pairingStatus, statuses)),
-      );
-    return this.toDomainSafe(rows);
+    return rows.map(toFleet);
   }
 
   async getActiveGatewayPorts(hostId: string): Promise<number[]> {
@@ -239,9 +234,24 @@ export class InstanceRepository {
     return rows.map((r) => r.gatewayPort);
   }
 
+  private selectJoined() {
+    return this.db
+      .select({ fleet: instances, settings: instanceSettings })
+      .from(instances)
+      .leftJoin(instanceSettings, eq(instanceSettings.instanceId, instances.id));
+  }
+
   // Every read and write filters by the managed set, so a second orchestrator sharing the DB (e.g. a dev machine) never touches these rows.
   private ownedByHost() {
     return inArray(instances.hostId, this.managedHostIds);
+  }
+
+  // Settings carry no host: scope is derived from the fleet row, so a move carries them along.
+  private settingsOwnedByHost() {
+    return inArray(
+      instanceSettings.instanceId,
+      this.db.select({ id: instances.id }).from(instances).where(this.ownedByHost()),
+    );
   }
 
   // Refuses a host outside the managed set so an upper-layer bug can never write a row another orchestrator owns.
@@ -316,16 +326,21 @@ export class InstanceRepository {
       .where(and(eq(instances.id, id), this.ownedByHost()));
   }
 
+  // The fleet row is touched only when the name changed, so a settings edit does not reset the reconciler's freshness grace.
   async updateConfig(id: string, config: InstanceConfig): Promise<void> {
     const encrypted = encryptConfig(config, this.encryptionKey);
-    await this.db
-      .update(instances)
-      .set({
-        config: encrypted,
-        displayName: config.displayName,
-        updatedAt: new Date(),
-      })
-      .where(and(eq(instances.id, id), this.ownedByHost()));
+    await this.db.transaction(async (tx) => {
+      await tx
+        .update(instanceSettings)
+        .set({ config: encrypted, updatedAt: new Date() })
+        .where(and(eq(instanceSettings.instanceId, id), this.settingsOwnedByHost()));
+      await tx
+        .update(instances)
+        .set({ displayName: config.displayName, updatedAt: new Date() })
+        .where(
+          and(eq(instances.id, id), this.ownedByHost(), ne(instances.displayName, config.displayName)),
+        );
+    });
   }
 
   async updateLiteLlmKey(id: string, patch: LiteLlmKeyUpdate): Promise<void> {
@@ -447,7 +462,7 @@ export class InstanceRepository {
     return result.length > 0;
   }
 
-  async findMovedSourcesDue(olderThanMs: number): Promise<Instance[]> {
+  async findMovedSourcesDue(olderThanMs: number): Promise<FleetInstance[]> {
     const cutoff = new Date(Date.now() - olderThanMs);
     const rows = await this.db
       .select()
@@ -459,7 +474,7 @@ export class InstanceRepository {
           sql`${instances.movedAt} < ${cutoff}`,
         ),
       );
-    return this.toDomainSafe(rows);
+    return rows.map(toFleet);
   }
 
   async clearMove(id: string): Promise<void> {
@@ -487,7 +502,7 @@ export class InstanceRepository {
     return result.length > 0;
   }
 
-  async findStaleProvisioning(olderThanMs: number): Promise<Instance[]> {
+  async findStaleProvisioning(olderThanMs: number): Promise<FleetInstance[]> {
     const cutoff = new Date(Date.now() - olderThanMs);
     const rows = await this.db
       .select()
@@ -499,10 +514,10 @@ export class InstanceRepository {
           sql`${instances.createdAt} < ${cutoff}`,
         ),
       );
-    return this.toDomainSafe(rows);
+    return rows.map(toFleet);
   }
 
-  async findStalePairings(olderThanMs: number, hostIds: readonly string[]): Promise<Instance[]> {
+  async findStalePairings(olderThanMs: number, hostIds: readonly string[]): Promise<FleetInstance[]> {
     if (hostIds.length === 0) return [];
     const cutoff = new Date(Date.now() - olderThanMs);
     const rows = await this.db
@@ -516,67 +531,30 @@ export class InstanceRepository {
           sql`${instances.updatedAt} < ${cutoff}`,
         ),
       );
-    return this.toDomainSafe(rows);
+    return rows.map(toFleet);
   }
 
-  private toDomain(row: Row): Instance {
-    const parseResult = InstanceConfigSchema.safeParse(row.config);
+  private toDomain({ fleet, settings }: JoinedRow): Instance {
+    if (!settings) throw new CorruptedRowError("instance", fleet.id, "settings row missing");
+    const parseResult = InstanceConfigSchema.safeParse(settings.config);
     if (!parseResult.success) {
-      throw new CorruptedRowError("instance", row.id, "config schema mismatch");
+      throw new CorruptedRowError("instance", fleet.id, "config schema mismatch");
     }
 
     let config: InstanceConfig;
     let gatewayToken: string;
     try {
       config = decryptConfig(parseResult.data, this.encryptionKey);
-      gatewayToken = decrypt(row.gatewayToken, this.encryptionKey);
+      gatewayToken = decrypt(settings.gatewayToken, this.encryptionKey);
     } catch (err) {
-      throw new CorruptedRowError("instance", row.id, errorMessage(err));
+      throw new CorruptedRowError("instance", fleet.id, errorMessage(err));
     }
 
-    return {
-      id: row.id,
-      userId: row.userId,
-      hostId: row.hostId,
-      runtimeKind: row.runtimeKind,
-      displayName: row.displayName,
-      status: row.status as InstanceStatus,
-      config,
-      containerId: row.containerId,
-      containerName: row.containerName,
-      gatewayPort: row.gatewayPort,
-      gatewayToken,
-      healthFailures: row.healthFailures,
-      errorMessage: row.errorMessage,
-      pairingStatus: row.pairingStatus as PairingStatus,
-      whatsappAccountId: row.whatsappAccountId,
-      hasWhatsappCreds: row.whatsappPaired,
-      lastSeenAt: row.lastSeenAt,
-      backupImport: {
-        status: row.backupImportStatus,
-        objectName: row.backupImportObjectName,
-        contentLength: row.backupImportContentLength,
-        contentType: row.backupImportContentType,
-      },
-      litellm: {
-        keyAlias: row.litellmKeyAlias,
-        keyHash: row.litellmKeyHash,
-        budgetCents: row.litellmBudgetCents,
-        budgetDuration: row.litellmBudgetDuration,
-      },
-      movedFromHostId: row.movedFromHostId,
-      moveObjectName: row.moveObjectName,
-      movedAt: row.movedAt,
-      moveImportedAt: row.moveImportedAt,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      stoppedAt: row.stoppedAt,
-      destroyedAt: row.destroyedAt,
-    };
+    return { ...toFleet(fleet), config, gatewayToken };
   }
 
-  // Skip undecryptable rows in lists; reconciler handles them separately.
-  private toDomainSafe(rows: Row[]): Instance[] {
+  // Lists skip a row whose settings are missing or undecryptable; findById on it fails loud.
+  private toDomainSafe(rows: JoinedRow[]): Instance[] {
     const results: Instance[] = [];
     for (const row of rows) {
       try {
@@ -588,4 +566,44 @@ export class InstanceRepository {
     }
     return results;
   }
+}
+
+function toFleet(row: FleetRow): FleetInstance {
+  return {
+    id: row.id,
+    userId: row.userId,
+    hostId: row.hostId,
+    runtimeKind: row.runtimeKind,
+    displayName: row.displayName,
+    status: row.status as InstanceStatus,
+    containerId: row.containerId,
+    containerName: row.containerName,
+    gatewayPort: row.gatewayPort,
+    healthFailures: row.healthFailures,
+    errorMessage: row.errorMessage,
+    pairingStatus: row.pairingStatus as PairingStatus,
+    whatsappAccountId: row.whatsappAccountId,
+    hasWhatsappCreds: row.whatsappPaired,
+    lastSeenAt: row.lastSeenAt,
+    backupImport: {
+      status: row.backupImportStatus,
+      objectName: row.backupImportObjectName,
+      contentLength: row.backupImportContentLength,
+      contentType: row.backupImportContentType,
+    },
+    litellm: {
+      keyAlias: row.litellmKeyAlias,
+      keyHash: row.litellmKeyHash,
+      budgetCents: row.litellmBudgetCents,
+      budgetDuration: row.litellmBudgetDuration,
+    },
+    movedFromHostId: row.movedFromHostId,
+    moveObjectName: row.moveObjectName,
+    movedAt: row.movedAt,
+    moveImportedAt: row.moveImportedAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    stoppedAt: row.stoppedAt,
+    destroyedAt: row.destroyedAt,
+  };
 }

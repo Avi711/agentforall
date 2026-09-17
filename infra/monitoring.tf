@@ -3,8 +3,7 @@ locals {
     var.monitoring_notification_channel_ids,
     google_monitoring_notification_channel.email[*].id,
   )
-  # Container logs come from the orchestrator VM alone; agent metrics from every VM carrying the app label.
-  vm_filter    = "resource.type=\"gce_instance\" AND resource.labels.instance_id=\"${google_compute_instance.platform.instance_id}\""
+  # Agent metrics come from every VM carrying the app label.
   fleet_filter = "resource.type=\"gce_instance\" AND metadata.user_labels.app=\"agent-forall\""
 }
 
@@ -105,9 +104,9 @@ resource "google_monitoring_alert_policy" "orchestrator_errors" {
   notification_channels = local.alert_channels
 
   conditions {
-    display_name = "Auto restart budget exhausted, fleet-wide liveness failure, a host's Docker unreachable, or a bot near its memory limit"
+    display_name = "Restart budget exhausted, fleet liveness failure, host unreachable, or bot memory high"
     condition_matched_log {
-      filter = "${local.vm_filter} AND logName=\"projects/${var.project_id}/logs/gcplogs-docker-driver\" AND jsonPayload.container.name=\"/orchestrator\" AND (jsonPayload.message:\"auto restart budget exhausted\" OR jsonPayload.message:\"most bots failed liveness at once\" OR jsonPayload.message:\"host unreachable\" OR jsonPayload.message:\"reconciliation failed\" OR jsonPayload.message:\"bot memory high\")"
+      filter = "resource.type=\"gce_instance\" AND logName=\"projects/${var.project_id}/logs/gcplogs-docker-driver\" AND jsonPayload.container.name=\"/orchestrator\" AND (jsonPayload.message:\"auto restart budget exhausted\" OR jsonPayload.message:\"most bots failed liveness at once\" OR jsonPayload.message:\"host unreachable\" OR jsonPayload.message:\"reconciliation failed\" OR jsonPayload.message:\"bot memory high\")"
     }
   }
 

@@ -227,18 +227,17 @@ export type BotUsage =
       reason: "not_litellm";
     };
 
-export interface Instance {
+// What the fleet loops read every tick: identity, placement and runtime state, never a secret.
+export interface FleetInstance {
   id: string;
   userId: string;
   hostId: string;
   runtimeKind: AgentRuntimeKind;
   displayName: string;
   status: InstanceStatus;
-  config: InstanceConfig;
   containerId: string | null;
   containerName: string;
   gatewayPort: number;
-  gatewayToken: string;
   healthFailures: number;
   errorMessage: string | null;
   pairingStatus: PairingStatus;
@@ -256,6 +255,11 @@ export interface Instance {
   updatedAt: Date;
   stoppedAt: Date | null;
   destroyedAt: Date | null;
+}
+
+export interface Instance extends FleetInstance {
+  config: InstanceConfig;
+  gatewayToken: string;
 }
 
 // Narrow — rejects anything that could slip into a log line or container label.

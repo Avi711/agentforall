@@ -4,7 +4,7 @@ import type { InstanceManager } from "./instance-manager.js";
 import type { PairingManager } from "./pairing-manager.js";
 import { groupByHost, type HostRuntime, type HostRuntimes } from "./host-runtimes.js";
 import { errorMessage } from "../domain/errors.js";
-import type { Instance } from "../domain/types.js";
+import type { FleetInstance } from "../domain/types.js";
 import { AUTO_RESTART_EVENTS, type RestartEventLog } from "./auto-restarter.js";
 
 const STALE_PROVISIONING_MS = 5 * 60 * 1000;
@@ -45,8 +45,8 @@ export class Reconciler {
   }
 
   // Rows on a host that does not answer wait: touching them would burn provisioning to error and mark live bots stopped.
-  private async onReachableHosts(rows: readonly Instance[]): Promise<Instance[]> {
-    const reachable: Instance[] = [];
+  private async onReachableHosts(rows: readonly FleetInstance[]): Promise<FleetInstance[]> {
+    const reachable: FleetInstance[] = [];
     for (const [hostId, group] of groupByHost(rows)) {
       if (await this.deps.hosts.for(hostId).gate.check()) reachable.push(...group);
     }
@@ -95,7 +95,7 @@ export class Reconciler {
     }
   }
 
-  private async completeDestroy(inst: Instance): Promise<void> {
+  private async completeDestroy(inst: FleetInstance): Promise<void> {
     // Re-wiped defensively: destroy() clears creds itself, but old rows or direct DB writes may have skipped it.
     await this.deps.repo.updatePairing(inst.id, {
       whatsappPaired: false,
@@ -129,7 +129,7 @@ export class Reconciler {
     }
   }
 
-  private async syncOne(inst: Instance): Promise<void> {
+  private async syncOne(inst: FleetInstance): Promise<void> {
     const container = await this.resolveContainer(inst);
     if (container === null) {
       this.deps.logger.warn(
@@ -159,7 +159,7 @@ export class Reconciler {
   }
 
   // Exhausted = the container exits on every boot: the row goes stopped (the user can start it), never a silent loop.
-  private async readopt(inst: Instance, host: HostRuntime, containerId: string): Promise<void> {
+  private async readopt(inst: FleetInstance, host: HostRuntime, containerId: string): Promise<void> {
     const now = (this.deps.now ?? Date.now)();
     const { maxPerWindow, windowMs } = this.deps.readopt;
     const at = (this.readopts.get(inst.id) ?? []).filter((t) => now - t < windowMs);
@@ -182,7 +182,7 @@ export class Reconciler {
   }
 
   // The row's id can lag a crashed rebuild; the container name is the durable handle.
-  private async resolveContainer(inst: Instance): Promise<{ containerId: string; running: boolean; restarting: boolean } | null> {
+  private async resolveContainer(inst: FleetInstance): Promise<{ containerId: string; running: boolean; restarting: boolean } | null> {
     const { runtime } = this.deps.hosts.for(inst.hostId);
     if (inst.containerId) {
       const state = await runtime.containerState(inst.containerId);

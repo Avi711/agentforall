@@ -82,7 +82,6 @@ export interface AgentBackupStream {
 const STARTUP_SETTLE_MS = 120_000;
 const RESTARTABLE_STATUSES: readonly InstanceStatus[] = ["running", "degraded", "unhealthy"];
 const MOVABLE_STATUSES: readonly InstanceStatus[] = ["running", "degraded", "unhealthy", "stopped"];
-const MOVE_SOURCE_RETENTION_MS = 24 * 60 * 60 * 1000;
 // A whole volume, session and media included; far above any bot seen so far.
 const MOVE_MAX_BYTES = 20 * 1024 * 1024 * 1024;
 // A stalled archive stream must not hold the bot's lock forever; the size cap above bounds the honest case.
@@ -805,6 +804,16 @@ export class InstanceManager {
       ...integrationsAfterPatch(inst.config, patch),
     };
 
+    // Paired implies a whatsapp channel: it cannot leave while creds exist or a pairing that will set them is in flight.
+    const pairingInFlight = inst.pairingStatus === "awaiting_qr" || inst.pairingStatus === "awaiting_code";
+    if (
+      (inst.hasWhatsappCreds || pairingInFlight) &&
+      findWhatsappChannel(inst.config.channels) &&
+      !findWhatsappChannel(merged.channels)
+    ) {
+      throw new ValidationError("disconnect WhatsApp first");
+    }
+
     // Container limits are fixed when the container is created, so accepting one here would report
     // success for a change the running container can never pick up.
     if (
@@ -1191,8 +1200,9 @@ export class InstanceManager {
 
   // The old host keeps the volume, and any container left under the name, for the retention window as the rollback.
   async purgeMovedSources(): Promise<void> {
-    const cutoff = Date.now() - MOVE_SOURCE_RETENTION_MS;
-    for (const due of await this.repo.findMovedSourcesDue(MOVE_SOURCE_RETENTION_MS)) {
+    const retentionMs = this.appConfig.moveSourceRetentionMs;
+    const cutoff = Date.now() - retentionMs;
+    for (const due of await this.repo.findMovedSourcesDue(retentionMs)) {
       if (this.isOperating(due.id)) continue;
       try {
         await this.operationLock.run(due.id, () => this.purgeMovedSourceLocked(due.id, cutoff));

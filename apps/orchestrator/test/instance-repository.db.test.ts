@@ -2,7 +2,7 @@ import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
-import { inArray, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { hosts, instances, user } from "@agent-forall/db";
@@ -201,4 +201,65 @@ test("findMovedSourcesDue honors the cutoff; markMoveImported stamps the row; co
   assert.equal(cleared?.movedAt, null);
   assert.equal(cleared?.moveImportedAt, null);
   assert.deepEqual(await repo.findMovedSourcesDue(-60_000), []);
+});
+
+const SPLIT = "55555555-5555-4555-8555-555555555555";
+
+test("insert writes the fleet row and its settings row; fleet reads carry no secret, full reads join and decrypt", { skip }, async () => {
+  const repo = new InstanceRepository(db, KEY, new Set(["ir-a", "ir-b"]));
+  const inserted = await repo.insert(fields(SPLIT, "ir-a", 19300));
+  assert.equal(inserted.gatewayToken, `gw-${SPLIT.slice(0, 8)}`);
+
+  const settings = await db.execute(sql`select count(*)::int as count from instance_settings where instance_id = ${SPLIT}`);
+  assert.equal(settings.rows[0]?.count, 1);
+  const stored = await db.execute(sql`select config->'provider'->>'apiKey' as key, gateway_token as token from instance_settings where instance_id = ${SPLIT}`);
+  assert.match(String(stored.rows[0]?.key), /^v1:/, "the api key is stored encrypted");
+  assert.match(String(stored.rows[0]?.token), /^v1:/, "the gateway token is stored encrypted");
+
+  const fleet = (await repo.findByStatuses(["running"])).find((i) => i.id === SPLIT);
+  assert.ok(fleet);
+  assert.equal("config" in fleet, false);
+  assert.equal("gatewayToken" in fleet, false);
+  assert.equal(fleet.displayName, SPLIT.slice(0, 8));
+
+  const full = await repo.findById(SPLIT);
+  assert.equal(full?.config.provider.apiKey, "k");
+  assert.equal(full?.gatewayToken, `gw-${SPLIT.slice(0, 8)}`);
+});
+
+test("updateConfig writes settings only; the fleet row is touched only when the display name changes, and never across the managed set", { skip }, async () => {
+  const both = new InstanceRepository(db, KEY, new Set(["ir-a", "ir-b"]));
+  const onlyB = new InstanceRepository(db, KEY, new Set(["ir-b"]));
+  const initial = await both.findById(SPLIT);
+  assert.ok(initial);
+
+  await both.updateConfig(SPLIT, { ...initial.config, provider: { ...initial.config.provider, model: "gpt-6" } });
+  const sameName = await both.findById(SPLIT);
+  assert.equal(sameName?.config.provider.model, "gpt-6");
+  assert.equal(sameName?.updatedAt.getTime(), initial.updatedAt.getTime(), "a settings edit does not stamp the fleet row");
+
+  assert.ok(sameName);
+  await both.updateConfig(SPLIT, { ...sameName.config, displayName: "renamed" });
+  const renamed = await both.findById(SPLIT);
+  assert.equal(renamed?.displayName, "renamed");
+  assert.ok(renamed && renamed.updatedAt.getTime() > initial.updatedAt.getTime());
+
+  await onlyB.updateConfig(SPLIT, { ...initial.config, displayName: "stolen" });
+  const untouched = await both.findById(SPLIT);
+  assert.equal(untouched?.displayName, "renamed");
+  assert.equal(untouched?.config.provider.model, "gpt-6");
+});
+
+test("a fleet row without its settings row fails loud by id, is skipped by full lists, still shows in fleet reads, and cascades on delete", { skip }, async () => {
+  const repo = new InstanceRepository(db, KEY, new Set(["ir-a", "ir-b"]));
+  await db.execute(sql`delete from instance_settings where instance_id = ${SPLIT}`);
+
+  await assert.rejects(repo.findById(SPLIT), /settings row missing/);
+  assert.equal((await repo.findByUserId(USER)).some((i) => i.id === SPLIT), false);
+  assert.equal((await repo.findByStatuses(["running"])).some((i) => i.id === SPLIT), true);
+
+  await db.execute(sql`insert into instance_settings (instance_id, config, gateway_token) values (${SPLIT}, '{}'::jsonb, 'x')`);
+  await db.delete(instances).where(eq(instances.id, SPLIT));
+  const left = await db.execute(sql`select count(*)::int as count from instance_settings where instance_id = ${SPLIT}`);
+  assert.equal(left.rows[0]?.count, 0);
 });

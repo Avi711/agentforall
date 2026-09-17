@@ -1,4 +1,4 @@
-import type { Instance } from "../../../domain/types.js";
+import type { FleetInstance } from "../../../domain/types.js";
 import type { ContainerRuntime } from "../../container-runtime.js";
 import type { GatewayLiveness, WhatsappLinkState } from "../types.js";
 import {
@@ -29,7 +29,7 @@ function startupDegraded(status: number | null): boolean | null {
 
 export async function probeOpenclawWhatsapp(
   runtime: ContainerRuntime,
-  instance: Instance,
+  instance: FleetInstance,
   timeoutMs: number,
 ): Promise<WhatsappLinkState> {
   const containerId = await resolveRunningContainerId(runtime, instance);
@@ -64,7 +64,7 @@ async function statusOf(url: string, timeoutMs: number): Promise<number | null> 
 
 async function resolveRunningContainerId(
   runtime: ContainerRuntime,
-  instance: Instance,
+  instance: FleetInstance,
 ): Promise<string | null> {
   if (instance.containerId) {
     const current = await runtime.containerState(instance.containerId);
