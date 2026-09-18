@@ -15,28 +15,10 @@ variable "zone" {
   default     = "us-central1-a"
 }
 
-variable "machine_type" {
-  description = "VM machine type"
-  type        = string
-  default     = "e2-medium"
-}
-
-variable "disk_size_gb" {
-  description = "Boot disk size in GB"
-  type        = number
-  default     = 50
-}
-
 variable "vpc_cidr" {
   description = "Primary range of the europe-west4 subnet of the default VPC (imported, not created)."
   type        = string
   default     = "10.164.0.0/20"
-}
-
-variable "orchestrator_internal_ip" {
-  description = "The orchestrator VM's internal IP, promoted to a static address; workers and the private DNS zone point here."
-  type        = string
-  default     = "10.164.0.4"
 }
 
 variable "workers" {
@@ -173,16 +155,6 @@ variable "move_source_retention_ms" {
   description = "How long a moved bot's old volume stays on the previous host as the rollback; lowered only while a host is being drained"
   type        = number
   default     = 86400000
-}
-
-variable "control_plane_vm" {
-  description = "Which VM is the control plane (public address, orchestrator.internal record, the only running orchestrator). No default: a missing value must never read as a rollback"
-  type        = string
-
-  validation {
-    condition     = contains(["platform", "orchestrator"], var.control_plane_vm)
-    error_message = "control_plane_vm must be \"platform\" or \"orchestrator\"."
-  }
 }
 
 variable "orchestrator_vm_internal_ip" {

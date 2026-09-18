@@ -18,7 +18,7 @@ Verified from inside a bot: `169.254.169.254` answered with the VM service accou
 ### S-14. Caddy on tenant-net also serves the public site to bots — FIXED 2026-09-16 (step 6: public site 404s private sources; ops use the frontend IP)
 - **Risk:** since 2026-09-14 Caddy sits on `tenant-net` (alias `orchestrator.internal`); a bot can send Host `api.agentforall.co.il` to it and reach `/api/v1/*` — the same authenticated surface `orchestrator:3000` exposes to bots today, so no regression yet.
 - **Fix:** before the orchestrator leaves `tenant-net`: `@private remote_ip private_ranges` → `respond @private 404` on the public site (check the VM's own ops curls first: they arrive as the VM's private IP).
-- **Files:** `infra/startup/orchestrator.sh` (Caddyfile).
+- **Files:** `infra/startup/control-plane.sh` (Caddyfile).
 
 ### S-17. The control-plane VM keeps a full-power Docker socket proxy it has no use for (opened 2026-09-17, step 8)
 The orchestrator still requires a local Docker host, so VM `orchestrator` runs the socket proxy (EXEC/POST/DELETE) although no bot ever runs there; a compromised orchestrator process is root on the VM that holds the CA key and every secret. Only the `draining` host row keeps bots off it. Fix: make the local host optional in `main.ts`, then drop the proxy and the runtime image env from `startup/control-plane.sh`. Related: S-7 (single-orchestrator advisory lock) should land before the old VM is retired, because the `stack_enabled` gate acts only when a startup script runs.

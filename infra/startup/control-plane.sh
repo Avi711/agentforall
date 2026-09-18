@@ -308,14 +308,6 @@ CADDYEOF
 
 touch "$BOOTSTRAP_SENTINEL"
 
-# Only one orchestrator may run against the database. The gate acts when this script runs: flipping control_plane_vm does not stop a running stack.
-if [ "${stack_enabled}" != "true" ]; then
-  docker compose config -q
-  docker compose down >/dev/null 2>&1 || true
-  echo "control plane standing by: stack not started."
-  exit 0
-fi
-
 # A rerun is the deploy: compose recreates a service only when its image or environment changed.
 for attempt in 1 2 3 4 5; do
   docker compose pull -q && break

@@ -1,4 +1,28 @@
 # The control plane's own VM, never a bot. No snapshots: everything renders at boot, and Caddy re-issues its one certificate.
+
+# The public address of api.<domain>. `platform` is the historical name, kept so the live address and identity never move in state.
+resource "google_compute_address" "platform" {
+  name   = "agent-forall-ip"
+  region = var.region
+}
+
+resource "google_service_account" "platform" {
+  account_id   = "agent-forall"
+  display_name = "agent-forall platform"
+}
+
+resource "google_project_iam_member" "logging" {
+  project = var.project_id
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.platform.email}"
+}
+
+resource "google_project_iam_member" "monitoring" {
+  project = var.project_id
+  role    = "roles/monitoring.metricWriter"
+  member  = "serviceAccount:${google_service_account.platform.email}"
+}
+
 resource "google_compute_address" "orchestrator_internal" {
   name         = "orchestrator-internal"
   region       = var.region
@@ -44,7 +68,6 @@ locals {
       move_source_retention_ms = var.move_source_retention_ms
       worker_instance_ids      = join(",", [for name, worker in module.worker : "${name}=${worker.instance_id}"])
       worker_addresses         = join(",", [for name, worker in module.worker : "${name}=${worker.address}"])
-      stack_enabled            = var.control_plane_vm == "orchestrator"
     })),
   ])
 }
@@ -73,12 +96,8 @@ resource "google_compute_instance" "orchestrator" {
     subnetwork = google_compute_subnetwork.default.id
     network_ip = google_compute_address.orchestrator_internal.address
 
-    # Follows control_plane_vm. Terraform cannot order the swap: `delete-access-config` on the other VM first.
-    dynamic "access_config" {
-      for_each = var.control_plane_vm == "orchestrator" ? [1] : []
-      content {
-        nat_ip = google_compute_address.platform.address
-      }
+    access_config {
+      nat_ip = google_compute_address.platform.address
     }
   }
 

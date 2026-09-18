@@ -19,3 +19,21 @@ module "worker" {
   tenant_bridge             = local.tenant_bridge
   orchestrator_internal_url = local.orchestrator_internal_url
 }
+
+resource "google_compute_resource_policy" "daily_snapshot" {
+  name   = "agent-forall-daily-snapshot"
+  region = var.region
+
+  snapshot_schedule_policy {
+    schedule {
+      daily_schedule {
+        days_in_cycle = 1
+        start_time    = "03:00"
+      }
+    }
+
+    retention_policy {
+      max_retention_days = 14
+    }
+  }
+}

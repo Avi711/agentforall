@@ -24,5 +24,5 @@ resource "google_dns_record_set" "orchestrator_internal" {
   name         = google_dns_managed_zone.orchestrator_internal.dns_name
   type         = "A"
   ttl          = 60
-  rrdatas      = [var.control_plane_vm == "orchestrator" ? google_compute_address.orchestrator_internal.address : google_compute_address.platform_internal.address]
+  rrdatas      = [google_compute_address.orchestrator_internal.address]
 }
