@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PLANS } from "@/lib/billing/pricing";
+import { OperatorLine } from "./OperatorLine";
 
 export function Footer() {
   return (
@@ -47,6 +48,9 @@ export function Footer() {
         <div className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-sand/30 pt-6 text-xs text-espresso-light/80 sm:flex-row">
           <p>
             &copy; {new Date().getFullYear()} Agent For All. כל הזכויות שמורות.
+          </p>
+          <p>
+            <OperatorLine />
           </p>
           <p>
             מחירים כוללים מע״מ · תמיכה בעברית · שירות ישראלי

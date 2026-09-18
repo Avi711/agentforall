@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { LegalPage, WhatsAppLink } from "@/components/LegalPage";
+import { OperatorLine } from "@/components/OperatorLine";
 import { PLANS } from "@/lib/billing/pricing";
 
 export const metadata: Metadata = {
@@ -9,7 +10,7 @@ export const metadata: Metadata = {
 
 export default function TermsPage() {
   return (
-    <LegalPage title="תנאי שימוש" updated="אפריל 2026">
+    <LegalPage title="תנאי שימוש" updated="ספטמבר 2026">
       <section>
         <h2 className="mb-3 text-xl font-bold text-espresso">1. כללי</h2>
         <p>
@@ -28,6 +29,7 @@ export default function TermsPage() {
         <h2 className="mb-3 text-xl font-bold text-espresso">3. אחריות המשתמש</h2>
         <ul className="list-inside list-disc space-y-2 ps-2">
           <li>אתם אחראים להגדרת גבולות הסוכן ולהרשאות שאתם מעניקים לו.</li>
+          <li>אתם אחראים לחשבונות ולאפליקציות שאתם מחברים לסוכן, ומאשרים שיש לכם זכות לחבר אותם.</li>
           <li>אל תשתפו עם הסוכן מידע רגיש שאינכם מוכנים שייחשף (סיסמאות, מידע רפואי מסווג, פרטי אשראי).</li>
           <li>השימוש בסוכן לפעילות לא חוקית, הטרדה, או פגיעה בצד שלישי — אסור.</li>
           <li>אתם אחראים על פעולות הסוכן בשמכם, כולל הודעות שנשלחות ותוכן שנוצר.</li>
@@ -79,6 +81,9 @@ export default function TermsPage() {
         <h2 className="mb-3 text-xl font-bold text-espresso">9. יצירת קשר</h2>
         <p>
           שאלות? פנו אלינו בוואטסאפ: <WhatsAppLink />.
+        </p>
+        <p className="mt-3">
+          <OperatorLine />
         </p>
       </section>
     </LegalPage>

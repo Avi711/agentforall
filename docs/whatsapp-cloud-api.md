@@ -506,12 +506,12 @@ App **Agent For All** `1116647830699409` on portfolio `agentforall_il` (`1586169
 2026-09-02; WhatsApp use case added; Independent Tech Provider onboarding started (0/2). Portfolio details
 corrected (website `agentforall.co.il`, tax id on file).
 
-1. **Business verification** — SUBMITTED 2026-09-14 (sole proprietorship, אישור עוסק פטור as Business Tax Document,
+1. **Business verification** — VERIFIED 2026-09-18 (after a Business Support Home escalation); submitted 2026-09-14 (sole proprietorship, אישור עוסק פטור as Business Tax Document,
    email method via avi@agentforall.co.il; Meta quotes ~2 business days). Portfolio legal name/address were changed to the
    certificate's exact Hebrew text first (סיקירוב אברהם, המעגל 13 דירה 2, רמת גן 5246324); Meta's automated check could
    not read the Hebrew name (PDF and 300-dpi PNG alike), submitted with the confirmation checkbox.
    Same day: domain `agentforall.co.il` verified (meta tag via `metadata.verification` in `apps/web/src/app/layout.tsx`);
-   portfolio contact email set to avi@agentforall.co.il. Steps 2 and 3 open only after step 1 is approved.
+   portfolio contact email set to avi@agentforall.co.il.
 2. **Access verification** (Tech Provider) — separate ~5-day review after (1); without it advanced-access
    calls "will begin to be blocked".
 3. **App review** — Advanced Access to `whatsapp_business_messaging` + `whatsapp_business_management`,
