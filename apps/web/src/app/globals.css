@@ -226,7 +226,6 @@ body {
 }
 
 a:has(> .link-hint.is-pending) {
-  cursor: progress;
   /* 120ms delay: a prefetched route lands before the pulse is ever visible. */
   animation: link-pending 900ms ease-in-out 120ms infinite;
 }

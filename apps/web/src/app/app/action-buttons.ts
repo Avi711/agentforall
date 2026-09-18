@@ -10,7 +10,7 @@ export const ROW_ACTION_CLASS: Record<ActionEmphasis, string> = {
 };
 
 export const DIALOG_ACTION: Record<ActionEmphasis, string> = {
-  primary: `${ROW_ACTION_CLASS.primary} disabled:opacity-60 disabled:cursor-wait`,
+  primary: `${ROW_ACTION_CLASS.primary} disabled:opacity-60`,
   quiet: `${ROW_ACTION_CLASS.quiet} disabled:opacity-50`,
   danger: `${ROW_ACTION_CLASS.danger} disabled:opacity-40 disabled:cursor-not-allowed`,
 };

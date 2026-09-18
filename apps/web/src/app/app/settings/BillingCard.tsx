@@ -330,7 +330,7 @@ function CancelConfirm({
           disabled={busy}
           aria-busy={pending}
           onClick={onConfirm}
-          className="px-5 py-2.5 rounded-lg bg-red-700 text-white text-sm font-medium hover:bg-red-800 transition disabled:opacity-40 aria-busy:cursor-wait"
+          className="px-5 py-2.5 rounded-lg bg-red-700 text-white text-sm font-medium hover:bg-red-800 transition disabled:opacity-40"
         >
           {pending ? "מבטלים…" : "כן, לבטל את המנוי"}
         </button>
@@ -444,7 +444,7 @@ function SecondaryButton({
       onClick={onClick}
       disabled={disabled}
       aria-busy={pending}
-      className="px-5 py-3 rounded-lg border border-sand text-espresso hover:bg-cream-dark transition text-sm font-medium disabled:opacity-50 aria-busy:cursor-wait"
+      className="px-5 py-3 rounded-lg border border-sand text-espresso hover:bg-cream-dark transition text-sm font-medium disabled:opacity-50"
     >
       {children}
     </button>

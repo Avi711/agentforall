@@ -244,7 +244,7 @@ export function BotCard({
                         setMenuOpen(false);
                         handleExport();
                       }}
-                      className="w-full min-h-11 flex items-center gap-3 px-4 py-3 text-sm text-espresso hover:bg-cream-dark focus:outline-none focus-visible:bg-cream-dark focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-terra transition disabled:cursor-wait disabled:bg-terra-pale disabled:text-terra"
+                      className="w-full min-h-11 flex items-center gap-3 px-4 py-3 text-sm text-espresso hover:bg-cream-dark focus:outline-none focus-visible:bg-cream-dark focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-terra transition disabled:bg-terra-pale disabled:text-terra"
                     >
                       {downloadPending ? <DownloadSpinner /> : <DownloadIcon />}
                       <span>הורדת גיבוי</span>
@@ -328,7 +328,7 @@ export function BotCard({
               onClick={handleRestart}
               disabled={restartPending || refreshing}
               aria-busy={restartPending}
-              className="inline-flex min-h-11 w-full sm:w-auto items-center justify-center gap-2 px-5 py-3 rounded-xl bg-terra text-white font-medium hover:bg-terra-dark transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-60 disabled:cursor-wait"
+              className="inline-flex min-h-11 w-full sm:w-auto items-center justify-center gap-2 px-5 py-3 rounded-xl bg-terra text-white font-medium hover:bg-terra-dark transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-60"
             >
               {restartPending ? <DownloadSpinner /> : null}
               <span>{restartPending ? "מפעיל מחדש…" : "הפעלת הסוכן מחדש"}</span>
@@ -960,7 +960,7 @@ function RowMenu({ label, items }: { label: string; items: MenuItem[] }) {
                   setOpen(false);
                   item.onClick();
                 }}
-                className={`w-full min-h-11 text-start px-4 py-3 text-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset disabled:opacity-60 disabled:cursor-wait ${
+                className={`w-full min-h-11 text-start px-4 py-3 text-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset disabled:opacity-60 ${
                   item.danger
                     ? "text-red-700 hover:bg-red-50 focus-visible:bg-red-50 focus-visible:ring-red-700"
                     : "text-espresso hover:bg-cream-dark focus-visible:bg-cream-dark focus-visible:ring-terra"

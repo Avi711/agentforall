@@ -294,7 +294,7 @@ function Panel({
             type="button"
             onClick={catalog.loadMore}
             disabled={catalog.busy !== null}
-            className="min-h-11 px-5 py-2.5 rounded-full border border-sand text-espresso text-sm font-medium hover:bg-cream-dark transition disabled:opacity-60 disabled:cursor-wait focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+            className="min-h-11 px-5 py-2.5 rounded-full border border-sand text-espresso text-sm font-medium hover:bg-cream-dark transition disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           >
             {catalog.busy === "more" ? "טוענים…" : "עוד אפליקציות"}
           </button>
@@ -594,9 +594,9 @@ function wideTilesFirst(tiles: TileModel[]): TileModel[] {
 }
 
 const TILE_PRIMARY =
-  "shrink-0 inline-flex min-h-11 items-center justify-center px-4 py-2 rounded-full bg-terra text-white text-sm font-medium hover:bg-terra-dark transition disabled:opacity-60 disabled:cursor-wait focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white";
+  "shrink-0 inline-flex min-h-11 items-center justify-center px-4 py-2 rounded-full bg-terra text-white text-sm font-medium hover:bg-terra-dark transition disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white";
 const TILE_QUIET =
-  "shrink-0 inline-flex min-h-11 items-center justify-center px-4 py-2 rounded-full border border-sand-light text-sm font-medium text-espresso-light hover:text-espresso hover:bg-cream-dark transition disabled:opacity-60 disabled:cursor-wait focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white";
+  "shrink-0 inline-flex min-h-11 items-center justify-center px-4 py-2 rounded-full border border-sand-light text-sm font-medium text-espresso-light hover:text-espresso hover:bg-cream-dark transition disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white";
 const TEXT_ACTION =
   "inline-flex min-h-11 items-center gap-1.5 -ms-2 px-2 rounded-lg text-sm font-medium text-terra hover:text-terra-dark transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra";
 // Secondary actions stay small so the one-account tile looks as simple as it did before.

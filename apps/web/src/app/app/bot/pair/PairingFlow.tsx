@@ -381,7 +381,7 @@ export function PairingFlow({ botId, botName, ownerNumber, suggestedNumber }: Pr
             onClick={handleCancel}
             disabled={cancelBusy || leaving}
             aria-busy={cancelBusy || leaving}
-            className="-mx-2 px-2 py-3 text-sm text-espresso-light hover:text-espresso disabled:opacity-50 disabled:cursor-wait"
+            className="-mx-2 px-2 py-3 text-sm text-espresso-light hover:text-espresso disabled:opacity-50"
           >
             {cancelBusy || leaving ? "מבטלים…" : "ביטול ההתאמה"}
           </button>

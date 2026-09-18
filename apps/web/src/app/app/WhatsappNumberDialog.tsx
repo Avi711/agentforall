@@ -4,7 +4,7 @@ import { useEffect, useId, useRef } from "react";
 
 import { ROW_ACTION_CLASS } from "./action-buttons";
 
-const QUIET = `${ROW_ACTION_CLASS.quiet} disabled:opacity-60 disabled:cursor-wait`;
+const QUIET = `${ROW_ACTION_CLASS.quiet} disabled:opacity-60`;
 
 export function WhatsappNumberConfirmDialog({
   open,

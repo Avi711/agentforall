@@ -291,7 +291,7 @@ function CandidateRow({
         type="button"
         disabled={disabled}
         onClick={onPick}
-        className="inline-flex items-center justify-center px-4 py-2 rounded-full border border-sand text-espresso text-sm font-medium hover:bg-cream-dark transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra disabled:opacity-60 disabled:cursor-wait"
+        className="inline-flex items-center justify-center px-4 py-2 rounded-full border border-sand text-espresso text-sm font-medium hover:bg-cream-dark transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra disabled:opacity-60"
       >
         זה אני
       </button>

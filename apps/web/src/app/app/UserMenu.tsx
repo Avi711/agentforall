@@ -133,7 +133,7 @@ export function UserMenu({ user }: { user: MenuUser }) {
               onClick={handleSignOut}
               disabled={busy}
               aria-busy={busy}
-              className="w-full flex items-center gap-3 px-4 py-3 text-sm text-espresso-light hover:bg-cream-dark hover:text-espresso transition disabled:opacity-50 disabled:cursor-wait"
+              className="w-full flex items-center gap-3 px-4 py-3 text-sm text-espresso-light hover:bg-cream-dark hover:text-espresso transition disabled:opacity-50"
             >
               <IconSignOut />
               <span>{busy ? "מתנתק…" : "התנתקות"}</span>
