@@ -3,6 +3,8 @@
 import { PendingLink } from "@/app/app/Pending";
 import { useEffect, useState } from "react";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
+import { ConnectedCard } from "../ConnectedCard";
+import { FLOW_BUTTON } from "../flow-buttons";
 
 const STATUS_POLL_INTERVAL_MS = 2000;
 const LINK_LOST_HE =
@@ -126,7 +128,7 @@ export function TelegramConnectFlow({ botId }: { botId: string }) {
               setPhase({ kind: "starting" });
               setAttempt((n) => n + 1);
             }}
-            className="w-full sm:w-auto px-6 py-3 rounded-xl bg-terra text-white font-medium hover:bg-terra-light transition"
+            className={FLOW_BUTTON.primary}
           >
             ניסיון נוסף
           </button>
@@ -152,13 +154,13 @@ export function TelegramConnectFlow({ botId }: { botId: string }) {
               href={phase.deepLink}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex w-full sm:w-auto items-center justify-center gap-2.5 px-6 py-3 rounded-xl bg-terra text-white font-medium text-center hover:bg-terra-light transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+              className={FLOW_BUTTON.primary}
             >
               <TelegramGlyph />
               <span>יצירת הבוט בטלגרם</span>
             </a>
           ) : (
-            <div className="inline-flex w-full sm:w-auto items-center justify-center gap-2.5 px-6 py-3 rounded-xl bg-cream-dark text-espresso-light font-medium">
+            <div className="inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-cream-dark px-5 py-2.5 text-[15px] font-medium text-espresso-light">
               <Spinner />
               <span>מכינים את הקישור…</span>
             </div>
@@ -182,42 +184,21 @@ export function TelegramConnectFlow({ botId }: { botId: string }) {
 
 function ConnectedPanel({ botUsername }: { botUsername: string | null }) {
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-sand-light p-5 sm:p-8 max-w-2xl">
-      <p className="text-xs uppercase tracking-[0.22em] text-sage-dark mb-3">
-        מחובר
-      </p>
-      <h2 className="font-display text-xl sm:text-2xl text-espresso mb-3">
-        הסוכן שלכם מחובר לטלגרם 🎉
-      </h2>
-      <p className="text-espresso-light leading-relaxed mb-3 max-w-md">
-        נשאר רק לומר שלום. ההודעה הראשונה עשויה להגיע אחרי כ-30–40 שניות —
-        הסוכן עולה ברגעים אלו.
-      </p>
+    <ConnectedCard
+      title="הסוכן מחובר לטלגרם"
+      chat={
+        botUsername
+          ? { href: `https://t.me/${botUsername}`, label: "פתיחת הצ'אט", icon: <TelegramGlyph /> }
+          : undefined
+      }
+    >
+      <p>נשאר רק לומר שלום. ההודעה הראשונה עשויה להגיע אחרי כחצי דקה, הסוכן עולה ברגעים אלו.</p>
       {botUsername ? (
-        <p dir="ltr" className="font-mono text-sm text-espresso-light break-all mb-8">
+        <p dir="ltr" className="mt-2 break-all font-mono text-sm">
           @{botUsername}
         </p>
       ) : null}
-      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 sm:gap-4">
-        {botUsername ? (
-          <a
-            href={`https://t.me/${botUsername}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex w-full sm:w-auto items-center justify-center gap-2.5 px-6 py-3 rounded-xl bg-terra text-white font-medium text-center hover:bg-terra-light transition"
-          >
-            <TelegramGlyph />
-            <span>פתחו את הבוט ושלחו הודעה</span>
-          </a>
-        ) : null}
-        <PendingLink
-          href="/app"
-          className="px-6 py-3 rounded-xl text-center text-espresso-light hover:text-espresso hover:bg-cream-dark transition"
-        >
-          לעמוד הבית
-        </PendingLink>
-      </div>
-    </div>
+    </ConnectedCard>
   );
 }
 

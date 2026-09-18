@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useNavigate, useRefresh } from "@/app/app/Pending";
 import { WhatsappConsentBody } from "@/content/whatsapp-consent.he";
 import { CURRENT_CONSENT_VERSION } from "@/lib/consent-version";
+import { FLOW_BUTTON } from "../flow-buttons";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 
 export function ConsentGate() {
@@ -46,7 +47,7 @@ export function ConsentGate() {
           onClick={handleAccept}
           disabled={busy}
           aria-busy={accepting || refreshing}
-          className="px-6 py-3 rounded-xl bg-terra text-white font-medium hover:bg-terra-light transition disabled:opacity-50"
+          className={FLOW_BUTTON.primary}
         >
           {accepting || refreshing ? "מאשר…" : "אני מסכים וממשיך"}
         </button>

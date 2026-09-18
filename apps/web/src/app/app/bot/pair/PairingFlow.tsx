@@ -8,9 +8,12 @@ import type {
   PairQr,
 } from "@/lib/orchestrator/types";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
+import { WhatsAppIcon } from "@/components/WhatsAppIcon";
+import { ConnectedCard } from "../ConnectedCard";
+import { FLOW_BUTTON } from "../flow-buttons";
 
 type Tab = "qr" | "code";
-type Step = "number" | "link" | "linking" | "done";
+type Step = "number" | "ready" | "link" | "linking" | "done";
 
 type PairStatus = Pick<
   CanonicalPairStatus,
@@ -41,7 +44,9 @@ const READY_WAIT_MS = 90_000;
 export function PairingFlow({ botId, botName, ownerNumber, suggestedNumber }: Props) {
   const router = useRouter();
   const [owner, setOwner] = useState<string | null>(ownerNumber);
-  const [step, setStep] = useState<Step>(ownerNumber ? "link" : "number");
+  const [step, setStep] = useState<Step>(ownerNumber ? "ready" : "number");
+  // Asked once: changing the owner number mid-link goes straight back to the code.
+  const [botPhoneReady, setBotPhoneReady] = useState(false);
   const [tab, setTab] = useState<Tab>("qr");
   const [status, setStatus] = useState<PairStatus | null>(null);
   const [qr, setQr] = useState<Qr | null>(null);
@@ -78,7 +83,7 @@ export function PairingFlow({ botId, botName, ownerNumber, suggestedNumber }: Pr
     }
   }
 
-  // A number already on record skips the question; the pairing starts as soon as the page opens.
+  // The pairing, and its short-lived code, starts only once the owner says the bot's WhatsApp is open.
   useEffect(() => {
     if (step !== "link" || !owner) return;
     const ac = new AbortController();
@@ -90,7 +95,7 @@ export function PairingFlow({ botId, botName, ownerNumber, suggestedNumber }: Pr
   }, [botId, owner, step]);
 
   useEffect(() => {
-    if (starting || step === "number" || step === "done") return;
+    if (starting || step === "number" || step === "ready" || step === "done") return;
     let cancelled = false;
     const ac = new AbortController();
 
@@ -158,7 +163,7 @@ export function PairingFlow({ botId, botName, ownerNumber, suggestedNumber }: Pr
   function handleNumberSubmit(number: string) {
     setError(null);
     setOwner(number);
-    setStep("link");
+    setStep(botPhoneReady ? "link" : "ready");
   }
 
   // startPairing is idempotent — reuses active session or recreates a missing sidecar.
@@ -208,12 +213,24 @@ export function PairingFlow({ botId, botName, ownerNumber, suggestedNumber }: Pr
       <div className="space-y-6">
         <OwnerNumberCard
           botName={botName}
-          initial={suggestedNumber}
+          initial={owner ?? suggestedNumber}
           error={error}
           onSubmit={handleNumberSubmit}
           onBack={() => startLeave(() => router.replace("/app"))}
         />
       </div>
+    );
+  }
+
+  if (step === "ready") {
+    return (
+      <BotPhoneReadyCard
+        onReady={() => {
+          setBotPhoneReady(true);
+          setStep("link");
+        }}
+        onBack={() => setStep("number")}
+      />
     );
   }
 
@@ -223,8 +240,6 @@ export function PairingFlow({ botId, botName, ownerNumber, suggestedNumber }: Pr
         botName={botName}
         botNumber={status?.whatsappAccountId ?? null}
         helloConfirmed={helloConfirmed}
-        onDashboard={() => startLeave(() => router.replace("/app"))}
-        leaving={leaving}
       />
     );
   }
@@ -252,7 +267,7 @@ export function PairingFlow({ botId, botName, ownerNumber, suggestedNumber }: Pr
           <button
             type="button"
             onClick={() => window.location.reload()}
-            className="px-5 py-2.5 rounded-xl bg-terra text-white font-medium hover:bg-terra-light transition"
+            className={FLOW_BUTTON.primary}
           >
             ניסיון נוסף
           </button>
@@ -270,7 +285,7 @@ export function PairingFlow({ botId, botName, ownerNumber, suggestedNumber }: Pr
           <button
             type="button"
             onClick={() => window.location.reload()}
-            className="px-5 py-2.5 rounded-xl bg-terra text-white font-medium hover:bg-terra-light transition"
+            className={FLOW_BUTTON.primary}
           >
             התחלה מחדש
           </button>
@@ -378,6 +393,52 @@ export function PairingFlow({ botId, botName, ownerNumber, suggestedNumber }: Pr
 
       <Instructions />
     </div>
+  );
+}
+
+// Shown before any code exists: a code scanned from the owner's personal WhatsApp links the wrong account.
+function BotPhoneReadyCard({ onReady, onBack }: { onReady: () => void; onBack: () => void }) {
+  return (
+    <div className="relative bg-white rounded-[24px] border border-sand-light shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)] p-5 sm:p-8 overflow-hidden">
+      <span aria-hidden className="absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-sand-light to-transparent" />
+      <TwoNumbersSteps step={2} />
+      <h1 className="font-display text-xl sm:text-2xl text-espresso mt-6 mb-4 leading-tight">
+        פתחו את הוואטסאפ של הבוט
+      </h1>
+      <ol role="list" className="max-w-md space-y-3 text-espresso">
+        <li className="flex gap-3">
+          <StepDot>1</StepDot>
+          <span>בטלפון עם המספר של הבוט, פתחו את וואטסאפ.</span>
+        </li>
+        <li className="flex gap-3">
+          <StepDot>2</StepDot>
+          <span>הגדרות, מכשירים מקושרים, קישור מכשיר.</span>
+        </li>
+      </ol>
+      <p className="mt-5 max-w-md rounded-xl bg-terra-pale px-4 py-3 text-sm leading-relaxed text-espresso">
+        לא הוואטסאפ האישי שלכם. אם תסרקו ממנו, הבוט יענה בשמכם לכל מי שכותב לכם.
+      </p>
+      {/* The secondary comes first so the primary lands far left, where an RTL row ends. */}
+      <div className="mt-6 flex flex-wrap-reverse items-center gap-3">
+        <button type="button" onClick={onBack} className={FLOW_BUTTON.secondary}>
+          חזרה
+        </button>
+        <button type="button" onClick={onReady} className={FLOW_BUTTON.primary}>
+          פתוח, הציגו קוד
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function StepDot({ children }: { children: string }) {
+  return (
+    <span
+      aria-hidden
+      className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-cream-dark text-xs font-medium tabular-nums text-espresso"
+    >
+      {children}
+    </span>
   );
 }
 
@@ -524,7 +585,7 @@ function NumberCard({
   return (
     <li
       aria-current={active ? "step" : undefined}
-      className={`relative flex items-center gap-3 rounded-2xl border px-3 py-3 ${
+      className={`relative flex items-center gap-2 sm:gap-3 rounded-2xl border px-3 py-3 ${
         active ? "border-terra bg-terra-pale" : "border-sand-light bg-cream-dark"
       }`}
     >
@@ -535,7 +596,7 @@ function NumberCard({
       >
         {number}
       </span>
-      <svg viewBox="0 0 44 44" width="44" height="44" className="ms-4 shrink-0" aria-hidden="true">
+      <svg viewBox="0 0 44 44" className="ms-3 sm:ms-4 h-9 w-9 sm:h-11 sm:w-11 shrink-0" aria-hidden="true">
         {glyph}
       </svg>
       <div className="min-w-0">
@@ -554,53 +615,23 @@ function DoneCard({
   botName,
   botNumber,
   helloConfirmed,
-  onDashboard,
-  leaving,
 }: {
   botName: string;
   botNumber: string | null;
   helloConfirmed: boolean;
-  onDashboard: () => void;
-  leaving: boolean;
 }) {
   const chatHref = botNumber
     ? `https://wa.me/${botNumber.replace(/\D/g, "")}?text=${encodeURIComponent("היי")}`
     : null;
   return (
-    <div className="bg-white rounded-[24px] shadow-sm border border-sand-light p-6 sm:p-10 text-center space-y-5 max-w-md mx-auto">
-      <span
-        aria-hidden
-        className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-full bg-sage-pale text-sage-dark text-2xl"
-      >
-        ✓
-      </span>
-      <h2 className="font-display text-2xl text-espresso">{botName} מחובר</h2>
-      <p className="text-espresso-light leading-relaxed">
-        {helloConfirmed
-          ? `${botName} שלח לכם הודעה בוואטסאפ. פתחו את הצ'אט וכתבו לו.`
-          : `הבוט מחובר. אם עוד לא הגיעה ממנו הודעה, כתבו לו "היי" והוא יענה.`}
-      </p>
-      <div className="flex flex-col gap-2">
-        {chatHref ? (
-          <a
-            href={chatHref}
-            target="_blank"
-            rel="noopener"
-            className="inline-flex min-h-12 items-center justify-center rounded-xl bg-terra px-5 py-3 font-medium text-white transition hover:bg-terra-dark"
-          >
-            פתיחת הצ&apos;אט בוואטסאפ
-          </a>
-        ) : null}
-        <button
-          type="button"
-          onClick={onDashboard}
-          disabled={leaving}
-          className="min-h-11 rounded-xl px-5 py-2.5 text-sm font-medium text-espresso-light transition hover:text-espresso disabled:opacity-50"
-        >
-          לדשבורד
-        </button>
-      </div>
-    </div>
+    <ConnectedCard
+      title={`${botName} מחובר`}
+      chat={chatHref ? { href: chatHref, label: "פתיחת הצ'אט", icon: <WhatsAppIcon /> } : undefined}
+    >
+      {helloConfirmed
+        ? `${botName} שלח לכם הודעה בוואטסאפ. פתחו את הצ'אט וכתבו לו.`
+        : `הבוט מחובר. אם עוד לא הגיעה ממנו הודעה, כתבו לו "היי" והוא יענה.`}
+    </ConnectedCard>
   );
 }
 

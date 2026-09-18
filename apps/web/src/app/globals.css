@@ -24,6 +24,47 @@
   --color-wa-light: #DCF8C6;
 }
 
+/* Interaction feel for every control, in the base layer so any utility still wins. */
+@layer base {
+  /* Tailwind 4 leaves buttons on the default cursor. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  summary,
+  select:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button,
+  [role="button"],
+  a {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  button,
+  [role="button"],
+  .pressable {
+    transition: scale 150ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]),
+  textarea,
+  select {
+    transition:
+      border-color 180ms cubic-bezier(0.2, 0, 0, 1),
+      box-shadow 180ms cubic-bezier(0.2, 0, 0, 1),
+      background-color 180ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    html:not([data-reduced-motion]) button:not(:disabled):active,
+    html:not([data-reduced-motion]) [role="button"]:not([aria-disabled="true"]):active,
+    html:not([data-reduced-motion]) .pressable:active {
+      scale: 0.98;
+    }
+  }
+}
+
 html {
   scroll-behavior: smooth;
 }

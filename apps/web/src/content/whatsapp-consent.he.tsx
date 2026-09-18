@@ -12,8 +12,8 @@ export function WhatsappConsentBody() {
       </p>
       <ul className="space-y-2 list-disc ps-5 marker:text-terra">
         <li>
-          <strong>Meta אוסרת במפורש</strong> בוטים כלליים של AI ב-WhatsApp מאז
-          15 בינואר 2026 — גם דרך ה-API הרשמי שלהם.
+          <strong>Meta אוסרת</strong> מאז 15 בינואר 2026 עוזרי AI אישיים כלליים
+          ב-WhatsApp, גם דרך ה-API הרשמי שלה. בוט של עסק שעונה ללקוחות שלו מותר שם.
         </li>
         <li>
           יש סיכון אמיתי של השעיית חשבון, במיוחד עבור מספרים חדשים או שימוש אינטנסיבי.

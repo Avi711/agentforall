@@ -3,6 +3,7 @@
 import Script from "next/script";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PendingLink } from "@/app/app/Pending";
+import { ConnectedCard } from "../ConnectedCard";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 import { COEXISTENCE_FEATURE_TYPE, parseSignupMessage } from "@/lib/whatsapp-cloud/signup-message";
 import { isEmbeddedSignupOrigin } from "@/lib/whatsapp-cloud/signup-origin";
@@ -347,20 +348,13 @@ export function WhatsappBusinessConnectFlow({ botId, meta }: { botId: string; me
 
 function ConnectedPanel({ displayPhoneNumber, verifiedName }: { displayPhoneNumber: string | null; verifiedName: string | null }) {
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-sand-light p-5 sm:p-8 max-w-2xl">
-      <p className="text-xs uppercase tracking-[0.22em] text-terra mb-3">WhatsApp Business</p>
-      <h2 className="font-display text-xl sm:text-2xl text-espresso mb-3">המספר העסקי מחובר</h2>
-      <p className="text-sm text-espresso-light leading-relaxed">
-        הסוכן עונה עכשיו ללקוחות ב-
-        <span dir="ltr" className="font-mono text-espresso">
-          {displayPhoneNumber ?? "המספר שחיברתם"}
-        </span>
-        {verifiedName ? ` בשם ${verifiedName}` : ""}. ללמד אותו מה לענות? כתבו לו בטלגרם כרגיל.
-      </p>
-      <PendingLink href="/app" className="mt-5 inline-block text-sm text-terra underline">
-        חזרה לעמוד הבית
-      </PendingLink>
-    </div>
+    <ConnectedCard title="המספר העסקי מחובר">
+      הסוכן עונה עכשיו ללקוחות ב-
+      <span dir="ltr" className="font-mono text-espresso">
+        {displayPhoneNumber ?? "המספר שחיברתם"}
+      </span>
+      {verifiedName ? ` בשם ${verifiedName}` : ""}. ללמד אותו מה לענות? כתבו לו בטלגרם כרגיל.
+    </ConnectedCard>
   );
 }
 
