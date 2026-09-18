@@ -9,6 +9,7 @@ import { SETTINGS_PATH, type CheckoutReturn } from "@/lib/billing/urls";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 import { whatsappChatUrl } from "@/lib/site";
 import { PlanPicker } from "../PlanPicker";
+import { BusyLabel } from "../Marks";
 import {
   BillingClientError,
   cancelSubscription,
@@ -108,10 +109,11 @@ export function BillingCard({
           status.available ? (
             <PrimaryButton
               pending={pending === "checkout"}
+              busyText="מעבירים לתשלום…"
               disabled={busy || verification.verifying}
               onClick={() => run("checkout", async () => window.location.assign(await startCheckout(plan)), true)}
             >
-              {pending === "checkout" ? "מעבירים לתשלום…" : "הצטרפות למנוי"}
+              הצטרפות למנוי
             </PrimaryButton>
           ) : (
             <p className="text-sm text-espresso-light">
@@ -127,10 +129,11 @@ export function BillingCard({
         {status.paid && sub?.cancelAtPeriodEnd && status.capabilities.resume ? (
           <PrimaryButton
             pending={pending === "resume"}
+            busyText="מחדשים…"
             disabled={busy}
             onClick={() => run("resume", async () => setStatus(await resumeSubscription()))}
           >
-            {pending === "resume" ? "מחדשים…" : "חידוש המנוי"}
+            חידוש המנוי
           </PrimaryButton>
         ) : null}
 
@@ -144,11 +147,12 @@ export function BillingCard({
           <SecondaryButton
             disabled={busy}
             pending={pending === "paymentMethod"}
+            busyText="פותחים…"
             onClick={() =>
               run("paymentMethod", async () => window.location.assign(await fetchUpdatePaymentMethodUrl()), true)
             }
           >
-            {pending === "paymentMethod" ? "פותחים…" : "עדכון אמצעי תשלום"}
+            עדכון אמצעי תשלום
           </SecondaryButton>
         ) : null}
 
@@ -156,9 +160,10 @@ export function BillingCard({
           <SecondaryButton
             disabled={busy}
             pending={pending === "portal"}
+            busyText="פותחים…"
             onClick={() => run("portal", async () => void window.open(await fetchPortalUrl(), "_blank", "noopener"))}
           >
-            {pending === "portal" ? "פותחים…" : "ניהול חשבוניות ותשלומים"}
+            ניהול חשבוניות ותשלומים
           </SecondaryButton>
         ) : null}
 
@@ -290,8 +295,8 @@ function ChangePlanPanel({
         נשמרים עד סוף התקופה.
       </p>
       <div className="flex flex-col sm:flex-row gap-3">
-        <PrimaryButton pending={pending} disabled={busy || selected === current} onClick={onConfirm}>
-          {pending ? "מעבירים לתשלום…" : "מעבר לתוכנית"}
+        <PrimaryButton pending={pending} busyText="מעבירים לתשלום…" disabled={busy || selected === current} onClick={onConfirm}>
+          מעבר לתוכנית
         </PrimaryButton>
         <button
           type="button"
@@ -332,7 +337,7 @@ function CancelConfirm({
           onClick={onConfirm}
           className="px-5 py-2.5 rounded-lg bg-red-700 text-white text-sm font-medium hover:bg-red-800 transition disabled:opacity-40"
         >
-          {pending ? "מבטלים…" : "כן, לבטל את המנוי"}
+          <BusyLabel busy={pending} busyText="מבטלים…">כן, לבטל את המנוי</BusyLabel>
         </button>
         <button
           type="button"
@@ -405,11 +410,13 @@ function Notice({ tone, children }: { tone: "info" | "warn"; children: React.Rea
 
 function PrimaryButton({
   pending,
+  busyText,
   disabled,
   onClick,
   children,
 }: {
   pending: boolean;
+  busyText: string;
   disabled: boolean;
   onClick: () => void;
   children: React.ReactNode;
@@ -422,7 +429,7 @@ function PrimaryButton({
       aria-busy={pending}
       className="px-5 py-3 rounded-lg bg-terra text-white font-medium hover:bg-terra-dark transition disabled:opacity-40 disabled:cursor-not-allowed"
     >
-      {children}
+      <BusyLabel busy={pending} busyText={busyText}>{children}</BusyLabel>
     </button>
   );
 }
@@ -430,11 +437,13 @@ function PrimaryButton({
 function SecondaryButton({
   disabled,
   pending = false,
+  busyText,
   onClick,
   children,
 }: {
   disabled: boolean;
   pending?: boolean;
+  busyText?: string;
   onClick: () => void;
   children: React.ReactNode;
 }) {
@@ -446,7 +455,7 @@ function SecondaryButton({
       aria-busy={pending}
       className="px-5 py-3 rounded-lg border border-sand text-espresso hover:bg-cream-dark transition text-sm font-medium disabled:opacity-50"
     >
-      {children}
+      <BusyLabel busy={pending} busyText={busyText}>{children}</BusyLabel>
     </button>
   );
 }

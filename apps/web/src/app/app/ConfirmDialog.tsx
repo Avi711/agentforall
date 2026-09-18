@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { DIALOG_ACTION } from "./action-buttons";
+import { BusyLabel } from "./Marks";
 
 interface Props {
   open: boolean;
@@ -97,17 +98,7 @@ export function ConfirmDialog({
             disabled={busy}
             className={DIALOG_ACTION.primary}
           >
-            {busy ? (
-              <>
-                <span
-                  aria-hidden="true"
-                  className="inline-block w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin"
-                />
-                <span>{busyLabel}</span>
-              </>
-            ) : (
-              confirmLabel
-            )}
+            <BusyLabel busy={busy} busyText={busyLabel}>{confirmLabel}</BusyLabel>
           </button>
         </div>
       </form>

@@ -3,7 +3,7 @@
 import { PendingLink } from "@/app/app/Pending";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ConfirmDialog } from "@/app/app/ConfirmDialog";
-import { BotAvatar, SECTION_LABEL } from "@/app/app/Marks";
+import { BotAvatar, BusyLabel, SECTION_LABEL } from "@/app/app/Marks";
 import { Toast, type ToastTone } from "@/app/app/Toast";
 import { featuredApp, searchFeatured } from "@/lib/integrations/catalog.he";
 import {
@@ -294,9 +294,10 @@ function Panel({
             type="button"
             onClick={catalog.loadMore}
             disabled={catalog.busy !== null}
+            aria-busy={catalog.busy === "more"}
             className="min-h-11 px-5 py-2.5 rounded-full border border-sand text-espresso text-sm font-medium hover:bg-cream-dark transition disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           >
-            {catalog.busy === "more" ? "טוענים…" : "עוד אפליקציות"}
+            <BusyLabel busy={catalog.busy === "more"} busyText="טוענים…">עוד אפליקציות</BusyLabel>
           </button>
         </div>
       ) : null}
@@ -692,10 +693,11 @@ function AppTile({
           // Through the account, so a named one is replaced under its name rather than joined by an unnamed one.
           onClick={() => (account ? actions.reconnect(app, account) : actions.connect(app))}
           disabled={busy}
+          aria-busy={busy}
           aria-label={`${needsReconnect ? "חיבור מחדש של" : "חיבור"} ${name}`}
           className={TILE_PRIMARY}
         >
-          {busy ? "מעבירים…" : needsReconnect ? "חיבור מחדש" : "חיבור"}
+          <BusyLabel busy={busy}>{needsReconnect ? "חיבור מחדש" : "חיבור"}</BusyLabel>
         </button>
       )}
     </li>
@@ -761,19 +763,21 @@ function AccountRow({
               type="button"
               onClick={() => actions.reconnect(app, account)}
               disabled={busy || cancelling}
+              aria-busy={busy}
               aria-label={`המשך החיבור של ${fullName}`}
               className={TILE_PRIMARY}
             >
-              {busy ? "מעבירים…" : "המשך חיבור"}
+              <BusyLabel busy={busy}>המשך חיבור</BusyLabel>
             </button>
             <button
               type="button"
               onClick={() => actions.cancelAttempt(app, account)}
               disabled={busy || cancelling}
+              aria-busy={cancelling}
               aria-label={`ביטול החיבור של ${fullName}`}
               className={TILE_QUIET}
             >
-              {cancelling ? "מבטלים…" : "ביטול"}
+              <BusyLabel busy={cancelling}>ביטול</BusyLabel>
             </button>
           </>
         ) : (
@@ -782,10 +786,11 @@ function AccountRow({
               type="button"
               onClick={() => actions.reconnect(app, account)}
               disabled={busy}
+              aria-busy={busy}
               aria-label={`חיבור מחדש של ${fullName}`}
               className={TILE_PRIMARY}
             >
-              {busy ? "מעבירים…" : "חיבור מחדש"}
+              <BusyLabel busy={busy}>חיבור מחדש</BusyLabel>
             </button>
             <button type="button" onClick={() => actions.remove(app, account)} aria-label={`הסרת ${fullName}`} className={TILE_QUIET}>
               הסרה

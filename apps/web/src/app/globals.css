@@ -158,58 +158,37 @@ body {
 }
 .animate-runtime-sweep { animation: runtime-sweep 2.4s ease-in-out infinite; }
 
-@keyframes download-card-progress {
-  0% { transform: translateX(110%) scaleX(0.2); opacity: 0; }
-  18% { opacity: 1; }
-  82% { opacity: 1; }
-  100% { transform: translateX(-110%) scaleX(1); opacity: 0; }
+@keyframes card-progress {
+  from { transform: translateX(250%); }
+  to { transform: translateX(-100%); }
 }
 
-.download-card-progress {
+@keyframes card-progress-in {
+  from { opacity: 0; }
+}
+
+/* Rides the card's top border, inset past the rounded corners so it never leaves the shape. */
+.card-progress {
   position: absolute;
-  inset-inline: 0;
-  bottom: 0;
-  height: 3px;
-  /* The card itself no longer clips, so the bar rounds its own ends. */
-  border-radius: 0 0 28px 28px;
+  top: -1px;
+  inset-inline: 3rem;
+  height: 2px;
+  border-radius: 999px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--color-terra-pale) 80%, white);
+  background: var(--color-terra-pale);
+  animation: card-progress-in 240ms ease-out;
 }
 
-.download-card-progress::after {
+/* Travels right to left, the reading direction; the bright end leads. */
+.card-progress::after {
   content: "";
   position: absolute;
   inset-block: 0;
-  width: 48%;
+  left: 0;
+  width: 40%;
   border-radius: 999px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    var(--color-terra-light),
-    var(--color-terra)
-  );
-  animation: download-card-progress 1.45s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-}
-
-@keyframes download-spinner {
-  to { transform: rotate(360deg); }
-}
-
-.download-spinner {
-  animation: download-spinner 0.9s linear infinite;
-}
-
-@keyframes download-dot {
-  0%, 70%, 100% { transform: translateY(0); opacity: 0.35; }
-  35% { transform: translateY(-3px); opacity: 1; }
-}
-
-.download-dot {
-  width: 0.35rem;
-  height: 0.35rem;
-  border-radius: 999px;
-  background: currentColor;
-  animation: download-dot 1s ease-in-out infinite;
+  background: linear-gradient(to right, var(--color-terra), var(--color-terra-light), transparent);
+  animation: card-progress 1.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
 /* Link pending state (useLinkStatus). The marker has no size, so nothing reflows when it toggles. */
@@ -299,9 +278,7 @@ a:has(> .link-hint.is-pending) {
   .animate-spin-slow-reverse,
   .animate-halo,
   .animate-runtime-sweep,
-  .download-card-progress::after,
-  .download-spinner,
-  .download-dot,
+  .card-progress::after,
   .reveal,
   .reveal.in-view,
   .bar-fill-active,
@@ -310,6 +287,7 @@ a:has(> .link-hint.is-pending) {
     animation: none !important;
   }
   .reveal { opacity: 1 !important; }
+  .card-progress::after { width: 100%; opacity: 0.7; }
   a:has(> .link-hint.is-pending) { animation: none !important; opacity: 0.6; }
 }
 
@@ -341,13 +319,12 @@ html[data-reduced-motion] { scroll-behavior: auto; }
 html[data-reduced-motion] .animate-fade-up,
 html[data-reduced-motion] .animate-float,
 html[data-reduced-motion] .animate-ember,
+html[data-reduced-motion] .animate-spin,
 html[data-reduced-motion] .animate-spin-slow,
 html[data-reduced-motion] .animate-spin-slow-reverse,
 html[data-reduced-motion] .animate-halo,
 html[data-reduced-motion] .animate-runtime-sweep,
-html[data-reduced-motion] .download-card-progress::after,
-html[data-reduced-motion] .download-spinner,
-html[data-reduced-motion] .download-dot,
+html[data-reduced-motion] .card-progress::after,
 html[data-reduced-motion] .reveal,
 html[data-reduced-motion] .reveal.in-view,
 html[data-reduced-motion] .bar-fill-active,
@@ -356,6 +333,7 @@ html[data-reduced-motion] .typing-dot {
   animation: none !important;
 }
 html[data-reduced-motion] .reveal { opacity: 1 !important; }
+html[data-reduced-motion] .card-progress::after { width: 100%; opacity: 0.7; }
 html[data-reduced-motion] a:has(> .link-hint.is-pending) { animation: none !important; opacity: 0.6; }
 
 /* Skip-to-content link — visually hidden until focused */

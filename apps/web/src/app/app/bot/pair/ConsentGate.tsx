@@ -5,6 +5,7 @@ import { useNavigate, useRefresh } from "@/app/app/Pending";
 import { WhatsappConsentBody } from "@/content/whatsapp-consent.he";
 import { CURRENT_CONSENT_VERSION } from "@/lib/consent-version";
 import { FLOW_BUTTON } from "../flow-buttons";
+import { BusyLabel } from "@/app/app/Marks";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 
 export function ConsentGate() {
@@ -49,7 +50,7 @@ export function ConsentGate() {
           aria-busy={accepting || refreshing}
           className={FLOW_BUTTON.primary}
         >
-          {accepting || refreshing ? "מאשר…" : "אני מסכים וממשיך"}
+          <BusyLabel busy={accepting || refreshing} busyText="מאשר…">אני מסכים וממשיך</BusyLabel>
         </button>
         <button
           type="button"
@@ -58,7 +59,7 @@ export function ConsentGate() {
           aria-busy={navigating}
           className="px-6 py-3 rounded-xl text-espresso-light hover:text-espresso hover:bg-cream-dark transition disabled:opacity-50"
         >
-          {navigating ? "חוזרים…" : "חזרה"}
+          <BusyLabel busy={navigating} busyText="חוזרים…">חזרה</BusyLabel>
         </button>
       </div>
 

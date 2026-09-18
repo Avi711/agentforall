@@ -11,6 +11,7 @@ import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 import { WhatsAppIcon } from "@/components/WhatsAppIcon";
 import { ConnectedCard } from "../ConnectedCard";
 import { FLOW_BUTTON } from "../flow-buttons";
+import { BusyLabel } from "@/app/app/Marks";
 
 type Tab = "qr" | "code";
 type Step = "number" | "ready" | "link" | "linking" | "done";
@@ -383,7 +384,7 @@ export function PairingFlow({ botId, botName, ownerNumber, suggestedNumber }: Pr
             aria-busy={cancelBusy || leaving}
             className="-mx-2 px-2 py-3 text-sm text-espresso-light hover:text-espresso disabled:opacity-50"
           >
-            {cancelBusy || leaving ? "מבטלים…" : "ביטול ההתאמה"}
+            <BusyLabel busy={cancelBusy || leaving} busyText="מבטלים…">ביטול ההתאמה</BusyLabel>
           </button>
           <span className="text-xs text-espresso-light">
             {phaseLabelHe(status?.phase)}
@@ -789,9 +790,10 @@ function CodePanel({
       <button
         type="submit"
         disabled={busy || !isValidIsraeliPhone(phone)}
+        aria-busy={busy}
         className="w-full px-5 py-3 rounded-xl bg-espresso text-cream font-medium hover:bg-espresso-light transition disabled:opacity-50"
       >
-        {busy ? "מייצר קוד…" : "קבלת קוד התאמה"}
+        <BusyLabel busy={busy} busyText="מייצר קוד…">קבלת קוד התאמה</BusyLabel>
       </button>
     </form>
   );

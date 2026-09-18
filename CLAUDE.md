@@ -39,6 +39,8 @@ Reference implementations to mirror:
 - Async functions handle errors via try/catch or a Result. Never swallow exceptions silently.
   Empty `catch {}` is allowed only for documented sentinel patterns (health probes, best-effort cleanup) with a one-line comment explaining why.
 - **Comments: short or none.** Code should be self-explanatory. Only write a comment when the WHY is non-obvious (hidden constraint, subtle invariant, workaround). One line max — no multi-line JSDoc preambles, no "explains what the code does" comments, no SQL file banners. Applies to `.ts`, `.tsx`, `.sql`, everywhere.
+- **Simple, robust, reusable.** No hacks, no smells. Reuse the existing pattern; extract on the second copy.
+- **UI:** professional, nothing childish; clickable must look clickable. Busy states use `BusyLabel` / `Spinner` from `app/app/Marks.tsx`.
 
 ## Validation & errors — MUST
 

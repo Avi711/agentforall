@@ -4,6 +4,7 @@ import Script from "next/script";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PendingLink } from "@/app/app/Pending";
 import { ConnectedCard } from "../ConnectedCard";
+import { BusyLabel } from "@/app/app/Marks";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 import { COEXISTENCE_FEATURE_TYPE, parseSignupMessage } from "@/lib/whatsapp-cloud/signup-message";
 import { isEmbeddedSignupOrigin } from "@/lib/whatsapp-cloud/signup-origin";
@@ -24,6 +25,12 @@ const SYNC_PENDING_HE =
   "המספר מחובר, אבל Meta לא השלימה את העברת אנשי הקשר וההיסטוריה מהאפליקציה. לחצו שוב על החיבור תוך 24 שעות, אחרת Meta תנתק את המספר.";
 const MODE_MISMATCH_HE =
   "סוג המספר לא תואם לבחירה. אם המספר פעיל באפליקציית WhatsApp Business בחרו ״המספר שכבר עובד באפליקציה״, ואחרת ״מספר חדש״, ונסו שוב.";
+// Idle reserves the popup label's width: that is what a click swaps to.
+const LAUNCH_BUSY_TEXT = {
+  loading: "טוען…",
+  popup: "ממתין לחלון של Meta…",
+  connecting: "מחבר את המספר…",
+} as const;
 // Meta sends the ids by window message and the code by callback, in no fixed order.
 const IDS_GRACE_MS = 5_000;
 
@@ -234,6 +241,8 @@ export function WhatsappBusinessConnectFlow({ botId, meta }: { botId: string; me
     return <ConnectedPanel displayPhoneNumber={phase.displayPhoneNumber} verifiedName={phase.verifiedName} />;
   }
 
+  const launchBusy = phase.kind === "loading" || phase.kind === "popup" || phase.kind === "connecting" ? phase.kind : null;
+
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-sand-light p-5 sm:p-8 max-w-2xl">
       {meta ? (
@@ -323,22 +332,11 @@ export function WhatsappBusinessConnectFlow({ botId, meta }: { botId: string; me
           <button
             type="button"
             onClick={launch}
-            disabled={
-              phase.kind === "loading" ||
-              phase.kind === "popup" ||
-              phase.kind === "connecting" ||
-              (askPin && pinApplies && !PIN_PATTERN.test(pin))
-            }
-            aria-busy={phase.kind === "popup" || phase.kind === "connecting"}
+            disabled={launchBusy !== null || (askPin && pinApplies && !PIN_PATTERN.test(pin))}
+            aria-busy={launchBusy !== null}
             className="inline-flex items-center justify-center rounded-full bg-espresso text-cream px-6 py-3 text-sm font-medium transition hover:bg-espresso/90 disabled:opacity-50"
           >
-            {phase.kind === "loading"
-              ? "טוען…"
-              : phase.kind === "popup"
-                ? "ממתין לחלון של Meta…"
-                : phase.kind === "connecting"
-                  ? "מחבר את המספר…"
-                  : "חיבור המספר העסקי"}
+            <BusyLabel busy={launchBusy !== null} busyText={LAUNCH_BUSY_TEXT[launchBusy ?? "popup"]}>חיבור המספר העסקי</BusyLabel>
           </button>
         </div>
       )}

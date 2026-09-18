@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { authClient, useGoogleSignIn } from "@/lib/auth/client";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
+import { BusyLabel } from "../Marks";
 
 const CONFIRM_PHRASE = "מחק את החשבון שלי";
 const SETTINGS_PATH = "/app/settings";
@@ -110,9 +111,10 @@ export function DeleteAccountCard() {
               type="button"
               onClick={handleDelete}
               disabled={!canDelete || deleting}
+              aria-busy={deleting}
               className="px-5 py-3 rounded-lg bg-red-700 text-white font-medium hover:bg-red-800 transition disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {deleting ? "מוחק…" : "אישור מחיקה"}
+              <BusyLabel busy={deleting} busyText="מוחק…">אישור מחיקה</BusyLabel>
             </button>
             <button
               type="button"

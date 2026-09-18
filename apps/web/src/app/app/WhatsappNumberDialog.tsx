@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef } from "react";
 
 import { ROW_ACTION_CLASS } from "./action-buttons";
+import { BusyLabel, ChevronEnd, Spinner, TelegramGlyph } from "./Marks";
 
 const QUIET = `${ROW_ACTION_CLASS.quiet} disabled:opacity-60`;
 
@@ -81,22 +82,27 @@ export function WhatsappNumberConfirmDialog({
           <p className="mt-3 text-sm text-espresso-light">
             אין לכם עדיין מספר כזה? המדריך מראה צעד-צעד, עם תמונות לאייפון ולאנדרואיד: eSIM, חשבון וואטסאפ שני וסריקת הקוד.
           </p>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-end gap-2 px-5 pb-5 sm:px-7 sm:pb-6">
+          {/* The other way out is a path, not a third footer button: a full row, like the access options. */}
           {onTelegram ? (
             <button
               type="button"
               onClick={onTelegram}
               disabled={pending !== null}
               aria-busy={pending === "telegram"}
-              className="me-auto text-sm font-medium text-espresso-light hover:text-espresso underline-offset-4 hover:underline transition disabled:opacity-60"
+              className="pressable mt-4 flex w-full min-h-11 items-center gap-3 rounded-xl border border-sand-light px-4 py-3 text-start text-sm font-medium text-espresso hover:border-sand hover:bg-cream-dark/50 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra disabled:opacity-60"
             >
-              {pending === "telegram" ? "פותחים…" : "אין לי — נחבר טלגרם"}
+              <span aria-hidden="true" className="shrink-0 w-9 h-9 rounded-full bg-cream-dark text-espresso flex items-center justify-center">
+                <TelegramGlyph />
+              </span>
+              <span className="flex-1">אין לי — נחבר טלגרם</span>
+              <span className="shrink-0 text-espresso-light">{pending === "telegram" ? <Spinner /> : <ChevronEnd />}</span>
             </button>
           ) : null}
+        </div>
+
+        <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 px-5 pb-5 sm:px-7 sm:pb-6">
           <button type="button" onClick={onConfirm} disabled={pending !== null} aria-busy={pending === "pair"} className={QUIET}>
-            {pending === "pair" ? "פותחים…" : "יש לי מספר, נמשיך"}
+            <BusyLabel busy={pending === "pair"} busyText="פותחים…">יש לי מספר, נמשיך</BusyLabel>
           </button>
           {/* Arrow icons imply direction, so they mirror in RTL (Material/HIG); the X and ! badges stay as-is. */}
           <a href="/blog/dedicated-whatsapp-number" target="_blank" rel="noopener" className={ROW_ACTION_CLASS.primary}>

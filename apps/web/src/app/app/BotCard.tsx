@@ -5,7 +5,7 @@ import { PendingLink, useNavigate, useRefresh } from "./Pending";
 import { DeleteBotDialog } from "./DeleteBotDialog";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { useBotStatus, type BotSnapshot } from "./useBotStatus";
-import { BotAvatar, SECTION_LABEL, SurfaceCard, type AvatarTone } from "./Marks";
+import { BotAvatar, BusyLabel, ChevronEnd, SECTION_LABEL, Spinner, SurfaceCard, TelegramGlyph, type AvatarTone } from "./Marks";
 import { CreatingPanel } from "./CreatingPanel";
 import { buildTimeline } from "@/lib/bots/creation-progress";
 import { WhatsAppAccessDialog, accessLabel } from "./WhatsAppAccessSection";
@@ -198,7 +198,7 @@ export function BotCard({
       >
         <span aria-hidden className="absolute top-0 inset-x-12 h-px bg-gradient-to-r from-transparent via-sand-light to-transparent" />
         {downloadPending || refreshing ? (
-          <span aria-hidden className="download-card-progress" />
+          <span aria-hidden className="card-progress" />
         ) : null}
 
         <div className="p-5 sm:p-10">
@@ -246,7 +246,7 @@ export function BotCard({
                       }}
                       className="w-full min-h-11 flex items-center gap-3 px-4 py-3 text-sm text-espresso hover:bg-cream-dark focus:outline-none focus-visible:bg-cream-dark focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-terra transition disabled:bg-terra-pale disabled:text-terra"
                     >
-                      {downloadPending ? <DownloadSpinner /> : <DownloadIcon />}
+                      {downloadPending ? <Spinner /> : <DownloadIcon />}
                       <span>הורדת גיבוי</span>
                     </button>
                   </li>
@@ -278,7 +278,7 @@ export function BotCard({
               aria-live="polite"
               className="mb-6 flex items-center gap-3 rounded-xl border border-terra-light/30 bg-terra-pale/70 px-4 py-3 text-sm text-terra shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
             >
-              <DownloadSpinner />
+              <Spinner />
               <div className="min-w-0">
                 <p className="font-medium leading-tight">
                   {"אנחנו מכינים את קבצי הגיבוי של הסוכן."}
@@ -287,11 +287,6 @@ export function BotCard({
                   {"זה לוקח בדרך כלל עד דקה."}
                 </p>
               </div>
-              <span aria-hidden className="ms-auto flex gap-1">
-                <span className="download-dot" />
-                <span className="download-dot [animation-delay:120ms]" />
-                <span className="download-dot [animation-delay:240ms]" />
-              </span>
             </div>
           ) : null}
 
@@ -330,8 +325,7 @@ export function BotCard({
               aria-busy={restartPending}
               className="inline-flex min-h-11 w-full sm:w-auto items-center justify-center gap-2 px-5 py-3 rounded-xl bg-terra text-white font-medium hover:bg-terra-dark transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-60"
             >
-              {restartPending ? <DownloadSpinner /> : null}
-              <span>{restartPending ? "מפעיל מחדש…" : "הפעלת הסוכן מחדש"}</span>
+              <BusyLabel busy={restartPending} busyText="מפעיל מחדש…">הפעלת הסוכן מחדש</BusyLabel>
             </button>
           ) : null}
         </div>
@@ -1166,15 +1160,6 @@ function DownloadIcon() {
     </svg>
   );
 }
-function DownloadSpinner() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 20 20" className="download-spinner w-4 h-4" fill="none">
-      <circle cx="10" cy="10" r="7" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" />
-      <path d="M17 10a7 7 0 0 0-7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <path d="M10 7v5M7.8 10.2 10 12.4l2.2-2.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
 function CopyIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -1190,25 +1175,11 @@ function CheckIcon() {
     </svg>
   );
 }
-function ChevronEnd() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 20 20" className="w-4 h-4 rtl:rotate-180" fill="none" stroke="currentColor" strokeWidth="1.75">
-      <path d="M8 5l5 5-5 5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
 function PersonGlyph() {
   return (
     <svg aria-hidden="true" viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.6">
       <circle cx="10" cy="7" r="3.25" />
       <path d="M4 17c.6-3 3-4.75 6-4.75S15.4 14 16 17" strokeLinecap="round" />
-    </svg>
-  );
-}
-function TelegramGlyph() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
-      <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
     </svg>
   );
 }

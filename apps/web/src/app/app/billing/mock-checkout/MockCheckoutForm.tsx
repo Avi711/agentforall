@@ -6,6 +6,7 @@ import { formatAgorot } from "@/lib/billing/format";
 import type { MockCheckoutOutcome } from "@/lib/billing/schemas";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 import { completeMockCheckout } from "../client";
+import { BusyLabel } from "@/app/app/Marks";
 
 export function MockCheckoutForm({ sessionId, title, amountAgorot }: { sessionId: string; title: string; amountAgorot: number }) {
   const router = useRouter();
@@ -43,7 +44,7 @@ export function MockCheckoutForm({ sessionId, title, amountAgorot }: { sessionId
           onClick={() => settle("success")}
           className="px-5 py-3 rounded-lg bg-terra text-white font-medium hover:bg-terra-dark transition disabled:opacity-40"
         >
-          {pending === "success" ? "מעבד…" : "תשלום מוצלח"}
+          <BusyLabel busy={pending === "success"} busyText="מעבד…">תשלום מוצלח</BusyLabel>
         </button>
         <button
           type="button"
@@ -51,7 +52,7 @@ export function MockCheckoutForm({ sessionId, title, amountAgorot }: { sessionId
           onClick={() => settle("failure")}
           className="px-5 py-3 rounded-lg border border-sand text-espresso hover:bg-cream-dark transition disabled:opacity-40"
         >
-          {pending === "failure" ? "מעבד…" : "תשלום נכשל"}
+          <BusyLabel busy={pending === "failure"} busyText="מעבד…">תשלום נכשל</BusyLabel>
         </button>
       </div>
       {error ? (

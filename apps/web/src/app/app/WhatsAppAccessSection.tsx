@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useRefresh } from "./Pending";
 import { DIALOG_ACTION } from "./action-buttons";
+import { BusyLabel } from "./Marks";
 import type { WhatsappDmAccess } from "@/lib/orchestrator/types";
 import type { WhatsappAccessSnapshot } from "@/lib/bots/snapshot";
 import { readApiErrorMessage } from "@/lib/http/api-error";
@@ -152,7 +153,7 @@ export function WhatsAppAccessDialog({
             aria-busy={saving}
             className={DIALOG_ACTION.primary}
           >
-            {saving ? "שומר…" : "שמירה"}
+            <BusyLabel busy={saving} busyText="שומר…">שמירה</BusyLabel>
           </button>
         </div>
       </form>

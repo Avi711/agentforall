@@ -8,6 +8,7 @@ import type { BillingStatus } from "@/lib/billing/service";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 import { startTopup } from "../billing/client";
 import { CreditsActionLink, OUT_OF_CREDITS_LABEL } from "../credits-copy";
+import { BusyLabel } from "../Marks";
 
 const GRANT_LABELS: Record<CreditGrantView["kind"], string> = {
   trial: "ניסיון",
@@ -135,13 +136,12 @@ export function CreditsCard({ status }: { status: BillingStatus }) {
               type="button"
               onClick={buy}
               disabled={busy || !validAmount}
+              aria-busy={busy}
               className="px-5 py-3 rounded-lg bg-terra text-white font-medium hover:bg-terra-dark transition disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {busy
-                ? "מעבירים לתשלום…"
-                : validAmount && parsed !== null
-                  ? `טעינת ${formatCredits(creditsForTopupIls(parsed))} קרדיטים`
-                  : "טעינה"}
+              <BusyLabel busy={busy} busyText="מעבירים לתשלום…">
+                {validAmount && parsed !== null ? `טעינת ${formatCredits(creditsForTopupIls(parsed))} קרדיטים` : "טעינה"}
+              </BusyLabel>
             </button>
           </div>
           <p id="topup-amount-hint" className="mt-2 text-xs text-espresso-light">

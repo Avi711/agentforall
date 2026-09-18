@@ -3,6 +3,7 @@
 import { forwardRef, useEffect, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { PendingLink } from "./Pending";
+import { Spinner } from "./Marks";
 import { signOut } from "@/lib/auth/client";
 
 interface MenuUser {
@@ -135,7 +136,7 @@ export function UserMenu({ user }: { user: MenuUser }) {
               aria-busy={busy}
               className="w-full flex items-center gap-3 px-4 py-3 text-sm text-espresso-light hover:bg-cream-dark hover:text-espresso transition disabled:opacity-50"
             >
-              <IconSignOut />
+              {busy ? <Spinner className="w-[18px] h-[18px]" /> : <IconSignOut />}
               <span>{busy ? "מתנתק…" : "התנתקות"}</span>
             </button>
           </div>

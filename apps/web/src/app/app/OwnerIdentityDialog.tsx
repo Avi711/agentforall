@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useRefresh } from "./Pending";
 import { DIALOG_ACTION } from "./action-buttons";
+import { BusyLabel } from "./Marks";
 import type { OwnerCandidate, OwnerIdentity } from "@/lib/orchestrator/types";
 import type { OwnerSnapshot } from "@/lib/bots/snapshot";
 import { readApiErrorMessage } from "@/lib/http/api-error";
@@ -246,7 +247,7 @@ export function OwnerIdentityDialog({
               aria-busy={saving}
               className={DIALOG_ACTION.primary}
             >
-              {saving ? "שומר…" : "שמירה"}
+              <BusyLabel busy={saving} busyText="שומר…">שמירה</BusyLabel>
             </button>
           ) : null}
         </div>

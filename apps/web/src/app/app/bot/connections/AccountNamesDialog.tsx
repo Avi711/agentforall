@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { DIALOG_ACTION } from "@/app/app/action-buttons";
+import { BusyLabel } from "@/app/app/Marks";
 import { ACCOUNT_LABEL_MAX_LENGTH, accountLabelKey, normalizeAccountLabel } from "@/lib/integrations/schemas";
 
 export interface NameField {
@@ -260,17 +261,7 @@ export function AccountNamesDialog({
             ביטול
           </button>
           <button type="submit" disabled={busy} aria-busy={busy} className={DIALOG_ACTION.primary}>
-            {busy ? (
-              <>
-                <span
-                  aria-hidden="true"
-                  className="inline-block w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin"
-                />
-                <span>{busyLabel}</span>
-              </>
-            ) : (
-              submitLabel
-            )}
+            <BusyLabel busy={busy} busyText={busyLabel}>{submitLabel}</BusyLabel>
           </button>
         </div>
       </form>

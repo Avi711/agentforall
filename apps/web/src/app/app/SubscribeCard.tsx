@@ -6,7 +6,7 @@ import type { BillingStatus } from "@/lib/billing/service";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 import { whatsappChatUrl } from "@/lib/site";
 import { startCheckout } from "./billing/client";
-import { SurfaceCard } from "./Marks";
+import { BusyLabel, SurfaceCard } from "./Marks";
 import { PlanPicker } from "./PlanPicker";
 import { CATALOG_SIZE_LABEL, LANDING_APPS } from "@/lib/integrations/catalog.he";
 
@@ -68,9 +68,10 @@ export function SubscribeCard({ status }: { status: BillingStatus }) {
           type="button"
           onClick={handleSubscribe}
           disabled={busy}
+          aria-busy={busy}
           className="w-full sm:w-auto px-6 py-3.5 rounded-lg bg-terra text-white font-medium hover:bg-terra-dark transition disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          {busy ? "מעבירים לתשלום…" : "הצטרפות למנוי"}
+          <BusyLabel busy={busy} busyText="מעבירים לתשלום…">הצטרפות למנוי</BusyLabel>
         </button>
       ) : (
         <p className="text-sm text-espresso-light">

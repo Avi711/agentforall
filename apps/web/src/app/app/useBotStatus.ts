@@ -30,9 +30,10 @@ export function useBotStatus(initial: BotSnapshot): BotSnapshot {
   const botRef = useRef(bot);
   botRef.current = bot;
 
+  // A new server payload (router.refresh after a save) replaces whatever the poll last saw.
   useEffect(() => {
     setBot(initial);
-  }, [initial.id]);
+  }, [initial]);
 
   useEffect(() => {
     let cancelled = false;

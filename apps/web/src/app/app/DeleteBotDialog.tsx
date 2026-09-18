@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { DIALOG_ACTION } from "./action-buttons";
+import { BusyLabel } from "./Marks";
 
 interface Props {
   open: boolean;
@@ -116,26 +117,10 @@ export function DeleteBotDialog({ open, botName, onClose, onConfirm }: Props) {
             disabled={!matches || busy}
             className={DIALOG_ACTION.danger}
           >
-            {busy ? (
-              <>
-                <Spinner />
-                <span>מוחק…</span>
-              </>
-            ) : (
-              "מחיקה לצמיתות"
-            )}
+            <BusyLabel busy={busy} busyText="מוחק…">מחיקה לצמיתות</BusyLabel>
           </button>
         </div>
       </form>
     </dialog>
-  );
-}
-
-function Spinner() {
-  return (
-    <span
-      aria-hidden="true"
-      className="inline-block w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin"
-    />
   );
 }

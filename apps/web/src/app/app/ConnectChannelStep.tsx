@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { PendingLink, useNavigate } from "./Pending";
-import { MonogramDisc } from "./Marks";
+import { BusyLabel, MonogramDisc } from "./Marks";
 import { WhatsappNumberConfirmDialog } from "./WhatsappNumberDialog";
 
 export function ConnectChannelStep({ name, onLater }: { name: string; onLater: () => void }) {
@@ -51,7 +51,7 @@ export function ConnectChannelStep({ name, onLater }: { name: string; onLater: (
           aria-busy={skipping}
           className="text-sm font-medium text-espresso-light hover:text-espresso transition disabled:opacity-50"
         >
-          {skipping ? "רגע…" : "אחר כך"}
+          <BusyLabel busy={skipping} busyText="רגע…">אחר כך</BusyLabel>
         </button>
       </div>
 
