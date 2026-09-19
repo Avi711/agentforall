@@ -83,7 +83,7 @@ export function AccessibilityWidget() {
           role="dialog"
           aria-label="הגדרות נגישות"
           dir="rtl"
-          className="fixed bottom-20 left-5 z-50 w-[300px] rounded-2xl border border-sand/40 bg-white p-5 shadow-2xl shadow-black/15 sm:bottom-24 sm:left-6"
+          className="fixed bottom-20 left-5 z-50 w-[300px] origin-bottom-left animate-popover rounded-2xl border border-sand/40 bg-white p-5 shadow-2xl shadow-black/15 sm:bottom-24 sm:left-6"
         >
           <div className="mb-4 flex items-center justify-between">
             <h3 className="font-display text-lg font-black text-espresso">נגישות</h3>

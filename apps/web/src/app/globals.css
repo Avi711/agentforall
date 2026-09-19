@@ -191,6 +191,55 @@ body {
   animation: card-progress 1.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
+/* Native <dialog>: fades and settles in and out; browsers without `overlay` (Safari, Firefox) close instantly. */
+@layer base {
+  dialog {
+    opacity: 0;
+    scale: 0.96;
+    transition:
+      opacity 150ms cubic-bezier(0.2, 0, 0, 1),
+      scale 150ms cubic-bezier(0.2, 0, 0, 1),
+      overlay 150ms allow-discrete,
+      display 150ms allow-discrete;
+  }
+
+  dialog[open] {
+    opacity: 1;
+    scale: 1;
+  }
+
+  dialog::backdrop {
+    opacity: 0;
+    transition:
+      opacity 150ms ease-out,
+      overlay 150ms allow-discrete,
+      display 150ms allow-discrete;
+  }
+
+  dialog[open]::backdrop {
+    opacity: 1;
+  }
+
+  @starting-style {
+    dialog[open],
+    dialog[open]::backdrop {
+      opacity: 0;
+    }
+    dialog[open] {
+      scale: 0.96;
+    }
+  }
+}
+
+/* Menus and popovers grow from their anchor; each element sets its transform-origin. */
+@keyframes popover-in {
+  from { opacity: 0; transform: scale(0.96); }
+}
+
+.animate-popover {
+  animation: popover-in 150ms cubic-bezier(0.2, 0, 0, 1);
+}
+
 /* Link pending state (useLinkStatus). The marker has no size, so nothing reflows when it toggles. */
 .link-hint {
   position: absolute;
@@ -279,6 +328,7 @@ a:has(> .link-hint.is-pending) {
   .animate-halo,
   .animate-runtime-sweep,
   .card-progress::after,
+  .animate-popover,
   .reveal,
   .reveal.in-view,
   .bar-fill-active,
@@ -287,6 +337,7 @@ a:has(> .link-hint.is-pending) {
     animation: none !important;
   }
   .reveal { opacity: 1 !important; }
+  dialog, dialog::backdrop { transition: none; }
   .card-progress::after { width: 100%; opacity: 0.7; }
   a:has(> .link-hint.is-pending) { animation: none !important; opacity: 0.6; }
 }
@@ -325,6 +376,7 @@ html[data-reduced-motion] .animate-spin-slow-reverse,
 html[data-reduced-motion] .animate-halo,
 html[data-reduced-motion] .animate-runtime-sweep,
 html[data-reduced-motion] .card-progress::after,
+html[data-reduced-motion] .animate-popover,
 html[data-reduced-motion] .reveal,
 html[data-reduced-motion] .reveal.in-view,
 html[data-reduced-motion] .bar-fill-active,
@@ -333,6 +385,8 @@ html[data-reduced-motion] .typing-dot {
   animation: none !important;
 }
 html[data-reduced-motion] .reveal { opacity: 1 !important; }
+html[data-reduced-motion] dialog,
+html[data-reduced-motion] dialog::backdrop { transition: none; }
 html[data-reduced-motion] .card-progress::after { width: 100%; opacity: 0.7; }
 html[data-reduced-motion] a:has(> .link-hint.is-pending) { animation: none !important; opacity: 0.6; }
 

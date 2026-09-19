@@ -234,7 +234,7 @@ export function BotCard({
                 <MoreIcon />
               </button>
               {menuOpen ? (
-                <ul className="absolute top-full mt-2 end-0 w-48 rounded-xl border border-sand-light bg-white shadow-[0_8px_24px_rgba(44,24,16,0.08)] overflow-hidden z-10">
+                <ul className="absolute top-full mt-2 end-0 w-48 origin-top-left animate-popover rounded-xl border border-sand-light bg-white shadow-[0_8px_24px_rgba(44,24,16,0.08)] overflow-hidden z-10">
                   <li>
                     <button
                       type="button"
@@ -944,7 +944,7 @@ function RowMenu({ label, items }: { label: string; items: MenuItem[] }) {
         </IconBubble>
       </button>
       {open ? (
-        <ul className="absolute top-full mt-2 end-0 w-52 rounded-xl border border-sand-light bg-white shadow-[0_8px_24px_rgba(44,24,16,0.08)] overflow-hidden z-20">
+        <ul className="absolute top-full mt-2 end-0 w-52 origin-top-left animate-popover rounded-xl border border-sand-light bg-white shadow-[0_8px_24px_rgba(44,24,16,0.08)] overflow-hidden z-20">
           {items.map((item) => (
             <li key={item.label}>
               <button

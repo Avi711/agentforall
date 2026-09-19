@@ -88,7 +88,7 @@ export function UserMenu({ user }: { user: MenuUser }) {
       {open ? (
         <div
           role="menu"
-          className="absolute top-full mt-2 end-0 w-64 max-w-[calc(100vw-2rem)] origin-top-left rtl:origin-top-left ltr:origin-top-right rounded-xl border border-sand-light bg-white shadow-[0_12px_40px_rgba(44,24,16,0.12)] overflow-hidden animate-menu z-50"
+          className="absolute top-full mt-2 end-0 w-64 max-w-[calc(100vw-2rem)] origin-top-left rounded-xl border border-sand-light bg-white shadow-[0_12px_40px_rgba(44,24,16,0.12)] overflow-hidden animate-popover z-50"
         >
           <div className="px-4 py-3 bg-cream-dark/40 border-b border-sand-light">
             <div className="flex items-center gap-3">
@@ -142,22 +142,6 @@ export function UserMenu({ user }: { user: MenuUser }) {
           </div>
         </div>
       ) : null}
-
-      <style jsx>{`
-        @keyframes menuIn {
-          from {
-            opacity: 0;
-            transform: translateY(-4px) scale(0.98);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
-        }
-        :global(.animate-menu) {
-          animation: menuIn 140ms ease-out;
-        }
-      `}</style>
     </div>
   );
 }

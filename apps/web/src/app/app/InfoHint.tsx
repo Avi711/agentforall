@@ -50,7 +50,7 @@ export function InfoHint({ label, text }: { label: string; text: string }) {
         <span
           role="tooltip"
           id={id}
-          className="absolute top-full mt-1.5 start-0 z-30 w-64 max-w-[calc(100vw-2rem)] rounded-xl border border-sand-light bg-white px-3.5 py-2.5 text-xs font-normal leading-relaxed text-espresso shadow-[0_8px_24px_rgba(44,24,16,0.1)]"
+          className="absolute top-full mt-1.5 start-0 z-30 w-64 origin-top-right animate-popover max-w-[calc(100vw-2rem)] rounded-xl border border-sand-light bg-white px-3.5 py-2.5 text-xs font-normal leading-relaxed text-espresso shadow-[0_8px_24px_rgba(44,24,16,0.1)]"
         >
           {text}
         </span>
