@@ -33,9 +33,7 @@ import type { IntegrationSessions } from "./sessions.js";
 
 // Toolkits change on Composio's release cadence, not ours, so a day-old list is fine. What must not
 // happen is a user waiting for the refill: it takes ~9s against Composio.
-const CATALOG_TTL_MS = 24 * 60 * 60 * 1000;
-// From this age on, a read is answered from the list in hand and the refill runs behind it.
-const CATALOG_REFRESH_AFTER_MS = 23 * 60 * 60 * 1000;
+const CATALOG_REFRESH_AFTER_MS = 24 * 60 * 60 * 1000;
 // A failed refresh must not freeze the list for another day, nor hammer a provider that is down.
 const CATALOG_RETRY_AFTER_MS = 5 * 60 * 1000;
 const DASHBOARD_CONNECTIONS_PATH = "/app/bot/connections";
@@ -93,6 +91,7 @@ export class IntegrationsManager {
     });
   }
 
+  // With a list in hand nobody waits: a stale one is served and refilled behind the answer.
   private async fullCatalog(): Promise<CatalogApp[]> {
     const cached = this.catalogCache;
     const now = this.now();
@@ -101,19 +100,13 @@ export class IntegrationsManager {
     const mayAttempt =
       this.catalogAttemptedAt === null || now - this.catalogAttemptedAt >= CATALOG_RETRY_AFTER_MS;
 
-    // Still inside the day: answer from the list in hand and refill behind the answer.
-    if (cached && now - cached.fetchedAt < CATALOG_TTL_MS) {
+    if (cached) {
       // Unreachable rejection: with a list in hand fetchCatalog resolves to it, having logged.
       if (mayAttempt) void this.fetchCatalog().catch(() => {});
       return cached.apps;
     }
-    if (!mayAttempt) {
-      // A provider that is down must not put a ~33s retry budget on every read: past the TTL the
-      // stale list is still all we have, and with nothing in hand the caller gets the failure now
-      // rather than waiting for it.
-      if (cached) return cached.apps;
-      throw new UpstreamUnavailableError("integrations");
-    }
+    // A cold process that just failed gets the failure now rather than another ~33s retry budget.
+    if (!mayAttempt) throw new UpstreamUnavailableError("integrations");
     return this.fetchCatalog();
   }
 

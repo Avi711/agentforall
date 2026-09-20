@@ -601,7 +601,7 @@ test("catalog is cached for a day and served stale when the provider fails", asy
   await h.integrations.catalog({ limit: 100, offset: 0 });
   assert.equal(fetches, 1);
 
-  // Still inside the day, before the refresh window: nothing is fetched.
+  // Still inside the day: nothing is fetched.
   h.advance(20 * HOUR_MS);
   await h.integrations.catalog({ limit: 100, offset: 0 });
   assert.equal(fetches, 1);
@@ -623,28 +623,34 @@ test("catalog is cached for a day and served stale when the provider fails", asy
   assert.equal(served.apps[0]?.slug, "gmail", "an expired catalog still answers from the last good list");
 });
 
-// The refresh window exists so the day-old list is replaced without anyone waiting for it.
-test("a catalog inside its refresh window answers immediately and refills behind the answer", async () => {
-  let fetches = 0;
-  const pending: (() => void)[] = [];
-  const h = harness({
-    catalog: async () => {
-      fetches += 1;
-      if (fetches > 1) await new Promise<void>((resolve) => pending.push(resolve));
-      return [{ slug: "gmail", name: "Gmail", logo: null, description: null, categories: [], noAuth: false }];
-    },
+// Nobody waits for a refill once a list is in hand, however old it is: a quiet day must not cost
+// the next visitor ~9s (seen in prod 2026-09-18 and 2026-09-19).
+for (const age of [24, 72]) {
+  test(`a ${age}h-old catalog answers immediately and refills behind the answer`, async () => {
+    let fetches = 0;
+    const pending: (() => void)[] = [];
+    const h = harness({
+      catalog: async () => {
+        fetches += 1;
+        if (fetches > 1) await new Promise<void>((resolve) => pending.push(resolve));
+        return [{ slug: "gmail", name: "Gmail", logo: null, description: null, categories: [], noAuth: false }];
+      },
+    });
+
+    await h.integrations.catalog({ limit: 100, offset: 0 });
+    h.advance(age * HOUR_MS);
+
+    const answered = await Promise.race([
+      h.integrations.catalog({ limit: 100, offset: 0 }),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 50)),
+    ]);
+    assert.equal(answered?.apps[0]?.slug, "gmail", "answered from the stale list, not the pending refresh");
+    assert.equal(fetches, 2, "a refresh was started behind the answer");
+    for (const resolve of pending) resolve();
   });
+}
 
-  await h.integrations.catalog({ limit: 100, offset: 0 });
-  h.advance(23 * HOUR_MS);
-
-  const answered = await h.integrations.catalog({ limit: 100, offset: 0 });
-  assert.equal(answered.apps[0]?.slug, "gmail", "answered from the stale list, not the pending refresh");
-  assert.equal(fetches, 2, "a refresh was started behind the answer");
-  for (const resolve of pending) resolve();
-});
-
-// A failed refresh must not age the list — otherwise one blip near the TTL freezes it for a day —
+// A failed refresh must not age the list — otherwise one blip freezes it for a day —
 // and must not retry on every read while the provider is down.
 test("a failed background refresh keeps the list's real age and backs off", async () => {
   let fetches = 0;
@@ -658,7 +664,7 @@ test("a failed background refresh keeps the list's real age and backs off", asyn
   });
 
   await h.integrations.catalog({ limit: 100, offset: 0 });
-  h.advance(23 * HOUR_MS);
+  h.advance(24 * HOUR_MS);
   fail = true;
   await h.integrations.catalog({ limit: 100, offset: 0 });
   assert.equal(fetches, 2, "the refresh was attempted");
@@ -674,35 +680,6 @@ test("a failed background refresh keeps the list's real age and backs off", asyn
   await h.integrations.catalog({ limit: 100, offset: 0 });
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(fetches, 3, "the refresh is retried after the backoff, not a day later");
-});
-
-// Past the TTL the stale list is all there is, so re-attempting on every read only spends the
-// client's ~33s retry budget to hand back the same list.
-test("a provider that is down is not re-attempted on every read past the TTL", async () => {
-  let fetches = 0;
-  let fail = false;
-  const h = harness({
-    catalog: async () => {
-      fetches += 1;
-      if (fail) throw new Error("composio down");
-      return [{ slug: "gmail", name: "Gmail", logo: null, description: null, categories: [], noAuth: false }];
-    },
-  });
-
-  await h.integrations.catalog({ limit: 100, offset: 0 });
-  h.advance(25 * HOUR_MS);
-  fail = true;
-  const first = await h.integrations.catalog({ limit: 100, offset: 0 });
-  assert.equal(first.apps[0]?.slug, "gmail", "the last good list is still served");
-  assert.equal(fetches, 2, "one attempt past the TTL");
-
-  for (let i = 0; i < 3; i += 1) await h.integrations.catalog({ limit: 100, offset: 0 });
-  assert.equal(fetches, 2, "no further attempts inside the backoff");
-
-  h.advance(6 * 60 * 1000);
-  fail = false;
-  await h.integrations.catalog({ limit: 100, offset: 0 });
-  assert.equal(fetches, 3, "the next read past the backoff refreshes");
 });
 
 // A provider that answers with an empty list would otherwise blank every tile for a day.
