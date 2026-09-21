@@ -478,9 +478,10 @@ function nextStep(bot: BotSnapshot, state: BotState): string | null {
   const name = bot.displayName;
   const telegram = telegramRow(bot, null);
   const whatsapp = whatsappRow(bot, null);
+  const business = whatsappCloudRow(bot, null);
 
   // Pending channels are not repeated here: their row already shows the state and the resume button.
-  if (!telegram.connected && !whatsapp.connected) {
+  if (!telegram.connected && !whatsapp.connected && !business.connected) {
     if (telegram.pending || whatsapp.pending) return null;
     return `כדי להתחיל, חברו את ${name} לטלגרם או לוואטסאפ. זה לוקח פחות מדקה.`;
   }
@@ -515,7 +516,7 @@ function ChannelsSection({
   const telegram = telegramRow(bot, health);
   const business = whatsappCloudRow(bot, health);
   // Emphasis is earned: one filled button, and only while no channel can answer yet.
-  const needsChannel = !whatsapp.connected && !telegram.connected;
+  const needsChannel = !whatsapp.connected && !telegram.connected && !business.connected;
   const fresh = !whatsapp.connected && !whatsapp.pending && !whatsapp.stale;
   // Owner-number prompt only once WhatsApp actually works; a fresh connect passes the number warning first.
   const whatsappPrimary = whatsapp.connected && ownerNumberMissing(bot)
@@ -525,6 +526,8 @@ function ChannelsSection({
       : lead(whatsapp.primary, needsChannel);
   const telegramPrimary = lead(telegram.primary, needsChannel && whatsappPrimary?.emphasis !== "primary");
   const access = bot.whatsappAccess;
+  // Accounts on the official WhatsApp Business path get no QR linking unless a bot already has it.
+  const showWhatsappQr = !bot.whatsappCloudEnabled || bot.hasWhatsappChannel;
 
   const whatsappMenu: MenuItem[] = [];
   if (whatsapp.connected && access) {
@@ -561,6 +564,7 @@ function ChannelsSection({
         איפה מדברים עם הסוכן
       </p>
       <ul className="border-y border-sand-light/70 divide-y divide-sand-light/70">
+        {showWhatsappQr ? (
         <CardRow
           glyph={<WhatsAppGlyph />}
           name="WhatsApp"
@@ -577,6 +581,7 @@ function ChannelsSection({
           menu={whatsappMenu}
           menuLabel="הגדרות WhatsApp"
         />
+        ) : null}
 
         <CardRow
           glyph={<TelegramGlyph />}
@@ -623,7 +628,7 @@ function ChannelsSection({
         ) : null}
       </ul>
 
-      {(whatsapp.connected || telegram.connected) && bot.lastSeenAt === null ? (
+      {(whatsapp.connected || telegram.connected || business.connected) && bot.lastSeenAt === null ? (
         <p className="mt-3 text-xs text-espresso-light leading-relaxed max-w-md">
           התשובה להודעה הראשונה עשויה לקחת כ-40 שניות — הסוכן עולה ברגעים אלו. אחר כך הוא
           עונה מיד.

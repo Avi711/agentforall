@@ -55,16 +55,17 @@ async function HomeCard({ user }: { user: AuthenticatedUser }) {
     getBillingService().refreshStatus(toBillingUser(user)),
   ]);
 
+  const whatsappCloudEnabled = isWhatsappCloudEnabledFor(user.id);
   if (bot) {
     const whatsappCloudHealth = await whatsappCloudHealthOf(user.id, bot);
-    const snapshot = toBotSnapshot(bot, { whatsappCloudHealth, whatsappCloudEnabled: isWhatsappCloudEnabledFor(user.id) });
+    const snapshot = toBotSnapshot(bot, { whatsappCloudHealth, whatsappCloudEnabled });
     return <BotCard bot={snapshot} credits={billing.credits} creditsAction={billing.creditsAction} apps={SHOWCASE_APPS} />;
   }
   if (!billing.entitled) return <SubscribeCard status={billing} />;
   return (
     <>
       {billing.reason === "trial_available" ? <TrialNotice /> : null}
-      <CreateBotForm />
+      <CreateBotForm whatsappBusiness={whatsappCloudEnabled} />
     </>
   );
 }

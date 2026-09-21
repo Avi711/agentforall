@@ -5,7 +5,15 @@ import { PendingLink, useNavigate } from "./Pending";
 import { BusyLabel, MonogramDisc } from "./Marks";
 import { WhatsappNumberConfirmDialog } from "./WhatsappNumberDialog";
 
-export function ConnectChannelStep({ name, onLater }: { name: string; onLater: () => void }) {
+export function ConnectChannelStep({
+  name,
+  whatsappBusiness,
+  onLater,
+}: {
+  name: string;
+  whatsappBusiness: boolean;
+  onLater: () => void;
+}) {
   const { navigating, navigate } = useNavigate();
   // `onLater` refreshes the dashboard; the transition keeps the button busy until the new card paints.
   const [skipping, startSkip] = useTransition();
@@ -36,11 +44,19 @@ export function ConnectChannelStep({ name, onLater }: { name: string; onLater: (
           badge="מומלץ"
           description="חיבור מיידי בשתי לחיצות — בלי מספר טלפון"
         />
-        <ChannelChoice
-          onClick={() => setConfirmWhatsapp(true)}
-          title="וואטסאפ"
-          description="דורש מספר ייעודי לסוכן — לא המספר האישי שלכם"
-        />
+        {whatsappBusiness ? (
+          <ChannelChoice
+            href="/app/bot/whatsapp-business"
+            title="וואטסאפ עסקי"
+            description="מספר עסקי ללקוחות שלכם, דרך מטא"
+          />
+        ) : (
+          <ChannelChoice
+            onClick={() => setConfirmWhatsapp(true)}
+            title="וואטסאפ"
+            description="דורש מספר ייעודי לסוכן — לא המספר האישי שלכם"
+          />
+        )}
       </div>
 
       <div className="flex justify-end">
@@ -55,13 +71,15 @@ export function ConnectChannelStep({ name, onLater }: { name: string; onLater: (
         </button>
       </div>
 
-      <WhatsappNumberConfirmDialog
-        open={confirmWhatsapp}
-        pending={navigating ? target : null}
-        onClose={() => setConfirmWhatsapp(false)}
-        onConfirm={() => go("pair")}
-        onTelegram={() => go("telegram")}
-      />
+      {whatsappBusiness ? null : (
+        <WhatsappNumberConfirmDialog
+          open={confirmWhatsapp}
+          pending={navigating ? target : null}
+          onClose={() => setConfirmWhatsapp(false)}
+          onConfirm={() => go("pair")}
+          onTelegram={() => go("telegram")}
+        />
+      )}
     </div>
   );
 }

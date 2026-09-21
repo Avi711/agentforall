@@ -5,6 +5,7 @@ import { getConsentStatus } from "@/lib/consent/service";
 import { botService } from "@/lib/bots/service";
 import { knownPhoneForEmail } from "@/lib/leads/service";
 import { toBotSnapshot } from "@/lib/bots/snapshot";
+import { isWhatsappCloudEnabledFor } from "@/lib/whatsapp-cloud/config";
 import { ConsentGate } from "./ConsentGate";
 import { PairingFlow } from "./PairingFlow";
 
@@ -26,12 +27,13 @@ export default async function PairPage() {
     redirect("/app");
   }
 
-  if (bot.pairingStatus === "paired") {
+  const snapshot = toBotSnapshot(bot);
+  const qrUnavailable = isWhatsappCloudEnabledFor(session.user.id) && !snapshot.hasWhatsappChannel;
+  if (bot.pairingStatus === "paired" || qrUnavailable) {
     redirect("/app");
   }
 
   const needsConsent = !consent.accepted || consent.stale;
-  const snapshot = toBotSnapshot(bot);
   const suggestedNumber =
     snapshot.owner.whatsappNumber ??
     (session.user.email ? await knownPhoneForEmail(session.user.email) : null);

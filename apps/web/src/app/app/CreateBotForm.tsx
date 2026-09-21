@@ -45,7 +45,7 @@ interface CreatingState {
 
 type Phase = { kind: "form" } | CreatingState | { kind: "connect"; name: string };
 
-export function CreateBotForm() {
+export function CreateBotForm({ whatsappBusiness }: { whatsappBusiness: boolean }) {
   const router = useRouter();
   const [displayName, setDisplayName] = useState("");
   const [backupFile, setBackupFile] = useState<File | null>(null);
@@ -195,7 +195,7 @@ export function CreateBotForm() {
         </div>
       ) : phase.kind === "connect" ? (
         <div key="connect" className="animate-fade-up">
-          <ConnectChannelStep name={phase.name} onLater={() => router.refresh()} />
+          <ConnectChannelStep name={phase.name} whatsappBusiness={whatsappBusiness} onLater={() => router.refresh()} />
         </div>
       ) : (
         <div key="form" className="animate-fade-up">
