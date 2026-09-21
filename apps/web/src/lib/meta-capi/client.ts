@@ -1,4 +1,5 @@
 import type { CapiConfig } from "./config";
+import { fetchWithRetry } from "../http/fetch-with-retry";
 import type { UserData } from "./user-data";
 
 export interface ServerEvent {
@@ -47,59 +48,36 @@ export async function postServerEvents(
   if (config.testEventCode) body.test_event_code = config.testEventCode;
   const serialized = JSON.stringify(body);
 
-  let lastResult: CapiSendResult = { ok: false, error: "no-attempt" };
-
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: serialized,
-        signal: controller.signal,
-      });
-      const payload = (await res.json().catch(() => ({}))) as CapiResponse;
-
-      if (res.ok) {
-        return {
-          ok: true,
-          status: res.status,
-          eventsReceived: payload.events_received,
-          fbtraceId: payload.fbtrace_id,
-        };
-      }
-
-      lastResult = {
-        ok: false,
-        status: res.status,
-        errorCode: payload.error?.code,
-        fbtraceId: payload.error?.fbtrace_id ?? payload.fbtrace_id,
-        error: redact(payload.error?.message ?? `HTTP ${res.status}`, config.accessToken),
-      };
-
-      // 4xx other than rate-limit = Meta rejected the payload; retrying won't help.
-      if (res.status >= 400 && res.status < 500 && res.status !== 429) return lastResult;
-    } catch (err) {
-      lastResult = {
-        ok: false,
-        error: redact(err instanceof Error ? err.message : "network-error", config.accessToken),
-      };
-    } finally {
-      clearTimeout(timer);
-    }
-
-    if (attempt < MAX_ATTEMPTS) await sleep(RETRY_BACKOFF_MS + Math.random() * RETRY_BACKOFF_MS);
+  let res: Response;
+  try {
+    res = await fetchWithRetry(
+      url,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: serialized },
+      { attempts: MAX_ATTEMPTS, timeoutMs: REQUEST_TIMEOUT_MS, backoffMs: RETRY_BACKOFF_MS },
+    );
+  } catch (err) {
+    return { ok: false, error: redact(err instanceof Error ? err.message : "network-error", config.accessToken) };
   }
 
-  return lastResult;
+  const payload = (await res.json().catch(() => ({}))) as CapiResponse;
+  if (res.ok) {
+    return {
+      ok: true,
+      status: res.status,
+      eventsReceived: payload.events_received,
+      fbtraceId: payload.fbtrace_id,
+    };
+  }
+  return {
+    ok: false,
+    status: res.status,
+    errorCode: payload.error?.code,
+    fbtraceId: payload.error?.fbtrace_id ?? payload.fbtrace_id,
+    error: redact(payload.error?.message ?? `HTTP ${res.status}`, config.accessToken),
+  };
 }
 
 function redact(message: string, secret: string): string {
   if (!secret) return message;
   return message.split(secret).join("[redacted]");
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

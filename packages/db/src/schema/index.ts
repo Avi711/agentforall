@@ -1,4 +1,4 @@
-export { user, session, account, verification } from "./auth.js";
+export { user, session, account, verification, rateLimit } from "./auth.js";
 export {
   instances,
   AGENT_RUNTIME_KINDS,

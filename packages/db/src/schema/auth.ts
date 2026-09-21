@@ -2,6 +2,7 @@ import {
   pgTable,
   text,
   boolean,
+  bigint,
   timestamp,
   integer,
   index,
@@ -110,3 +111,11 @@ export const verification = pgTable(
   },
   (t) => [index("idx_verification_identifier").on(t.identifier)],
 );
+
+// Better Auth rate limiter state; in-memory storage would reset per serverless instance.
+export const rateLimit = pgTable("rate_limit", {
+  id: text("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  count: integer("count").notNull(),
+  lastRequest: bigint("last_request", { mode: "number" }).notNull(),
+});

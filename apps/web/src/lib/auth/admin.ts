@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { authenticatedHandler, errorJson, type Handler, type HandlerOptions } from "./api";
 import { requireSession, type AuthenticatedUser } from "./session";
 
-// Admin is a role granted to specific Google accounts (ADMIN_EMAILS), never a shared password.
+// Admin is a role granted to specific verified emails (ADMIN_EMAILS), never a shared password.
 const ADMIN_EMAILS = new Set(
   (process.env.ADMIN_EMAILS ?? "")
     .split(",")
@@ -11,8 +11,8 @@ const ADMIN_EMAILS = new Set(
     .filter(Boolean),
 );
 
-export function isAdminUser(user: Pick<AuthenticatedUser, "email">): boolean {
-  return ADMIN_EMAILS.has(user.email.toLowerCase());
+export function isAdminUser(user: Pick<AuthenticatedUser, "email" | "emailVerified">): boolean {
+  return user.emailVerified && ADMIN_EMAILS.has(user.email.toLowerCase());
 }
 
 // Pages: signed out → login; signed in but not admin → 404, so the area stays invisible.

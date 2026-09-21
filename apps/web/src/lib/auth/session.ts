@@ -6,8 +6,10 @@ import { auth } from "./server";
 export type SessionPayload = Awaited<ReturnType<typeof auth.api.getSession>>;
 export type AuthenticatedUser = NonNullable<SessionPayload>["user"];
 
+// An unconfirmed email is never a session: admin, trial and lead lookups all trust user.email.
 export async function getServerSession(): Promise<SessionPayload> {
-  return auth.api.getSession({ headers: await headers() });
+  const session = await auth.api.getSession({ headers: await headers() });
+  return session?.user.emailVerified ? session : null;
 }
 
 export async function requireSession(redirectTo = "/login") {

@@ -16,7 +16,7 @@ function setup(cleanup: AccountCleanup) {
     secret: "test-secret-with-enough-entropy-000000",
     baseURL: "http://localhost:3000",
     database: memoryAdapter(db),
-    // Only a quick way to get a session in tests; production signs in with Google.
+    // The quickest way to a session in tests; sign-up here skips email verification.
     emailAndPassword: { enabled: true },
     user: { deleteUser: deleteUserOptions(cleanup) },
   });

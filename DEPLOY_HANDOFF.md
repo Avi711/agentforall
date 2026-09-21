@@ -270,6 +270,8 @@ terraform -chdir=infra apply -target=google_storage_bucket.backup_imports -targe
 | `BETTER_AUTH_URL` | `https://agentforall.co.il` (apex, exact) |
 | `BETTER_AUTH_SECRET` | random 32-byte hex |
 | `GOOGLE_CLIENT_ID` / `_SECRET` | Google Cloud Console OAuth 2.0 client; redirect URI `${BETTER_AUTH_URL}/api/auth/callback/google` |
+| `RESEND_API_KEY` | send-only key; sends from `no-reply@agentforall.co.il`. Domain verified in Resend 2026-09-22 (region eu-west-1; DKIM `resend._domainkey`, CNAMEs `rsend`/`send`, `_dmarc` p=none, all at Internic). Production + Preview; required at boot |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile widget. Production and Preview both need the real pair: previews share the prod DB, so boot refuses a test secret on either |
 | `META_CAPI_ACCESS_TOKEN` | server-side lead tracking |
 | `ADMIN_PASSWORD` | set |
 | `NEXT_PUBLIC_META_PIXEL_ID` | `803144279101703` |

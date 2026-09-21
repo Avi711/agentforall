@@ -14,11 +14,12 @@ export default function PrivacyPage() {
         <h2 className="mb-3 text-xl font-bold text-espresso">1. איזה מידע אנחנו אוספים</h2>
         <p>בעת ההרשמה והשימוש בשירות אנחנו אוספים:</p>
         <ul className="mt-3 list-inside list-disc space-y-2 ps-2">
-          <li><strong className="text-espresso">פרטי הרשמה:</strong> שם, אימייל, מספר טלפון (אופציונלי), תחומי עניין.</li>
+          <li><strong className="text-espresso">פרטי הרשמה:</strong> שם, אימייל, מספר טלפון (אופציונלי), תחומי עניין. אם נרשמתם עם מייל וסיסמה, הסיסמה נשמרת בצורה שאי אפשר לשחזר, גם לא אצלנו. הרשמה שלא אושרה במייל נמחקת אוטומטית תוך שבוע.</li>
           <li><strong className="text-espresso">מידע תפעולי:</strong> הודעות שאתם מחליפים עם הסוכן — לצורך מתן השירות בלבד.</li>
           <li><strong className="text-espresso">אפליקציות מחוברות:</strong> אם בחרתם לחבר לסוכן אפליקציות חיצוניות (למשל יומן, אימייל או קבצים), הסוכן ניגש למידע שבהן רק כדי לבצע את מה שביקשתם ממנו.</li>
           <li><strong className="text-espresso">מידע טכני:</strong> כתובת IP, סוג דפדפן, זמני גישה — למטרות אבטחה ואנליטיקה.</li>
           <li><strong className="text-espresso">Meta Pixel + Google Analytics:</strong> לצורך מדידת ביצועי אתר ופרסום.</li>
+          <li><strong className="text-espresso">Cloudflare Turnstile + Resend:</strong> בדיקה נגד בוטים במסכי הכניסה, ושליחת מיילים לאישור הכתובת ולבחירת סיסמה.</li>
         </ul>
       </section>
 

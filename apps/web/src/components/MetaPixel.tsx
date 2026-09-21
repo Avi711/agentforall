@@ -1,13 +1,18 @@
 "use client";
 
 import Script from "next/script";
+import { usePathname } from "next/navigation";
 
 const RAW_PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID;
 // Numeric check guards the inline script below from env-var injection.
 const PIXEL_ID = RAW_PIXEL_ID && /^\d+$/.test(RAW_PIXEL_ID) ? RAW_PIXEL_ID : undefined;
 
+// Auth pages carry tokens in their URLs, and automatic advanced matching would read the typed email.
+const AUTH_PAGES = ["/login", "/reset-password", "/verify-email"];
+
 export function MetaPixel() {
-  if (!PIXEL_ID) return null;
+  const pathname = usePathname();
+  if (!PIXEL_ID || AUTH_PAGES.some((page) => pathname.startsWith(page))) return null;
 
   return (
     <>

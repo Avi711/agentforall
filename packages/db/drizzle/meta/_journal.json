@@ -162,6 +162,13 @@
       "when": 1789647325533,
       "tag": "0022_pairing_started_at",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1790022576365,
+      "tag": "0023_auth_rate_limit",
+      "breakpoints": true
     }
   ]
 }
