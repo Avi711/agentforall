@@ -1,10 +1,7 @@
 import "server-only";
 import { getOrchestratorClient, type OrchestratorClient } from "../../orchestrator/client";
-import type { Instance } from "../../orchestrator/types";
+import { GONE_BOT_STATUSES } from "../../orchestrator/types";
 import type { BotSpend, LlmBudgetPort } from "../ports";
-
-// Bots whose gateway key is gone or being revoked; an `error` bot's key was revoked by the failed destroy.
-const GONE_STATUSES: ReadonlySet<Instance["status"]> = new Set(["destroying", "destroyed", "error"]);
 
 type BudgetClient = Pick<OrchestratorClient, "listBots" | "getBotUsage" | "updateBotBudget">;
 
@@ -13,7 +10,7 @@ export class OrchestratorLlmBudget implements LlmBudgetPort {
 
   async listLiveBotIds(userId: string): Promise<string[]> {
     const bots = await this.client.listBots(userId);
-    return bots.filter((bot) => !GONE_STATUSES.has(bot.status)).map((bot) => bot.id);
+    return bots.filter((bot) => !GONE_BOT_STATUSES.has(bot.status)).map((bot) => bot.id);
   }
 
   async readSpend(userId: string, botId: string): Promise<BotSpend> {

@@ -35,9 +35,7 @@ export class AdminService {
         lastActiveAt: row.lastActiveAt?.toISOString() ?? null,
         betaAccess: row.betaAccess,
         bots,
-        spendCents: sumSpend(bots),
-        maxBudgetCents: sumBudget(bots),
-        credits: credits.get(row.id) ?? null,
+        credits: requireSummary(credits, row.id),
       };
     });
 
@@ -57,7 +55,9 @@ export class AdminService {
     };
   }
 
-  grantCredits(userId: string, credits: number, ref: string, actorId: string): Promise<CreditSummary> {
+  // null = no such user.
+  async grantCredits(userId: string, credits: number, ref: string, actorId: string): Promise<CreditSummary | null> {
+    if (!(await this.repo.userExists(userId))) return null;
     return this.billing().grantCreditsByAdmin(userId, credits, ref, actorId);
   }
 }
@@ -88,12 +88,10 @@ function sumSpend(bots: AdminBot[]): number {
   return bots.reduce((sum, bot) => sum + (supportedUsage(bot)?.spendCents ?? 0), 0);
 }
 
-// null when no bot carries a budget at all.
-function sumBudget(bots: AdminBot[]): number | null {
-  const budgets = bots
-    .map((bot) => supportedUsage(bot)?.maxBudgetCents ?? null)
-    .filter((value): value is number => value !== null);
-  return budgets.length > 0 ? budgets.reduce((a, b) => a + b, 0) : null;
+function requireSummary(summaries: Map<string, CreditSummary>, userId: string): CreditSummary {
+  const summary = summaries.get(userId);
+  if (!summary) throw new Error(`credit summary missing for user ${userId}`);
+  return summary;
 }
 
 function isErrored(bot: AdminBot): boolean {

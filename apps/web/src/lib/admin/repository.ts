@@ -19,6 +19,11 @@ export class AdminRepository {
     this.db = db ?? getDb();
   }
 
+  async userExists(id: string): Promise<boolean> {
+    const rows = await this.db.select({ id: user.id }).from(user).where(eq(user.id, id)).limit(1);
+    return rows.length > 0;
+  }
+
   // "Last active" = newest session touch; sessions expire, so it is a floor, not an exact last-seen.
   async listUsers(): Promise<AdminUserRow[]> {
     const lastSeen = this.db

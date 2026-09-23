@@ -22,7 +22,6 @@ const ERROR_MESSAGES_HE: Record<ApiErrorCode, string> = {
   rate_limited: "יותר מדי ניסיונות. נסו שוב בעוד שעה.",
   payment_required: "כדי להמשיך צריך מנוי פעיל.",
   checkout_pending: CHECKOUT_PENDING_HE,
-  no_ledger: UNEXPECTED_ERROR_HE,
   invalid_body: UNEXPECTED_ERROR_HE,
   invalid_json: UNEXPECTED_ERROR_HE,
   unauthorized: "צריך להתחבר מחדש.",

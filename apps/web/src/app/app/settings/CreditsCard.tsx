@@ -22,7 +22,6 @@ export function CreditsCard({ status }: { status: BillingStatus }) {
   const [error, setError] = useState<string | null>(null);
   const { credits, topup } = status;
   const canTopup = status.creditsAction === "topup";
-  const hasLedger = credits.grants.length > 0;
   const liveGrants = credits.grants.filter((g) => g.live);
   const parsed = parseWholeIls(amount);
   const validAmount = parsed !== null && parsed >= topup.minIls && parsed <= topup.maxIls;
@@ -48,7 +47,7 @@ export function CreditsCard({ status }: { status: BillingStatus }) {
           <h2 className="font-display text-2xl text-terra-dark mb-1 leading-tight">{OUT_OF_CREDITS_LABEL[credits.balance.reason]}</h2>
           <p className="text-sm text-espresso-light mb-6">{credits.stale ? "הנתונים מהעדכון האחרון" : "אין קרדיטים זמינים"}</p>
         </>
-      ) : hasLedger ? (
+      ) : credits.balance.kind !== "none" ? (
         <>
           <h2 className="font-display text-2xl text-espresso mb-1 leading-tight" dir="ltr">
             {formatCredits(credits.available)}

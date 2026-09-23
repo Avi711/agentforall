@@ -12,8 +12,7 @@ export type BillingErrorCode =
   | "conflict"
   | "rate_limited"
   | "payment_required"
-  | "checkout_pending"
-  | "no_ledger";
+  | "checkout_pending";
 
 export class BillingError extends Error {
   constructor(
@@ -89,12 +88,6 @@ export class CheckoutAlreadySettledError extends BillingError {
 export class TrialUnavailableError extends BillingError {
   constructor() {
     super("no trial available and no active subscription", "payment_required", 402);
-  }
-}
-
-export class NoLedgerError extends BillingError {
-  constructor() {
-    super("user has no credit ledger; admin grants only top up an existing trial or plan", "no_ledger", 409);
   }
 }
 

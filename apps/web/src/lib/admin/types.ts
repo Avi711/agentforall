@@ -20,11 +20,7 @@ export interface AdminUser {
   lastActiveAt: string | null;
   betaAccess: boolean;
   bots: AdminBot[];
-  // Current LiteLLM budget period, summed over the user's bots.
-  spendCents: number;
-  maxBudgetCents: number | null;
-  // null = no ledger; the user's bots run on the gateway default budget.
-  credits: CreditSummary | null;
+  credits: CreditSummary;
 }
 
 export interface AdminOverview {

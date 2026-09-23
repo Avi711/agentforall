@@ -1,5 +1,6 @@
 import "server-only";
 import { and, asc, desc, eq, gte, inArray, lt, not, or, sql } from "drizzle-orm";
+import { union } from "drizzle-orm/pg-core";
 import {
   billingCheckoutSessions,
   billingCreditGrants,
@@ -8,10 +9,12 @@ import {
   billingPayments,
   billingSubscriptions,
   billingTrialClaims,
+  instances,
   type Database,
   type Transaction,
 } from "@agent-forall/db";
 import { getDb } from "../db";
+import { GONE_BOT_STATUSES } from "../orchestrator/types";
 import {
   ABANDONED_EVENT_MINUTES,
   MAX_EVENT_ATTEMPTS,
@@ -252,17 +255,6 @@ export class DrizzleCreditGrantRepository implements CreditGrantRepository {
       .returning();
     return rows[0] ? toGrant(rows[0]) : null;
   }
-
-  async listUserIdsWithGrants(): Promise<string[]> {
-    const lastSync = sql<Date | null>`min(${billingCreditUsage.syncedAt})`;
-    const rows = await this.db
-      .select({ userId: billingCreditGrants.userId })
-      .from(billingCreditGrants)
-      .leftJoin(billingCreditUsage, eq(billingCreditUsage.userId, billingCreditGrants.userId))
-      .groupBy(billingCreditGrants.userId)
-      .orderBy(sql`${lastSync} asc nulls first`);
-    return rows.map((r) => r.userId);
-  }
 }
 
 export class DrizzleTrialClaimRepository implements TrialClaimRepository {
@@ -318,6 +310,22 @@ export class DrizzleCreditUsageRepository implements CreditUsageRepository {
       .from(billingCreditUsage)
       .where(inArray(billingCreditUsage.userId, [...userIds]));
     return rows.map(toCursor);
+  }
+
+  async listMeteredUserIds(): Promise<string[]> {
+    const owners = union(
+      this.db.select({ userId: billingCreditGrants.userId }).from(billingCreditGrants),
+      this.db.select({ userId: billingCreditUsage.userId }).from(billingCreditUsage),
+      this.db.select({ userId: instances.userId }).from(instances).where(not(inArray(instances.status, [...GONE_BOT_STATUSES]))),
+    ).as("owners");
+    const lastSync = sql<Date | null>`min(${billingCreditUsage.syncedAt})`;
+    const rows = await this.db
+      .select({ userId: owners.userId })
+      .from(owners)
+      .leftJoin(billingCreditUsage, eq(billingCreditUsage.userId, owners.userId))
+      .groupBy(owners.userId)
+      .orderBy(sql`${lastSync} asc nulls first`);
+    return rows.map((r) => r.userId);
   }
 
   async advance(input: AdvanceUsageInput): Promise<boolean> {

@@ -156,12 +156,12 @@ describe("billing repositories (postgres)", { skip: url ? false : "BILLING_TEST_
     assert.equal(await trialClaims.claim(hash, "someone-else"), false);
   });
 
-  test("users with grants are listed least recently synced first, never-synced ahead of all", async () => {
+  test("metered users are listed least recently synced first, never-synced ahead of all", async () => {
     const other = `it-user-${randomUUID()}`;
     await db.insert(user).values({ id: other, email: `${other}@example.com` });
     try {
       await grants.insertIfAbsent({ userId: other, kind: "topup", credits: 10, sourceRef: `${userId}:other-topup`, expiresAt: null });
-      const ordered = await grants.listUserIdsWithGrants();
+      const ordered = await usage.listMeteredUserIds();
       const mine = ordered.indexOf(userId);
       const theirs = ordered.indexOf(other);
       assert.ok(mine >= 0 && theirs >= 0);
@@ -211,8 +211,20 @@ describe("billing repositories (postgres)", { skip: url ? false : "BILLING_TEST_
     assert.equal(await grants.insertIfAbsent(input), null);
     const listed = await grants.listByUserId(userId);
     assert.ok(listed.some((g) => g.id === granted.id && g.usedCredits === 0));
-    const users = await grants.listUserIdsWithGrants();
+    const users = await usage.listMeteredUserIds();
     assert.equal(users.filter((id) => id === userId).length, 1);
+  });
+
+  test("a user metered with no credits at all is listed for the cron", async () => {
+    const metered = `it-user-${randomUUID()}`;
+    await db.insert(user).values({ id: metered, email: `${metered}@example.com` });
+    try {
+      const botId = randomUUID();
+      assert.equal(await usage.advance({ botId, userId: metered, expectedVersion: 0, spendUsdCents: 5, consumedDelta: 10, unallocatedDelta: 10, attributions: [], syncedAt: NOW }), true);
+      assert.ok((await usage.listMeteredUserIds()).includes(metered));
+    } finally {
+      await db.delete(user).where(eq(user.id, metered));
+    }
   });
 
   test("advance creates the cursor on first sync and stores unallocated spend", async () => {

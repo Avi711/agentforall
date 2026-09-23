@@ -18,6 +18,7 @@ import type {
   OwnerIdentity,
   OwnerIdentityUpdate,
 } from "../orchestrator/types";
+import { GONE_BOT_STATUSES } from "../orchestrator/types";
 import { getBotLifecycleHooks, type BotLifecycleHooks } from "../billing";
 import type { BillingUser } from "../billing/domain";
 import type {
@@ -111,11 +112,11 @@ export class BotService {
     return this.orchestrator.getBot(userId, id);
   }
 
-  // Spend is charged to the ledger before the key is revoked; a failed read keeps the bot.
-  // An `error` bot's key was already revoked by the failed destroy, so there is nothing left to read.
+  // Spend is charged to the ledger before the key is revoked (a failed read keeps the bot); a bot whose key is
+  // already gone has nothing left to read and must not be stuck.
   async deleteBot(userId: string, id: string): Promise<void> {
     const bot = await this.orchestrator.getBot(userId, id);
-    if (bot.status !== "error") await this.hooks.beforeBotDelete(userId, id);
+    if (!GONE_BOT_STATUSES.has(bot.status)) await this.hooks.beforeBotDelete(userId, id);
     await this.orchestrator.deleteBot(userId, id);
   }
 

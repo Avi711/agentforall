@@ -56,6 +56,9 @@ export const InstanceSchema = z.object({
 
 export type Instance = z.infer<typeof InstanceSchema>;
 
+// Bots whose gateway key is gone or being revoked; an `error` bot's key was revoked by the failed destroy.
+export const GONE_BOT_STATUSES: ReadonlySet<Instance["status"]> = new Set(["destroying", "destroyed", "error"]);
+
 export const PROVISIONING_STAGES = ["reserved", "container_created", "backup_restored", "started", "running"] as const;
 export type ProvisioningStage = (typeof PROVISIONING_STAGES)[number];
 

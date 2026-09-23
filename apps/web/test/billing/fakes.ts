@@ -226,9 +226,6 @@ export class InMemoryGrants implements CreditGrantRepository {
     return { ...row };
   }
 
-  async listUserIdsWithGrants(): Promise<string[]> {
-    return [...new Set(this.rows.map((r) => r.userId))];
-  }
 }
 
 // Mirrors the SQL: a null holder is a claim by a deleted account and still blocks everyone else.
@@ -259,6 +256,17 @@ export class InMemoryUsage implements CreditUsageRepository {
   interfereNext = false;
 
   constructor(private readonly grants: InMemoryGrants) {}
+
+  async listMeteredUserIds(): Promise<string[]> {
+    const lastSync = (userId: string) =>
+      Math.min(...this.rows.filter((c) => c.userId === userId).map((c) => c.syncedAt.getTime()), Number.POSITIVE_INFINITY);
+    const owners = [...new Set([...this.grants.rows.map((g) => g.userId), ...this.rows.map((c) => c.userId)])];
+    return owners.sort((a, b) => {
+      const [x, y] = [this.rows.some((c) => c.userId === a), this.rows.some((c) => c.userId === b)];
+      if (x !== y) return x ? 1 : -1;
+      return lastSync(a) - lastSync(b);
+    });
+  }
 
   async findByBotId(botId: string): Promise<CreditUsageCursor | null> {
     const row = this.rows.find((r) => r.botId === botId);

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CreditSummary } from "@/lib/billing/credits/service";
 import type { AdminBot, AdminOverview, AdminUser } from "@/lib/admin/types";
-import { ADMIN_GRANT_MAX_CREDITS, LOW_BALANCE_RATIO, PLANS, TRIAL_CREDITS } from "@/lib/billing/pricing";
+import { ADMIN_GRANT_MAX_CREDITS, PLANS, TRIAL_CREDITS } from "@/lib/billing/pricing";
 import { readApiErrorCode } from "@/lib/http/api-error";
 import {
   BUTTON,
@@ -44,7 +44,7 @@ const GRANT_KIND: Record<CreditSummary["grants"][number]["kind"], string> = {
 const GRANT_PRESETS = [TRIAL_CREDITS, PLANS.basic.includedCredits, PLANS.standard.includedCredits];
 
 const GRANT_ERRORS: Record<string, string> = {
-  no_ledger: "This user has no credit ledger yet. Credits can only be added on top of a trial or plan.",
+  not_found: "User not found, or your admin session ended. Reload the page.",
   invalid_body: `Enter a whole number between 1 and ${int(ADMIN_GRANT_MAX_CREDITS)}.`,
 };
 
@@ -111,7 +111,7 @@ export function UsersPanel({ reloadToken }: { reloadToken: number }) {
 
   const { data, stale, refreshing } = state;
   const { totals } = data;
-  const outOfCredits = data.users.filter((u) => u.credits !== null && u.credits.balance.kind === "out" && u.bots.length > 0).length;
+  const outOfCredits = data.users.filter((u) => u.credits.balance.kind === "out" && u.bots.length > 0).length;
   const attention = outOfCredits + totals.erroredBots;
   const attentionHint = [
     outOfCredits > 0 ? `${outOfCredits} out of credits` : null,
@@ -132,7 +132,7 @@ export function UsersPanel({ reloadToken }: { reloadToken: number }) {
           value={`${totals.connectedBots} of ${totals.liveBots}`}
           hint={totals.usageUnavailable > 0 ? `${totals.usageUnavailable} without usage data` : undefined}
         />
-        <Figure label="Spend this period" value={usd(totals.spendCents)} />
+        <Figure label="Gateway spend to date" value={usd(totals.spendCents)} />
         <Figure
           label="Needs attention"
           value={int(attention)}
@@ -285,35 +285,16 @@ function BotCell({ bots }: { bots: AdminBot[] }) {
 }
 
 function UsageCell({ user }: { user: AdminUser }) {
-  if (user.credits) {
-    const c = user.credits;
-    const out = c.balance.kind === "out";
-    return (
-      <div>
-        <span className={`text-sm tabular-nums ${out ? "font-medium text-terra" : "text-espresso"}`}>
-          {out ? "Out of credits" : `${int(c.available)} of ${int(c.allowance)} credits`}
-        </span>
-        <span className="block text-xs text-espresso-light">{expiryOf(c)}</span>
-        <Meter remaining={c.available} total={c.allowance} low={c.balance.kind !== "ok"} label={`${int(c.available)} of ${int(c.allowance)} credits left`} />
-      </div>
-    );
-  }
-  if (user.bots.length === 0) return <span className="text-sm text-espresso-light">—</span>;
-  const budget = user.maxBudgetCents;
-  const reset = user.bots.map((b) => (b.usage?.supported ? b.usage.budgetResetAt : null)).find((r) => r !== null) ?? null;
-  const remaining = budget === null ? null : budget - user.spendCents;
-  const low = remaining !== null && budget !== null && remaining <= budget * LOW_BALANCE_RATIO;
+  const c = user.credits;
+  if (c.balance.kind === "none") return <span className="text-sm text-espresso-light">—</span>;
+  const out = c.balance.kind === "out";
   return (
     <div>
-      <span className={`text-sm tabular-nums ${low ? "font-medium text-terra" : "text-espresso"}`}>
-        {usd(user.spendCents)} of {budget === null ? "no cap" : usd(budget)}
+      <span className={`text-sm tabular-nums ${out ? "font-medium text-terra" : "text-espresso"}`}>
+        {out ? "Out of credits" : `${int(c.available)} of ${int(c.allowance)} credits`}
       </span>
-      <span className="block text-xs text-espresso-light">
-        Default budget{reset ? `, resets ${formatDate(reset)}` : ""}
-      </span>
-      {budget !== null && remaining !== null ? (
-        <Meter remaining={remaining} total={budget} low={low} label={`${usd(remaining)} of ${usd(budget)} left`} />
-      ) : null}
+      <span className="block text-xs text-espresso-light">{expiryOf(c)}</span>
+      <Meter remaining={c.available} total={c.allowance} low={c.balance.kind !== "ok"} label={`${int(c.available)} of ${int(c.allowance)} credits left`} />
     </div>
   );
 }
@@ -385,10 +366,9 @@ function CreditDetails({ user, onCredits }: { user: AdminUser; onCredits: (credi
   return (
     <section className="rounded-lg border border-sand-light bg-white p-4">
       <h3 className="text-sm font-semibold text-espresso">Credits</h3>
-      {c === null ? (
+      {c.balance.kind === "none" ? (
         <p className="mt-2 text-sm text-espresso-light">
-          No credit ledger. {user.bots.length > 0 ? "The bot runs on the gateway's default budget." : "A trial starts with the first bot."}{" "}
-          Credits can be added once the user has a trial or plan.
+          No credits yet.{c.trial.kind === "available" && user.bots.length === 0 ? " The trial starts with the first bot." : ""}
         </p>
       ) : (
         <>
@@ -414,9 +394,9 @@ function CreditDetails({ user, onCredits }: { user: AdminUser; onCredits: (credi
               </li>
             ))}
           </ul>
-          <GrantForm userId={user.id} onGranted={onCredits} />
         </>
       )}
+      <GrantForm userId={user.id} onGranted={onCredits} />
     </section>
   );
 }

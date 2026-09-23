@@ -218,17 +218,20 @@ export class BillingService {
     return this.entitlementOf(user, subscription, trial).entitled;
   }
 
-  // The trial lands before the container exists. Anyone entitled without one (paid, beta, enforcement off) gets
-  // no grant and stays on the gateway's default budget; nobody is ever capped to zero while still entitled.
+  // First bot of anyone not paying starts the trial (before the container exists); a lost claim race counts as used.
   async beforeBotCreate(user: BillingUser): Promise<void> {
     const [subscription, trial] = await Promise.all([
       this.subscriptions.findCurrentByUserId(user.id),
       this.credits.trialState(user.id).then((state) => this.honourTrialClaim(user, state)),
     ]);
-    if (trial.kind === "active" || this.entitlementOf(user, subscription, { kind: "used" }).entitled) return;
-    if (trial.kind !== "available") throw new TrialUnavailableError();
-    if (!(await this.trialClaims.claim(trialClaimKey(user.email), user.id))) throw new TrialUnavailableError();
-    await this.credits.startTrial(user.id);
+    if (trial.kind === "active") return;
+    const withoutTrial = this.entitlementOf(user, subscription, { kind: "used" });
+    if (isPaidReason(withoutTrial.reason)) return;
+    if (trial.kind === "available" && (await this.trialClaims.claim(trialClaimKey(user.email), user.id))) {
+      await this.credits.startTrial(user.id);
+      return;
+    }
+    if (!withoutTrial.entitled) throw new TrialUnavailableError();
   }
 
   afterBotCreated(userId: string): Promise<CreditSummary> {

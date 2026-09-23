@@ -15,6 +15,8 @@ import { TRIAL_CREDITS, TRIAL_DAYS } from "@/lib/billing/pricing";
 import { toBillingUser } from "@/lib/billing/user";
 import { BotCardSkeleton } from "./Skeleton";
 import { SHOWCASE_APPS } from "@/lib/integrations/catalog.he";
+import type { BillingStatus } from "@/lib/billing/service";
+import { CreditsActionLink } from "./credits-copy";
 
 export const metadata: Metadata = {
   title: "הבית שלי — Agent For All",
@@ -65,6 +67,7 @@ async function HomeCard({ user }: { user: AuthenticatedUser }) {
   return (
     <>
       {billing.reason === "trial_available" ? <TrialNotice /> : null}
+      {billing.reason !== "trial_available" && billing.credits.available === 0 ? <NoCreditsNotice status={billing} /> : null}
       <CreateBotForm whatsappBusiness={whatsappCloudEnabled} />
     </>
   );
@@ -74,6 +77,15 @@ function TrialNotice() {
   return (
     <p className="mb-5 text-sm text-espresso bg-cream-dark/60 border border-sand-light rounded-lg p-4 leading-relaxed">
       הסוכן הראשון שלכם מגיע עם {formatCredits(TRIAL_CREDITS)} קרדיטים לניסיון ל-{TRIAL_DAYS} ימים, בלי כרטיס אשראי.
+    </p>
+  );
+}
+
+// Entitled without credits (beta, mailbox already had its trial): the bot would be created muted.
+function NoCreditsNotice({ status }: { status: BillingStatus }) {
+  return (
+    <p className="mb-5 text-sm text-terra-dark bg-terra-pale border border-terra/20 rounded-lg p-4 leading-relaxed">
+      בחשבון אין קרדיטים כרגע, אז הסוכן לא יענה עד שייטענו. <CreditsActionLink action={status.creditsAction} className="underline font-medium" />
     </p>
   );
 }

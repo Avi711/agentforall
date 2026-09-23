@@ -5,7 +5,7 @@ import { CreditsActionLink, OUT_OF_CREDITS_LABEL } from "./credits-copy";
 import { SECTION_LABEL } from "./Marks";
 
 export function CreditsSection({ credits, action }: { credits: CreditSummary; action: CreditsAction }) {
-  // No ledger yet (bot from before billing, or access without credits): nothing meaningful to meter.
+  // Nothing granted and nothing metered yet.
   const { balance } = credits;
   if (balance.kind === "none") return null;
   const out = balance.kind === "out";

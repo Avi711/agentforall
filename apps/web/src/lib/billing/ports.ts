@@ -122,8 +122,6 @@ export interface CreditGrantRepository {
   listByUserIds(userIds: readonly string[]): Promise<CreditGrant[]>;
   // Null = a grant with this sourceRef already exists (idempotent redelivery).
   insertIfAbsent(input: NewCreditGrant): Promise<CreditGrant | null>;
-  // Least recently synced first, so a cron that runs out of time never starves the same users twice.
-  listUserIdsWithGrants(): Promise<string[]>;
 }
 
 // `userId` is null once the claiming account was deleted; the claim itself stands.
@@ -159,6 +157,8 @@ export interface CreditUsageRepository {
   listByUserIds(userIds: readonly string[]): Promise<CreditUsageCursor[]>;
   // Atomic cursor advance + attributions; false (nothing written) when a concurrent sync changed the version or a grant.
   advance(input: AdvanceUsageInput): Promise<boolean>;
+  // Anyone with credits, a cursor or a live bot; least recently synced first so a short cron never starves the same users.
+  listMeteredUserIds(): Promise<string[]>;
 }
 
 export interface BotSpend {

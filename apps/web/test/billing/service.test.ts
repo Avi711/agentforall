@@ -6,7 +6,6 @@ import { MAX_EVENT_ATTEMPTS } from "../../src/lib/billing/domain";
 import {
   AlreadySubscribedError,
   InvalidTopupAmountError,
-  NoLedgerError,
   NoSubscriptionError,
   PendingCheckoutError,
   SamePlanError,
@@ -780,26 +779,38 @@ describe("status and entitlement", () => {
     assert.equal(h.grants.rows.length, 0);
   });
 
-  test("a user entitled without a trial (beta, enforcement off, paid) gets no trial grant and is never capped", async () => {
+  test("every first bot starts the trial except a paying user's; beta and enforcement-off users get it too", async () => {
     const beta = harness();
-    beta.llm.addBot(USER.id, BOT_ID, { spendUsdCents: 300 });
     await beta.service.beforeBotCreate({ ...USER, betaAccess: true });
-    await beta.service.afterBotCreated(USER.id);
-    assert.deepEqual({ grants: beta.grants.rows.length, claims: beta.trialClaims.rows.size, ceiling: beta.llm.lastCeiling(BOT_ID) }, { grants: 0, claims: 0, ceiling: null });
+    assert.deepEqual({ grants: beta.grants.rows.map((g) => g.kind), claims: beta.trialClaims.rows.size }, { grants: ["trial"], claims: 1 });
 
     const open = harness({ enforcement: false });
     await open.service.beforeBotCreate(USER);
-    assert.equal(open.grants.rows.length, 0);
+    assert.deepEqual(open.grants.rows.map((g) => g.kind), ["trial"]);
 
     const paid = harness();
     paid.subscriptions.seed(subscription());
     await paid.service.beforeBotCreate(USER);
-    assert.equal(paid.grants.rows.length, 0);
+    assert.deepEqual({ grants: paid.grants.rows.length, claims: paid.trialClaims.rows.size }, { grants: 0, claims: 0 });
 
     const trialing = harness();
     await trialing.service.beforeBotCreate(USER);
     await trialing.service.beforeBotCreate(USER);
     assert.equal(trialing.grants.rows.length, 1);
+  });
+
+  test("a beta user whose mailbox already had its trial may still create a bot, metered with no credits", async () => {
+    const h = harness();
+    await h.service.beforeBotCreate(USER);
+    const alias = { ...USER, id: "user-2", email: "U+beta@example.com", betaAccess: true };
+    h.llm.addBot(alias.id, BOT_ID, { spendUsdCents: 40 });
+    await h.service.beforeBotCreate(alias);
+    await h.service.afterBotCreated(alias.id);
+    assert.deepEqual(
+      { grants: h.grants.rows.filter((g) => g.userId === alias.id).length, ceiling: h.llm.lastCeiling(BOT_ID) },
+      { grants: 0, ceiling: 40 },
+    );
+    await assert.rejects(h.service.beforeBotCreate({ ...alias, betaAccess: false }), TrialUnavailableError);
   });
 
   test("a mailbox that already had a trial under another account gets none, plus-tags and dots included", async () => {
@@ -826,11 +837,14 @@ describe("status and entitlement", () => {
     await assert.rejects(h.service.beforeBotDelete(USER.id, BOT_ID), /gateway unreachable/);
   });
 
-  test("a user with no ledger keeps the gateway's own budget: nothing is read or capped", async () => {
-    const h = harness({ enforcement: false });
-    h.llm.addBot(USER.id, BOT_ID, { spendUsdCents: 300, maxBudgetUsdCents: 5000 });
+  test("a bot whose owner has no credits is capped at its spend and reads as out of credits", async () => {
+    const h = harness();
+    h.llm.addBot(USER.id, BOT_ID, { spendUsdCents: 300, maxBudgetUsdCents: 1000 });
     const status = await h.service.refreshStatus(USER);
-    assert.deepEqual({ reads: h.llm.readCalls, ceiling: h.llm.lastCeiling(BOT_ID), available: status.credits.available, entitled: status.entitled }, { reads: 0, ceiling: null, available: 0, entitled: true });
+    assert.deepEqual(
+      { ceiling: h.llm.lastCeiling(BOT_ID), balance: status.credits.balance, reason: status.reason },
+      { ceiling: 300, balance: { kind: "out", reason: "credits-spent" }, reason: "trial_available" },
+    );
   });
 
   test("findCheckoutSession is owner-scoped", async () => {
@@ -876,23 +890,24 @@ describe("admin grant", () => {
     assert.deepEqual([summary.stale, summary.available, h.grants.rows.length], [true, TRIAL_CREDITS + 1000, 2]);
   });
 
-  test("refuses a user with no ledger so an uncapped bot is never capped by accident", async () => {
-    const h = harness({ enforcement: false });
-    h.llm.addBot(USER.id, BOT_ID);
-    await assert.rejects(
-      h.service.grantCreditsByAdmin(USER.id, 1000, "5f0f2c6a-9d3b-4e8a-b1c2-7d4e5f6a7b8c", "admin-1"),
-      NoLedgerError,
+  test("tops up a user who has no credits at all, charging only spend after the grant and keeping the trial", async () => {
+    const h = harness();
+    h.llm.addBot(USER.id, BOT_ID, { spendUsdCents: 300 });
+    await h.service.refreshStatus(USER);
+    const summary = await h.service.grantCreditsByAdmin(USER.id, 1000, "5f0f2c6a-9d3b-4e8a-b1c2-7d4e5f6a7b8c", "admin-1");
+    assert.deepEqual(
+      { available: summary.available, ceiling: h.llm.lastCeiling(BOT_ID), trial: summary.trial },
+      { available: 1000, ceiling: 300 + usdCentsFromCredits(1000), trial: { kind: "available" } },
     );
-    assert.equal(h.grants.rows.length, 0);
-    assert.equal(h.llm.ceilings.length, 0);
   });
 
-  test("reads ledgers for many users in one pass and leaves ledger-less users out", async () => {
+  test("reads ledgers for many users in one pass, one summary per requested user", async () => {
     const h = harness();
     h.llm.addBot(USER.id, BOT_ID);
     await h.service.beforeBotCreate(USER);
     const summaries = await h.service.creditSummaries([USER.id, "user-2"]);
-    assert.deepEqual([...summaries.keys()], [USER.id]);
+    assert.deepEqual([...summaries.keys()], [USER.id, "user-2"]);
     assert.equal(summaries.get(USER.id)?.available, TRIAL_CREDITS);
+    assert.deepEqual(summaries.get("user-2")?.balance, { kind: "none" });
   });
 });

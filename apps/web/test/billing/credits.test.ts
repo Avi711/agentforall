@@ -5,6 +5,7 @@ import { LOW_BALANCE_RATIO, TRIAL_CREDITS, TRIAL_DAYS, usdCentsFromCredits } fro
 import { BOT_ID, NOW, USER, creditHarness, grant, last } from "./fakes";
 
 const BOT_2 = "1b2c3d4e-0000-4000-8000-000000000002";
+const BOT_3 = "1b2c3d4e-0000-4000-8000-000000000003";
 
 describe("grants", () => {
   test("trial is granted once, sized from pricing, and expires after TRIAL_DAYS", async () => {
@@ -16,10 +17,13 @@ describe("grants", () => {
     assert.equal(h.grants.rows.length, 1);
   });
 
-  test("a user with any prior grant reads as trial used", async () => {
+  test("only a trial grant uses up the trial; top-ups and plan credits leave it available", async () => {
     const h = creditHarness();
-    h.grants.rows.push(grant({ kind: "plan" }));
-    assert.deepEqual(await h.credits.trialState(USER.id), { kind: "used" });
+    await h.credits.grantTopup(USER.id, 500, "topup:mock:pay_1");
+    await h.credits.grantPlanCredits(USER.id, 1000, new Date(NOW.getTime() + DAY_MS), "plan:mock:pay_2");
+    assert.deepEqual(await h.credits.trialState(USER.id), { kind: "available" });
+    await h.credits.startTrial(USER.id);
+    assert.equal((await h.credits.trialState(USER.id)).kind, "active");
   });
 
   test("trialState walks available → active → used", async () => {
@@ -46,11 +50,18 @@ describe("grants", () => {
 });
 
 describe("sync", () => {
-  test("a user with no grants is left alone: no gateway read, no cap", async () => {
+  test("a user with no credits is still metered: the bot is capped at what it already spent", async () => {
     const h = creditHarness();
     h.llm.addBot(USER.id, BOT_ID, { spendUsdCents: 300 });
     const summary = await h.credits.sync(USER.id);
-    assert.deepEqual({ reads: h.llm.readCalls, ceiling: h.llm.lastCeiling(BOT_ID), available: summary.available, trial: summary.trial }, { reads: 0, ceiling: null, available: 0, trial: { kind: "available" } });
+    assert.deepEqual(
+      { ceiling: h.llm.lastCeiling(BOT_ID), cursor: h.usage.rows[0]?.lastSpendUsdCents, unallocated: summary.unallocated, balance: summary.balance, trial: summary.trial },
+      { ceiling: 300, cursor: 300, unallocated: 600, balance: { kind: "out", reason: "credits-spent" }, trial: { kind: "available" } },
+    );
+
+    h.llm.setSpend(BOT_ID, { spendUsdCents: 310 });
+    await h.credits.settleBot(USER.id, BOT_ID);
+    assert.deepEqual({ cursor: h.usage.rows[0]?.lastSpendUsdCents, unallocated: h.usage.rows[0]?.unallocatedCredits }, { cursor: 310, unallocated: 620 });
   });
 
   test("settleBot charges spend since the last sync and throws when the gateway cannot be read", async () => {
@@ -211,7 +222,7 @@ describe("summary and cron", () => {
     assert.deepEqual({ consumed: summary.consumed, available: summary.available, balance: summary.balance, syncedAt: summary.syncedAt }, { consumed: 800, available: 200, balance: { kind: "low" }, syncedAt: NOW.toISOString() });
   });
 
-  test("balance flips to low exactly at the ratio and is none without a ledger", async () => {
+  test("balance flips to low exactly at the ratio and is none for an account with nothing granted or metered", async () => {
     const h = creditHarness();
     assert.deepEqual((await h.credits.summary(USER.id)).balance, { kind: "none" });
     h.grants.rows.push(grant({ credits: 1000, usedCredits: 1000 - 1000 * LOW_BALANCE_RATIO }));
@@ -273,7 +284,7 @@ describe("summary and cron", () => {
     assert.deepEqual((await h.credits.summary(USER.id)).balance, { kind: "out", reason: "credits-spent" });
   });
 
-  test("syncAll covers every user with a credit history, including lapsed ones, and isolates failures", async () => {
+  test("syncAll covers every user with credits or a metered bot, including lapsed ones, and isolates failures", async () => {
     let now = NOW;
     const h = creditHarness({ now: () => now });
     await h.credits.grantTopup("user-a", 100, "topup:a");
@@ -281,14 +292,19 @@ describe("summary and cron", () => {
     await h.credits.grantTopup("user-c", 100, "topup:c");
     h.llm.addBot("user-a", BOT_ID);
     h.llm.addBot("user-b", BOT_2, { spendUsdCents: 10, maxBudgetUsdCents: 60 });
+    h.llm.addBot("user-d", BOT_3, { spendUsdCents: 25, maxBudgetUsdCents: 200 });
+    await h.credits.sync("user-d");
+    h.llm.setSpend(BOT_3, { spendUsdCents: 30, maxBudgetUsdCents: 200 });
+    const botsOf: Record<string, string[]> = { "user-a": [BOT_ID], "user-b": [BOT_2], "user-d": [BOT_3] };
     h.llm.listLiveBotIds = async (userId) => {
       if (userId === "user-c") throw new Error("orchestrator down");
-      return userId === "user-a" ? [BOT_ID] : userId === "user-b" ? [BOT_2] : [];
+      return botsOf[userId] ?? [];
     };
     now = new Date(NOW.getTime() + 2 * DAY_MS);
     const result = await h.credits.syncAll();
-    assert.deepEqual(result, { users: 3, failures: ["user-c"] });
+    assert.deepEqual(result, { users: 4, failures: ["user-c"] });
     assert.equal(h.llm.lastCeiling(BOT_ID), usdCentsFromCredits(100));
     assert.equal(h.llm.lastCeiling(BOT_2), 10);
+    assert.equal(h.llm.lastCeiling(BOT_3), 30);
   });
 });
