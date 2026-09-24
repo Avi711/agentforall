@@ -35,6 +35,7 @@ export function Footer() {
             <ul className="space-y-2 text-sm text-espresso-light">
               <li><Link href="/terms" className="transition hover:text-terra">תנאי שימוש</Link></li>
               <li><Link href="/privacy" className="transition hover:text-terra">מדיניות פרטיות</Link></li>
+              <li><Link href="/refund" className="transition hover:text-terra">מדיניות החזרים</Link></li>
               <li><Link href="/accessibility" className="transition hover:text-terra">הצהרת נגישות</Link></li>
               <li>
                 <a href="https://wa.me/972552506938" target="_blank" rel="noopener noreferrer" className="transition hover:text-terra">

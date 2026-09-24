@@ -54,6 +54,7 @@ export default function PrivacyPage() {
           <li><strong className="text-espresso">ספקי מודלי AI:</strong> המודלים שמפעילים את הסוכן. הודעות מועברות אליהם לצורך יצירת תגובה בלבד.</li>
           <li><strong className="text-espresso">פלטפורמות מסרים (וואטסאפ, טלגרם):</strong> תשתית המסרים שבה אתם מדברים עם הסוכן.</li>
           <li><strong className="text-espresso">שירות חיבור אפליקציות:</strong> שירות מאובטח שמנהל את החיבור לאפליקציות שבחרתם לחבר ושומר את הרשאות הגישה אליהן.</li>
+          <li><strong className="text-espresso">ספקי תשלומים:</strong> ספק התשלומים שמופיע בעמוד התשלום מקבל את פרטי התשלום, השם והאימייל כדי לגבות, להנפיק קבלה ולטפל בהחזרים. פרטי הכרטיס נשמרים אצלו בלבד ולא אצלנו.</li>
           <li><strong className="text-espresso">ספקי ענן ומסדי נתונים:</strong> תשתית אירוח ואחסון.</li>
           <li><strong className="text-espresso">רשויות חוק:</strong> רק בהתאם לצו שיפוטי תקף.</li>
         </ul>

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { LegalPage, WhatsAppLink } from "@/components/LegalPage";
 import { OperatorLine } from "@/components/OperatorLine";
 import { PLANS } from "@/lib/billing/pricing";
@@ -49,10 +50,18 @@ export default function TermsPage() {
       <section>
         <h2 className="mb-3 text-xl font-bold text-espresso">5. תשלום וביטול</h2>
         <p>
-          המנוי החודשי מתחיל מ-{PLANS.basic.priceIls} ש״ח לחודש (כולל מע״מ) וכולל חבילת קרדיטים חודשית בהתאם לתוכנית שנבחרה. קרדיטים שלא נוצלו פגים בתום תקופת החיוב; קרדיטים שנרכשו בנפרד (טעינה) אינם פגים. ניתן לבטל את המנוי בכל עת דרך האזור האישי; הביטול ייכנס לתוקף בסוף תקופת החיוב הנוכחית, ללא החזר על חלק התקופה שחלף.
+          המנוי החודשי מתחיל מ-{PLANS.basic.priceIls} ש״ח לחודש (כולל מע״מ) וכולל חבילת קרדיטים חודשית בהתאם לתוכנית שנבחרה. קרדיטים שלא נוצלו פגים בתום תקופת החיוב; קרדיטים שנרכשו בנפרד (טעינה) אינם פגים. ניתן לבטל את המנוי בכל עת דרך האזור האישי; הביטול ייכנס לתוקף בסוף תקופת החיוב הנוכחית.
         </p>
         <p className="mt-3">
-          בהתאם לחוק הגנת הצרכן, תשנ״א-1981, ניתן לבטל את העסקה תוך 14 יום מיום הרישום.
+          ניתן לקבל החזר מלא תוך 14 יום על רכישה שלא נוצלו ממנה קרדיטים, בהתאם ל
+          <Link href="/refund" className="font-semibold text-terra hover:underline">מדיניות ההחזרים</Link>{" "}
+          ובהתאם לחוק הגנת הצרכן, התשמ״א-1981.
+        </p>
+        <p className="mt-3">
+          התשלומים מתבצעים דרך ספק תשלומים חיצוני, ששמו מופיע בעמוד התשלום ובקבלה. כשהספק פועל כמשווק מורשה, הוא המוכר הרשמי של ההזמנה: הוא גובה את התשלום, מנפיק את הקבלה, ומטפל במסים ובהחזרים.
+        </p>
+        <p className="mt-3" dir="ltr" lang="en">
+          Our order process is conducted by our online reseller and Merchant of Record, Paddle.com, or by the payment provider named at checkout. The Merchant of Record handles payment, invoicing, taxes and returns for the orders it processes.
         </p>
       </section>
 
