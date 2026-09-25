@@ -21,7 +21,7 @@ interface LegendItem {
   swatch: string;
 }
 
-// Two families: greens expire with the plan or the trial, sand is top-ups that never expire.
+// Two families: greens expire with the plan or the trial, honey is top-ups that never expire.
 const SWATCH = {
   calm: { plan: "bg-sage", trial: "bg-sage-light" },
   alert: { plan: "bg-terra", trial: "bg-terra-light" },
@@ -41,7 +41,7 @@ function legendOf(credits: CreditSummary, planEndsAt: string | null, alert: bool
   if (credits.trial.kind === "active" && trialLeft > 0) {
     items.push({ amount: trialLeft, label: `מתקופת הניסיון · בתוקף עד ${formatDay(credits.trial.expiresAt)}`, swatch: swatch.trial });
   }
-  if (credits.topupAvailable > 0) items.push({ amount: credits.topupAvailable, label: "מטעינות · בלי תאריך תפוגה", swatch: "bg-sand" });
+  if (credits.topupAvailable > 0) items.push({ amount: credits.topupAvailable, label: "מטעינות · בלי תאריך תפוגה", swatch: "bg-honey" });
   return items;
 }
 

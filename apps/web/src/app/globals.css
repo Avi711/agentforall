@@ -19,6 +19,7 @@
   --color-sage-pale: #EDF5EE;
   --color-sand: #D4C5A9;
   --color-sand-light: #E8DCC8;
+  --color-honey: #C8963E;
   --color-wa-green: #25D366;
   --color-wa-dark: #075E54;
   --color-wa-light: #DCF8C6;
@@ -363,6 +364,7 @@ html[data-high-contrast] {
   --color-sage-dark: #2F4A34;
   --color-sand: #666666;
   --color-sand-light: #BBBBBB;
+  --color-honey: #8A5A00;
 }
 
 /* User-forced reduced motion (in addition to media query) */
