@@ -1,10 +1,10 @@
 import { balancePools, type CreditPool } from "@/lib/billing/credits/pools";
 import type { CreditSummary } from "@/lib/billing/credits/service";
 import type { CreditPace } from "@/lib/billing/credits/runway";
-import { formatCredits, formatDay } from "@/lib/billing/format";
+import { formatDay } from "@/lib/billing/format";
 import { AnimatedCredits } from "../AnimatedCredits";
 import { BALANCE_NOTE, OUT_OF_CREDITS_LABEL, POOL_SOURCE, poolSwatch, runwayLabel } from "../credits-copy";
-import { MeterRow } from "./MeterRow";
+import { UsageRow } from "./UsageRow";
 
 function PaceLine({ pace, renews }: { pace: CreditPace; renews: boolean }) {
   switch (pace.kind) {
@@ -26,10 +26,8 @@ function PaceLine({ pace, renews }: { pace: CreditPace; renews: boolean }) {
   }
 }
 
-function poolDetail(pool: CreditPool, renews: boolean): string {
-  if (pool.validUntil === null) return "לא פגים, ונוצלים אחרונים";
-  const day = formatDay(pool.validUntil);
-  return pool.kind === "plan" && renews ? `מתחדשים ב־${day}` : `בתוקף עד ${day}`;
+function poolDetail(pool: CreditPool): string {
+  return pool.validUntil === null ? "לא פגים. משמשים רק אחרי שקרדיטי התוכנית נגמרים" : `בתוקף עד ${formatDay(pool.validUntil)}`;
 }
 
 export function CreditBreakdown({ credits, renews }: { credits: CreditSummary; renews: boolean }) {
@@ -56,16 +54,14 @@ export function CreditBreakdown({ credits, renews }: { credits: CreditSummary; r
       {pools.length > 0 ? (
         <ul className="divide-y divide-sand-light/70 border-y border-sand-light/70">
           {pools.map((pool) => (
-            <MeterRow
+            <UsageRow
               key={pool.kind}
               title={`קרדיטים ${POOL_SOURCE[pool.kind]}`}
-              detail={poolDetail(pool, renews)}
+              detail={poolDetail(pool)}
               used={pool.credits - pool.available}
               of={pool.credits}
               tone={poolSwatch(pool, alert)}
-            >
-              נותרו <span className="font-semibold text-espresso">{formatCredits(pool.available)}</span> מתוך {formatCredits(pool.credits)}
-            </MeterRow>
+            />
           ))}
         </ul>
       ) : null}

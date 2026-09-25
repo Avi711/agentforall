@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { pastPeriods, type PastPeriod } from "@/lib/billing/credits/history";
 import type { CreditSummary } from "@/lib/billing/credits/service";
-import { formatCredits, formatDay } from "@/lib/billing/format";
-import { MeterRow } from "./MeterRow";
+import { formatDay } from "@/lib/billing/format";
 import { PageSection } from "./Section";
+import { UsageRow } from "./UsageRow";
 
 const RECENT_PERIODS = 3;
 
@@ -13,15 +13,13 @@ function PeriodRow({ period }: { period: PastPeriod }) {
   const range = `${formatDay(period.startsAt)} – ${formatDay(period.endsAt)}`;
   const trial = period.kind === "trial";
   return (
-    <MeterRow
+    <UsageRow
       title={trial ? "תקופת הניסיון" : range}
       detail={trial ? range : null}
       used={period.used}
       of={period.credits}
       tone={trial ? "bg-sage-light" : "bg-sage"}
-    >
-      נוצלו <span className="font-semibold text-espresso">{formatCredits(period.used)}</span> מתוך {formatCredits(period.credits)}
-    </MeterRow>
+    />
   );
 }
 
