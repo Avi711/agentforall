@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import { Spinner } from "../Marks";
 
 export const SUBSECTION_TITLE = "text-base font-semibold text-espresso";
@@ -18,16 +18,19 @@ export function CardSection({
   id,
   labelledBy,
   tinted = false,
+  sectionRef,
   children,
 }: {
   id?: string;
   labelledBy: string;
   tinted?: boolean;
+  sectionRef?: Ref<HTMLElement>;
   children: ReactNode;
 }) {
   return (
     <section
       id={id}
+      ref={sectionRef}
       aria-labelledby={labelledBy}
       className={`scroll-mt-24 border-t border-sand-light/70 px-6 py-6 sm:px-8 ${tinted ? "bg-cream" : ""}`}
     >

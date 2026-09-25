@@ -12,6 +12,7 @@ import { BillingClientError, changePlan, previewPlanChange } from "../billing/cl
 import { ConfirmDialog } from "../ConfirmDialog";
 import { BusyLabel, CloseButton, SummaryRows } from "../Marks";
 import { useActionRunner } from "../useActionRunner";
+import { useRevealWhenOpened } from "../useRevealWhenOpened";
 import { CardSection, SUBSECTION_TITLE } from "./Section";
 
 const PER_INTERVAL = { month: "לחודש", year: "לשנה" } as const;
@@ -39,13 +40,14 @@ export function PlanChangePanel({
   const [preview, setPreview] = useState<PlanChangePreview | null>(null);
   const [declined, setDeclined] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const sectionRef = useRevealWhenOpened<HTMLElement>(true);
   const periodEnd = formatDate(status.subscription?.currentPeriodEnd ?? null);
   const target = preview ? PLANS[preview.plan] : null;
   const chargesNow = preview?.billing === "prorate_now" && preview.chargeNowAgorot !== null;
   const renewalDay = status.subscription?.currentPeriodEnd ? formatDay(status.subscription.currentPeriodEnd) : null;
 
   useEffect(() => {
-    headingRef.current?.focus();
+    headingRef.current?.focus({ preventScroll: true });
   }, []);
 
   async function confirm(chosen: PlanChangePreview, plan: Plan) {
@@ -61,7 +63,7 @@ export function PlanChangePanel({
   }
 
   return (
-    <CardSection id="change-plan" labelledBy="change-plan-title" tinted>
+    <CardSection id="change-plan" labelledBy="change-plan-title" tinted sectionRef={sectionRef}>
       <header className="flex items-center justify-between gap-4">
         <h3 id="change-plan-title" ref={headingRef} tabIndex={-1} className={`${SUBSECTION_TITLE} focus:outline-none`}>
           מעבר לתוכנית אחרת

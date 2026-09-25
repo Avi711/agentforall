@@ -10,6 +10,7 @@ import { startTopup } from "../billing/client";
 import { BusyLabel, CloseButton } from "../Marks";
 import { useActionRunner } from "../useActionRunner";
 import { useHashTarget } from "../useHashTarget";
+import { useRevealWhenOpened } from "../useRevealWhenOpened";
 import { CardSection, SUBSECTION_TITLE } from "./Section";
 
 const STEP_ILS = 10;
@@ -28,6 +29,7 @@ export function TopupPanel({ terms, urgent }: { terms: TopupTerms; urgent: boole
   const targeted = useHashTarget(SETTINGS_SECTION.topup);
   const [toggled, setToggled] = useState<boolean | null>(null);
   const open = toggled ?? (urgent || targeted);
+  const sectionRef = useRevealWhenOpened<HTMLElement>(toggled === true);
   const [amount, setAmount] = useState(DEFAULT_TOPUP_PRESET_ILS);
   const topup = useActionRunner<"topup">();
   const busy = topup.pending !== null;
@@ -36,7 +38,7 @@ export function TopupPanel({ terms, urgent }: { terms: TopupTerms; urgent: boole
   const fill = `${((amount - terms.minIls) / (terms.maxIls - terms.minIls)) * 100}%`;
 
   return (
-    <CardSection id={SETTINGS_SECTION.topup} labelledBy="topup-title">
+    <CardSection id={SETTINGS_SECTION.topup} labelledBy="topup-title" sectionRef={sectionRef}>
       <div className="flex items-center justify-between gap-4">
         <div className="flex flex-col gap-0.5">
           <h3 id="topup-title" className={SUBSECTION_TITLE}>
