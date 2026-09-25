@@ -4,6 +4,7 @@ import type { ContainerRuntime } from "../../container-runtime.js";
 import type { FleetInstance, Instance } from "../../../domain/types.js";
 import type {
   AgentRuntimeAdapter,
+  BrowserTabsClosed,
   ConfigApplyOutcome,
   RuntimeCheck,
   RuntimeConfigFiles,
@@ -177,6 +178,10 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
   // Hermes has no DM pairing store; owner claim is manual-entry only.
   async listWhatsappPairingRequests(): Promise<WhatsappPairingRequest[]> {
     return [];
+  }
+
+  async closeBrowserTabs(): Promise<BrowserTabsClosed> {
+    return { closed: 0, failed: 0 };
   }
 
   async prepareState(): Promise<void> {}

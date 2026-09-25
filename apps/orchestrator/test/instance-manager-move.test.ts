@@ -681,6 +681,7 @@ class FakeRuntime {
       probeWhatsapp: async () => "unknown" as const,
       logoutWhatsapp: async () => ({ unlinked: true, cleared: true }),
       readOwnerIds: async () => [],
+      closeBrowserTabs: async () => ({ closed: 0, failed: 0 }),
       listWhatsappPairingRequests: async () => [],
       startWhatsappChannel: async () => ({ status: "started" as const }),
       sendWhatsappMessage: async () => true,

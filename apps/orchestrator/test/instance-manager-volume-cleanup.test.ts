@@ -219,6 +219,7 @@ const openclawAdapter: AgentRuntimeAdapter = {
   startWhatsappChannel: async () => ({ status: "started" as const }),
   sendWhatsappMessage: async () => true,
   readOwnerIds: async () => [],
+  closeBrowserTabs: async () => ({ closed: 0, failed: 0 }),
 };
 
 function createManager(

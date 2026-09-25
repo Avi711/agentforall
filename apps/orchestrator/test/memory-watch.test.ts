@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { FastifyBaseLogger } from "fastify";
-import { MemoryWatch } from "../src/services/memory-watch.js";
+import { MemoryWatch, type MemoryHighObserver } from "../src/services/memory-watch.js";
 import type { ContainerMemory } from "../src/services/container-runtime.js";
 import type { Instance } from "../src/domain/types.js";
 import type { HostRuntime, HostRuntimes } from "../src/services/host-runtimes.js";
@@ -27,7 +27,7 @@ function recordingLogger(lines: Line[]): FastifyBaseLogger {
 
 function harness(
   usage: Record<string, ContainerMemory | null | Error>,
-  options: { repoError?: Error; reachable?: () => boolean } = {},
+  options: { repoError?: Error; reachable?: () => boolean; observer?: MemoryHighObserver } = {},
 ) {
   const lines: Line[] = [];
   const instances: Instance[] = Object.keys(usage).map((id) =>
@@ -47,7 +47,13 @@ function harness(
     },
   };
   const hosts = singleHost(runtime as never, {} as never, { check: async () => options.reachable?.() ?? true });
-  const watch = new MemoryWatch(repo, hosts, recordingLogger(lines), { intervalMs: 60_000, warnFraction: 0.8 });
+  const watch = new MemoryWatch(
+    repo,
+    hosts,
+    recordingLogger(lines),
+    { intervalMs: 60_000, warnFraction: 0.8 },
+    options.observer ?? null,
+  );
   const of = (msg: string) => lines.filter((l) => l.msg === msg);
   return { watch, lines, of, usage, instances };
 }
@@ -228,4 +234,99 @@ test("an unreachable host is not swept, and a bot that was high does not read as
   reachable = true;
   await h.watch.sweep();
   assert.equal(h.of("bot memory back to normal").length, 1);
+});
+
+test("measured names the bots whose usage the last sweep counted, per host, and keeps them while the host is unreachable", async () => {
+  const reachable: Record<string, boolean> = { h1: true };
+  const bundle = {
+    hostId: "h1",
+    runtime: {
+      memoryUsage: async (containerId: string) => {
+        if (containerId === "c-broken") throw new Error("stats failed");
+        return { usedBytes: 500 * MB, limitBytes: 4 * GB };
+      },
+    },
+    gate: { check: async () => reachable.h1 ?? false },
+  } as unknown as HostRuntime;
+  const hosts: HostRuntimes = { for: () => bundle, all: () => [bundle] };
+  const instances = [
+    makeInstance([], { id: "read", hostId: "h1", containerId: "c-ok" }),
+    makeInstance([], { id: "broken", hostId: "h1", containerId: "c-broken" }),
+    makeInstance([], { id: "booting", hostId: "h1", containerId: null }),
+  ];
+  const watch = new MemoryWatch({ findByStatuses: async () => instances }, hosts, recordingLogger([]), {
+    intervalMs: 60_000,
+    warnFraction: 0.8,
+  });
+
+  assert.equal(watch.measured("read"), false, "nothing is measured before the first sweep");
+  await watch.sweep();
+  assert.equal(watch.measured("read"), true);
+  assert.equal(watch.measured("broken"), false, "a failed read is not a measurement");
+  assert.equal(watch.measured("booting"), false, "no container yet");
+  assert.equal(watch.usedMb("h1"), 500);
+
+  reachable.h1 = false;
+  await watch.sweep();
+  assert.equal(watch.measured("read"), true, "unreachable keeps the last sweep");
+
+  reachable.h1 = true;
+  instances.length = 0;
+  await watch.sweep();
+  assert.equal(watch.measured("read"), false, "a host with no running bot forgets its bots");
+});
+
+test("the high-memory observer hears the bot on every sweep while it stays high, and never on a failed read", async () => {
+  const heard: Array<{ id: string; usedMb: number; limitMb: number }> = [];
+  const h = harness(
+    { a: { usedBytes: 2.6 * GB, limitBytes: 3 * GB }, b: new Error("stats failed") },
+    {
+      observer: {
+        memoryHigh: (inst, usedMb, limitMb) => void heard.push({ id: inst.id, usedMb, limitMb }),
+        memoryNormal: () => undefined,
+      },
+    },
+  );
+
+  await h.watch.sweep();
+  await h.watch.sweep();
+  assert.deepEqual(heard, [
+    { id: "a", usedMb: 2662, limitMb: 3072 },
+    { id: "a", usedMb: 2662, limitMb: 3072 },
+  ]);
+  assert.equal(h.of("bot memory high").length, 1, "the warning is still logged once per episode");
+
+  h.usage.a = { usedBytes: 1 * GB, limitBytes: 3 * GB };
+  await h.watch.sweep();
+  assert.equal(heard.length, 2, "not heard once back to normal");
+});
+
+test("an observer that throws is logged and does not break the sweep", async () => {
+  const h = harness(
+    { a: { usedBytes: 2.6 * GB, limitBytes: 3 * GB } },
+    {
+      observer: {
+        memoryHigh: () => {
+          throw new Error("observer broke");
+        },
+        memoryNormal: () => undefined,
+      },
+    },
+  );
+  await h.watch.sweep();
+  assert.equal(h.watch.usedMb("host"), 2662);
+  assert.equal(h.of("memory high observer failed").length, 1);
+});
+
+test("the observer hears the end of an episode: on recovery and when a high bot is gone", async () => {
+  const normal: string[] = [];
+  const h = harness(
+    { a: { usedBytes: 2.6 * GB, limitBytes: 3 * GB }, b: { usedBytes: 2.6 * GB, limitBytes: 3 * GB } },
+    { observer: { memoryHigh: () => undefined, memoryNormal: (id) => void normal.push(id) } },
+  );
+  await h.watch.sweep();
+  h.usage.a = { usedBytes: 1 * GB, limitBytes: 3 * GB };
+  h.instances.splice(h.instances.findIndex((inst) => inst.id === "b"), 1);
+  await h.watch.sweep();
+  assert.deepEqual(normal.sort(), ["a", "b"]);
 });

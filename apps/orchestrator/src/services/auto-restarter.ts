@@ -1,4 +1,5 @@
 import type { FastifyBaseLogger } from "fastify";
+import { BackgroundTasks, type InstanceEventLog } from "./background-tasks.js";
 import type { FleetInstance } from "../domain/types.js";
 import { errorMessage } from "../domain/errors.js";
 import type { LivenessObserver, LivenessReport, LivenessSample } from "./health-monitor.js";
@@ -17,14 +18,6 @@ export type SystemRestartOutcome =
 
 export interface SystemRestarter {
   restartBySystem(id: string): Promise<SystemRestartOutcome>;
-}
-
-export interface RestartEventLog {
-  append(
-    instanceId: string,
-    eventType: string,
-    opts?: { actor?: string; payload?: Record<string, unknown> },
-  ): Promise<void>;
 }
 
 export const AUTO_RESTART_EVENTS = {
@@ -46,16 +39,18 @@ interface BotState {
 // The per-window budget exists so a bot that dies on every boot cannot be restarted forever.
 export class AutoRestarter implements LivenessObserver {
   private readonly bots = new Map<string, BotState>();
-  private readonly inFlight = new Set<Promise<void>>();
+  private readonly tasks: BackgroundTasks;
   private fleetOutage = false;
 
   constructor(
     private readonly manager: SystemRestarter,
-    private readonly events: RestartEventLog,
+    private readonly events: InstanceEventLog,
     private readonly logger: FastifyBaseLogger,
     private readonly config: AutoRestartConfig,
     private readonly now: () => number = Date.now,
-  ) {}
+  ) {
+    this.tasks = new BackgroundTasks(logger, "auto restart task failed unexpectedly");
+  }
 
   observe(report: readonly LivenessReport[]): void {
     this.prune(new Set(report.map((entry) => entry.instance.id)));
@@ -63,18 +58,8 @@ export class AutoRestarter implements LivenessObserver {
     for (const { instance, sample } of report) this.track(instance, sample);
   }
 
-  async settle(timeoutMs = Number.POSITIVE_INFINITY): Promise<void> {
-    const all = Promise.all([...this.inFlight]).then(() => undefined);
-    if (!Number.isFinite(timeoutMs)) return all;
-    let timer: NodeJS.Timeout | undefined;
-    const deadline = new Promise<void>((resolve) => {
-      timer = setTimeout(resolve, timeoutMs);
-    });
-    try {
-      await Promise.race([all, deadline]);
-    } finally {
-      clearTimeout(timer);
-    }
+  settle(timeoutMs?: number): Promise<void> {
+    return this.tasks.settle(timeoutMs);
   }
 
   // Most bots failing in the same poll points at Docker, the network or the orchestrator, not at the bots.
@@ -106,21 +91,12 @@ export class AutoRestarter implements LivenessObserver {
     if (last !== undefined && now - last < this.config.cooldownMs) return;
     state.restartsAt = state.restartsAt.filter((at) => now - at < this.config.windowMs);
     if (state.restartsAt.length >= this.config.maxRestartsPerWindow) {
-      this.launch(this.notifyExhausted(inst, state));
+      this.tasks.launch(this.notifyExhausted(inst, state));
       return;
     }
 
     state.exhaustedNotified = false;
-    this.launch(this.restart(inst, state, now));
-  }
-
-  // Tasks catch their own errors; the guard keeps a future slip from turning settle() into a throw at shutdown.
-  private launch(task: Promise<void>): void {
-    const guarded = task.catch((err: unknown) => {
-      this.logger.error({ err }, "auto restart task failed unexpectedly");
-    });
-    this.inFlight.add(guarded);
-    void guarded.finally(() => this.inFlight.delete(guarded));
+    this.tasks.launch(this.restart(inst, state, now));
   }
 
   private async restart(inst: FleetInstance, state: BotState, now: number): Promise<void> {

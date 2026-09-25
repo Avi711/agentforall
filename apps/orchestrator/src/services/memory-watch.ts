@@ -14,6 +14,11 @@ export interface RunningInstances {
   findByStatuses(statuses: InstanceStatus[]): Promise<FleetInstance[]>;
 }
 
+export interface MemoryHighObserver {
+  memoryHigh(instance: FleetInstance, usedMb: number, limitMb: number): void;
+  memoryNormal(instanceId: string): void;
+}
+
 const STATS_CONCURRENCY = 4;
 const MB = 1024 * 1024;
 
@@ -23,12 +28,14 @@ export class MemoryWatch implements HostUsage {
   private currentSweep: Promise<void> | null = null;
   private readonly high = new Set<string>();
   private readonly usedByHost = new Map<string, number>();
+  private readonly measuredByHost = new Map<string, ReadonlySet<string>>();
 
   constructor(
     private readonly repo: RunningInstances,
     private readonly hosts: HostRuntimes,
     private readonly logger: FastifyBaseLogger,
     private readonly config: MemoryWatchConfig,
+    private readonly highObserver: MemoryHighObserver | null = null,
   ) {}
 
   start(): void {
@@ -54,6 +61,13 @@ export class MemoryWatch implements HostUsage {
     return this.usedByHost.get(hostId) ?? 0;
   }
 
+  measured(instanceId: string): boolean {
+    for (const ids of this.measuredByHost.values()) {
+      if (ids.has(instanceId)) return true;
+    }
+    return false;
+  }
+
   async sweep(): Promise<void> {
     if (this.currentSweep) return;
     this.currentSweep = this.runSweep();
@@ -71,10 +85,15 @@ export class MemoryWatch implements HostUsage {
       const groups = groupByHost(active);
       await Promise.all([...groups].map(([hostId, group]) => this.sweepHost(hostId, group)));
       for (const id of this.high) {
-        if (!seen.has(id)) this.high.delete(id);
+        if (seen.has(id)) continue;
+        this.high.delete(id);
+        this.notify(id, (observer) => observer.memoryNormal(id));
       }
       for (const hostId of this.usedByHost.keys()) {
         if (!groups.has(hostId)) this.usedByHost.delete(hostId);
+      }
+      for (const hostId of this.measuredByHost.keys()) {
+        if (!groups.has(hostId)) this.measuredByHost.delete(hostId);
       }
     } catch (err) {
       this.logger.error({ err }, "memory watch sweep failed");
@@ -86,20 +105,27 @@ export class MemoryWatch implements HostUsage {
     const host = this.hosts.for(hostId);
     if (!(await host.gate.check())) return;
     const results = await mapWithConcurrency(group, STATS_CONCURRENCY, (inst) => this.check(inst, host.runtime));
-    const usedBytes = results.reduce((sum, r) => sum + (r.status === "fulfilled" ? r.value : 0), 0);
+    let usedBytes = 0;
+    const measured = new Set<string>();
+    results.forEach((r, i) => {
+      if (r.status !== "fulfilled" || r.value === null) return;
+      usedBytes += r.value;
+      measured.add(group[i]!.id);
+    });
     this.usedByHost.set(hostId, Math.round(usedBytes / MB));
+    this.measuredByHost.set(hostId, measured);
   }
 
-  private async check(inst: FleetInstance, runtime: ContainerRuntime): Promise<number> {
-    if (!inst.containerId) return 0;
+  private async check(inst: FleetInstance, runtime: ContainerRuntime): Promise<number | null> {
+    if (!inst.containerId) return null;
     let memory: ContainerMemory | null;
     try {
       memory = await runtime.memoryUsage(inst.containerId);
     } catch (err) {
       this.logger.warn({ instanceId: inst.id, err }, "memory stats unavailable");
-      return 0;
+      return null;
     }
-    if (!memory) return 0;
+    if (!memory) return null;
     if (memory.limitBytes <= 0) return memory.usedBytes;
 
     const fraction = memory.usedBytes / memory.limitBytes;
@@ -107,13 +133,24 @@ export class MemoryWatch implements HostUsage {
     const limitMb = Math.round(memory.limitBytes / MB);
     const wasHigh = this.high.has(inst.id);
 
-    if (fraction >= this.config.warnFraction && !wasHigh) {
+    if (fraction >= this.config.warnFraction) {
+      if (!wasHigh) this.logger.warn({ instanceId: inst.id, usedMb, limitMb }, "bot memory high");
       this.high.add(inst.id);
-      this.logger.warn({ instanceId: inst.id, usedMb, limitMb }, "bot memory high");
+      this.notify(inst.id, (observer) => observer.memoryHigh(inst, usedMb, limitMb));
     } else if (fraction < this.config.warnFraction && wasHigh) {
       this.high.delete(inst.id);
       this.logger.info({ instanceId: inst.id, usedMb, limitMb }, "bot memory back to normal");
+      this.notify(inst.id, (observer) => observer.memoryNormal(inst.id));
     }
     return memory.usedBytes;
+  }
+
+  private notify(instanceId: string, call: (observer: MemoryHighObserver) => void): void {
+    if (!this.highObserver) return;
+    try {
+      call(this.highObserver);
+    } catch (err) {
+      this.logger.error({ err, instanceId }, "memory high observer failed");
+    }
   }
 }

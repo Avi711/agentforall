@@ -97,4 +97,11 @@ export interface AgentRuntimeAdapter {
   isOnCurrentImage(containerId: string): Promise<boolean>;
   // The runtime's own lasting invariants on a running container; read-only.
   verify(containerId: string, instance: Instance): Promise<RuntimeCheck[]>;
+  // Tabs only: the browser keeps running, so its logins survive.
+  closeBrowserTabs(containerId: string): Promise<BrowserTabsClosed>;
+}
+
+export interface BrowserTabsClosed {
+  closed: number;
+  failed: number;
 }

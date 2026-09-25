@@ -5,7 +5,8 @@ import type { PairingManager } from "./pairing-manager.js";
 import { groupByHost, type HostRuntime, type HostRuntimes } from "./host-runtimes.js";
 import { errorMessage } from "../domain/errors.js";
 import type { FleetInstance } from "../domain/types.js";
-import { AUTO_RESTART_EVENTS, type RestartEventLog } from "./auto-restarter.js";
+import { AUTO_RESTART_EVENTS } from "./auto-restarter.js";
+import type { InstanceEventLog } from "./background-tasks.js";
 
 const STALE_PROVISIONING_MS = 5 * 60 * 1000;
 // Skip inspection of rows touched within this window — any in-flight operation
@@ -19,7 +20,7 @@ export interface ReconcilerDeps {
   hosts: HostRuntimes;
   manager: InstanceManager;
   pairingManager: PairingManager;
-  events: RestartEventLog;
+  events: InstanceEventLog;
   logger: FastifyBaseLogger;
   pairingStaleThresholdMs: number;
   // Same budget as the auto-restarter: a bot that exits on every boot must reach the exhausted alert, not loop.

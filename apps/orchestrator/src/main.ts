@@ -40,6 +40,7 @@ import { InstanceManager } from "./services/instance-manager.js";
 import { HealthMonitor } from "./services/health-monitor.js";
 import { AutoRestarter } from "./services/auto-restarter.js";
 import { MemoryWatch } from "./services/memory-watch.js";
+import { BrowserTabJanitor } from "./services/browser-tab-janitor.js";
 import { Reconciler } from "./services/reconciler.js";
 import { EventRepository } from "./storage/event-repository.js";
 import { HealthService } from "./services/health-service.js";
@@ -210,10 +211,14 @@ async function main(): Promise<void> {
     },
     "hosts attached",
   );
-  const memoryWatch = new MemoryWatch(repo, hosts, log, {
-    intervalMs: config.memoryWatchIntervalMs,
-    warnFraction: config.memoryWatchWarnFraction,
-  });
+  const browserTabJanitor = new BrowserTabJanitor(repo, hosts, eventLog, log);
+  const memoryWatch = new MemoryWatch(
+    repo,
+    hosts,
+    log,
+    { intervalMs: config.memoryWatchIntervalMs, warnFraction: config.memoryWatchWarnFraction },
+    browserTabJanitor,
+  );
   const placement = new Placement(
     hosts,
     memoryWatch,
@@ -472,6 +477,7 @@ async function main(): Promise<void> {
   );
   healthMonitor.start();
   memoryWatch.start();
+  browserTabJanitor.start();
 
   // Skip tick if a run is in flight, so overlapping intervals don't race on the same rows.
   let reconciling = false;
@@ -513,8 +519,11 @@ async function main(): Promise<void> {
     telegramLinker?.stop();
     await inboxListener?.stop();
     clearInterval(reconcileInterval);
-    // A restart in flight can outlive the forced-exit timer; give it half the budget, then let pool.end run.
-    await autoRestarter?.settle(config.shutdownTimeoutMs / 2);
+    // Work in flight can outlive the forced-exit timer; give it half the budget, then let pool.end run.
+    await Promise.all([
+      autoRestarter?.settle(config.shutdownTimeoutMs / 2),
+      browserTabJanitor.stop(config.shutdownTimeoutMs / 2),
+    ]);
 
     try {
       await pool.end();

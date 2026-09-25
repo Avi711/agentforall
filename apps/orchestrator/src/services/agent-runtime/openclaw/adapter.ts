@@ -11,6 +11,7 @@ import {
 } from "../../../domain/errors.js";
 import type {
   AgentRuntimeAdapter,
+  BrowserTabsClosed,
   ChannelStartOutcome,
   ConfigApplyOutcome,
   GatewayLiveness,
@@ -52,6 +53,7 @@ import {
 } from "./constants.js";
 import { probeOpenclawGateway, probeOpenclawWhatsapp } from "./health.js";
 import { startOpenclawChannel } from "./channel-rpc.js";
+import { closeOpenclawBrowserTabs } from "./browser.js";
 import {
   injectOpenclawWhatsappSession,
   listOpenclawWhatsappPairingRequests,
@@ -319,6 +321,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   listWhatsappPairingRequests(containerId: string): Promise<WhatsappPairingRequest[]> {
     return listOpenclawWhatsappPairingRequests(this.runtime, containerId);
+  }
+
+  closeBrowserTabs(containerId: string): Promise<BrowserTabsClosed> {
+    return closeOpenclawBrowserTabs(this.runtime, containerId);
   }
 
   async readOwnerIds(containerId: string): Promise<string[]> {

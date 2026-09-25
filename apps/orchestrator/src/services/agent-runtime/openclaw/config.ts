@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import tar from "tar-stream";
+import { TENANT_TIMEZONE } from "../../../domain/tenant.js";
 import { CHANNEL_TYPES } from "../../../domain/types.js";
 import type {
   ChannelType,
@@ -79,7 +80,6 @@ export const STRANGER_TOOL_POLICY: SenderToolPolicy = {
   ],
   alsoAllow: [WHATSAPP_CLOUD_ESCALATE_TOOL],
 };
-const TENANT_TIMEZONE = "Asia/Jerusalem";
 
 // The 2026.8 default is a full main-session turn every 30 minutes (~100K tokens each). A few
 // isolated check-ins in waking hours keep the proactive behaviour at a fraction of the spend.

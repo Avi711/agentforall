@@ -1057,13 +1057,14 @@ export class InstanceManager {
       const id = randomUUID();
       const runtimeKind = this.appConfig.agentRuntimeKind as AgentRuntimeKind;
       const memoryMb = input.resources?.memoryMb ?? DEFAULT_RESOURCE_LIMITS.memoryMb;
-      const hostId = await this.placement.choose(memoryMb);
-      const containerName = this.hosts.for(hostId).adapters.get(runtimeKind).containerName(id);
-      const gatewayToken = randomBytes(32).toString("hex");
-      const gatewayPort = await this.portAllocator.allocate(hostId);
+      const hostId = await this.placement.choose(memoryMb, id);
+      let gatewayPort: number | null = null;
       let litellmProvision: LiteLlmProvisionResult | null = null;
 
       try {
+        const containerName = this.hosts.for(hostId).adapters.get(runtimeKind).containerName(id);
+        const gatewayToken = randomBytes(32).toString("hex");
+        gatewayPort = await this.portAllocator.allocate(hostId);
         const provision = input.provider
           ? null
           : await this.llmKeys.provisionProvider(
@@ -1122,6 +1123,7 @@ export class InstanceManager {
         }
         return inserted;
       } catch (err: unknown) {
+        this.placement.release(id);
         if (litellmProvision) {
           await this.llmKeys
             .revokeKey(litellmProvision.provider.apiKey)
