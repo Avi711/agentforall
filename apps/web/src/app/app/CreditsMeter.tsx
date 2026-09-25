@@ -21,17 +21,25 @@ interface LegendItem {
   swatch: string;
 }
 
-function legendOf(credits: CreditSummary, planEndsAt: string | null, periodSwatch: string): LegendItem[] {
+// Two families: greens expire with the plan or the trial, sand is top-ups that never expire.
+const SWATCH = {
+  calm: { plan: "bg-sage", trial: "bg-sage-light" },
+  alert: { plan: "bg-terra", trial: "bg-terra-light" },
+} as const;
+
+function legendOf(credits: CreditSummary, planEndsAt: string | null, alert: boolean): LegendItem[] {
   const hasPlan = credits.grants.some((g) => g.kind === "plan" && g.live);
   if (!hasPlan && credits.topupAvailable === 0) return [];
+  const swatch = SWATCH[alert ? "alert" : "calm"];
   const trialLeft = credits.trial.kind === "active" ? credits.trial.remainingCredits : 0;
-  const periodLeft = credits.available - credits.topupAvailable;
+  const otherPeriodLeft = credits.available - credits.topupAvailable - trialLeft;
   const items: LegendItem[] = [];
-  if (hasPlan && periodLeft - trialLeft > 0) {
-    items.push({ amount: periodLeft - trialLeft, label: planEndsAt ? `מהתוכנית · בתוקף עד ${formatDay(planEndsAt)}` : "מהתוכנית", swatch: periodSwatch });
+  if (otherPeriodLeft > 0) {
+    const label = !hasPlan ? "לתקופה הנוכחית" : planEndsAt ? `מהתוכנית · בתוקף עד ${formatDay(planEndsAt)}` : "מהתוכנית";
+    items.push({ amount: otherPeriodLeft, label, swatch: swatch.plan });
   }
-  if (credits.trial.kind === "active" && trialLeft > 0 && (hasPlan || credits.topupAvailable > 0)) {
-    items.push({ amount: trialLeft, label: `מתקופת הניסיון · בתוקף עד ${formatDay(credits.trial.expiresAt)}`, swatch: periodSwatch });
+  if (credits.trial.kind === "active" && trialLeft > 0) {
+    items.push({ amount: trialLeft, label: `מתקופת הניסיון · בתוקף עד ${formatDay(credits.trial.expiresAt)}`, swatch: swatch.trial });
   }
   if (credits.topupAvailable > 0) items.push({ amount: credits.topupAvailable, label: "מטעינות · בלי תאריך תפוגה", swatch: "bg-sand" });
   return items;
@@ -52,8 +60,8 @@ export function CreditsMeter({
   if (balance.kind === "none") return null;
   const periodAvailable = available - topupAvailable;
   const alert = balance.kind === "low" || balance.kind === "out";
-  const periodSwatch = alert ? "bg-terra" : "bg-sage";
-  const legend = legendOf(credits, planEndsAt, periodSwatch);
+  const legend = legendOf(credits, planEndsAt, alert);
+  const segments = legend.length > 0 ? legend : [{ amount: periodAvailable, swatch: SWATCH[alert ? "alert" : "calm"].plan }];
 
   return (
     <div className="flex flex-col gap-3">
@@ -78,10 +86,9 @@ export function CreditsMeter({
           aria-valuetext={`${formatCredits(available)} מתוך ${formatCredits(allowance)}`}
           className="flex h-2 gap-0.5 overflow-hidden rounded-full bg-cream-dark"
         >
-          <div className={`h-full rounded-full ${periodSwatch}`} style={{ width: percentOf(periodAvailable, allowance) }} />
-          {topupAvailable > 0 ? (
-            <div className="h-full rounded-full bg-sand" style={{ width: percentOf(topupAvailable, allowance) }} />
-          ) : null}
+          {segments.map((segment) => (
+            <div key={segment.swatch} className={`h-full rounded-full ${segment.swatch}`} style={{ width: percentOf(segment.amount, allowance) }} />
+          ))}
         </div>
       ) : null}
       {legend.length > 0 ? (
