@@ -1,10 +1,13 @@
 import type { PaymentProviderName, SubscriptionStatus } from "../domain";
+import type { BillingInterval } from "../pricing";
 
 export interface ProviderCapabilities {
   cancel: boolean;
   resume: boolean;
   customerPortal: boolean;
   updatePaymentMethod: boolean;
+  // False when a past-due order can be neither ended nor changed until its charge is paid (Paddle).
+  cancelWhilePastDue: boolean;
 }
 
 export type CheckoutMode = "subscription" | "one_time";
@@ -15,8 +18,11 @@ export interface CreateCheckoutInput {
   email: string;
   name: string | null;
   mode: CheckoutMode;
+  // How often a subscription charges; null for a one-time charge.
+  interval: BillingInterval | null;
   productCode: string;
-  description: string;
+  // What the buyer gets; each provider names it in its own page's language.
+  credits: number;
   amountAgorot: number;
   currency: string;
   successUrl: string;
@@ -52,7 +58,7 @@ export interface WebhookReference {
   checkoutSessionId: string | null;
 }
 
-interface EventBase {
+export interface EventBase {
   providerEventId: string;
   eventType: string;
   occurredAt: Date;
@@ -87,6 +93,14 @@ export type ProviderEvent =
       kind: "subscription.canceled";
       providerSubscriptionId: string;
       accessEndsAt: Date | null;
+      reference: WebhookReference;
+    })
+  | (EventBase & {
+      kind: "payment.refunded";
+      providerPaymentId: string;
+      providerSubscriptionId: string | null;
+      // A partial refund is left to a human: which credits it covers is a judgement call.
+      full: boolean;
       reference: WebhookReference;
     })
   | (EventBase & {

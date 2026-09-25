@@ -3,7 +3,7 @@ import type { PlanCode } from "@/lib/billing/pricing";
 import type { CheckoutSessionStatus } from "@/lib/billing/domain";
 import type { BillingStatus } from "@/lib/billing/service";
 import type { MockCheckoutOutcome } from "@/lib/billing/schemas";
-import { CHECKOUT_PENDING_HE, UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
+import { CHECKOUT_PENDING_HE, PAYMENT_OVERDUE_HE, UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 
 type ApiErrorCode = BillingErrorCode | "invalid_body" | "invalid_json" | "unauthorized" | "internal_error";
 
@@ -11,6 +11,9 @@ const ERROR_MESSAGES_HE: Record<ApiErrorCode, string> = {
   billing_unavailable: "התשלומים עדיין לא פתוחים. נסו שוב מאוחר יותר.",
   invalid_amount: "סכום הטעינה לא תקין.",
   same_plan: "זו כבר התוכנית שלכם.",
+  plan_change_unavailable: "תוכנית שנתית משתנים דרכנו. כתבו לנו בוואטסאפ.",
+  payment_overdue: PAYMENT_OVERDUE_HE,
+  renewal_imminent: "המנוי מתחדש בשעות הקרובות. אפשר לשנות תוכנית אחרי החידוש.",
   already_subscribed: "כבר יש לכם מנוי פעיל.",
   no_subscription: "לא נמצא מנוי פעיל.",
   unsupported_operation: "הפעולה לא זמינה עבור המנוי הזה.",

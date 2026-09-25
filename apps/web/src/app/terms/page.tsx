@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { LegalPage, WhatsAppLink } from "@/components/LegalPage";
 import { OperatorLine } from "@/components/OperatorLine";
-import { PLANS } from "@/lib/billing/pricing";
+import { PLANS, YEARLY_DISCOUNT_PERCENT } from "@/lib/billing/pricing";
 
 export const metadata: Metadata = {
   title: "תנאי שימוש — Agent For All",
@@ -50,7 +50,7 @@ export default function TermsPage() {
       <section>
         <h2 className="mb-3 text-xl font-bold text-espresso">5. תשלום וביטול</h2>
         <p>
-          המנוי החודשי מתחיל מ-{PLANS.basic.priceIls} ש״ח לחודש (כולל מע״מ) וכולל חבילת קרדיטים חודשית בהתאם לתוכנית שנבחרה. קרדיטים שלא נוצלו פגים בתום תקופת החיוב; קרדיטים שנרכשו בנפרד (טעינה) אינם פגים. ניתן לבטל את המנוי בכל עת דרך האזור האישי; הביטול ייכנס לתוקף בסוף תקופת החיוב הנוכחית.
+          המנוי החודשי מתחיל מ-{PLANS.basic.priceIls} ש״ח לחודש (כולל מע״מ) וכולל חבילת קרדיטים חודשית בהתאם לתוכנית שנבחרה. במנוי שנתי החיוב הוא פעם בשנה, בהנחה של {YEARLY_DISCOUNT_PERCENT}%, וכל קרדיטי השנה ניתנים מראש. קרדיטים שלא נוצלו פגים בתום תקופת החיוב; קרדיטים שנרכשו בנפרד (טעינה) אינם פגים. ניתן לבטל את המנוי בכל עת דרך האזור האישי; הביטול ייכנס לתוקף בסוף תקופת החיוב הנוכחית.
         </p>
         <p className="mt-3">
           ניתן לקבל החזר מלא תוך 14 יום על רכישה שלא נוצלו ממנה קרדיטים, בהתאם ל

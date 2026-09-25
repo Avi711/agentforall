@@ -150,6 +150,11 @@ export class InMemoryCheckouts implements CheckoutSessionRepository {
     return row ? { ...row } : null;
   }
 
+  async findByProviderCheckoutId(provider: PaymentProviderName, providerCheckoutId: string): Promise<CheckoutSession | null> {
+    const row = this.rows.find((r) => r.provider === provider && r.providerCheckoutId === providerCheckoutId);
+    return row ? { ...row } : null;
+  }
+
   async setProviderCheckoutId(id: string, providerCheckoutId: string): Promise<void> {
     const row = this.rows.find((r) => r.id === id);
     if (row) row.providerCheckoutId = providerCheckoutId;
@@ -178,6 +183,13 @@ export class InMemoryPayments implements PaymentRepository {
     if (this.rows.some((r) => r.provider === input.provider && r.providerPaymentId === input.providerPaymentId)) return false;
     this.rows.push({ ...input });
     return true;
+  }
+
+  async markRefunded(provider: string, providerPaymentId: string): Promise<{ userId: string | null } | null> {
+    const row = this.rows.find((r) => r.provider === provider && r.providerPaymentId === providerPaymentId);
+    if (!row) return null;
+    row.status = "refunded";
+    return { userId: row.userId };
   }
 
   async lastSucceededAmountAgorot(subscriptionId: string): Promise<number | null> {
@@ -224,6 +236,12 @@ export class InMemoryGrants implements CreditGrantRepository {
     const row: CreditGrant = { ...input, id: randomUUID(), usedCredits: 0, grantedAt: this.clock.next() };
     this.rows.push(row);
     return { ...row };
+  }
+
+  async revokeUnused(sourceRefs: readonly string[]): Promise<string[]> {
+    const shrunk = this.rows.filter((r) => sourceRefs.includes(r.sourceRef) && r.credits > r.usedCredits);
+    for (const row of shrunk) row.credits = row.usedCredits;
+    return shrunk.map((r) => r.userId);
   }
 
 }
@@ -423,7 +441,7 @@ type Call = { method: string; args: unknown[] };
 export class FakeProvider implements PaymentProvider {
   readonly name = "mock" as const;
   available = true;
-  capabilities: ProviderCapabilities = { cancel: true, resume: true, customerPortal: true, updatePaymentMethod: true };
+  capabilities: ProviderCapabilities = { cancel: true, resume: true, customerPortal: true, updatePaymentMethod: true, cancelWhilePastDue: false };
   calls: Call[] = [];
   checkoutInputs: CreateCheckoutInput[] = [];
   nextEvent: ProviderEvent | Error | null = null;
@@ -514,7 +532,9 @@ export interface Harness extends CreditHarness {
   trialClaims: InMemoryTrialClaims;
 }
 
-export function harness(opts: { enforcement?: boolean; now?: () => Date; providerAvailable?: boolean } = {}): Harness {
+export function harness(
+  opts: { enforcement?: boolean; now?: () => Date; providerAvailable?: boolean; background?: (work: Promise<unknown>) => void } = {},
+): Harness {
   const base = creditHarness(opts);
   const provider = new FakeProvider();
   provider.available = opts.providerAvailable ?? true;
@@ -537,6 +557,7 @@ export function harness(opts: { enforcement?: boolean; now?: () => Date; provide
     credits: base.credits,
     enforcement: opts.enforcement ?? true,
     appUrl: "https://app.example",
+    background: opts.background,
     now: () => base.clock.now(),
     logger: capturingLogger(base.logs),
   });

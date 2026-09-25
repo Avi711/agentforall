@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Plan, PlanCode } from "@/lib/billing/pricing";
 import type { BillingStatus } from "@/lib/billing/service";
-import { formatDate, formatIls } from "@/lib/billing/format";
+import { formatDate, formatIls, intervalWord, planLabel } from "@/lib/billing/format";
 import { SETTINGS_PATH, type CheckoutReturn } from "@/lib/billing/urls";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 import { whatsappChatUrl } from "@/lib/site";
@@ -62,6 +62,11 @@ export function BillingCard({
   const busy = pending !== null;
   const periodEnd = formatDate(sub?.currentPeriodEnd ?? null);
   const ending = sub?.cancelAtPeriodEnd || sub?.status === "canceled";
+  // Past grace the order is not `paid`, yet where the provider cannot end it, paying the overdue charge is the only way forward.
+  const overdue = sub?.status === "past_due" && !status.capabilities.cancelWhilePastDue;
+  const managesBilling = status.paid || overdue;
+  const updatePaymentMethod = () =>
+    run("paymentMethod", async () => window.location.assign(await fetchUpdatePaymentMethodUrl()), true);
 
   return (
     <section id="billing" className="relative scroll-mt-24 bg-white rounded-[24px] border border-sand-light shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)] p-5 sm:p-10 overflow-hidden">
@@ -70,7 +75,7 @@ export function BillingCard({
       <h2 className="font-display text-2xl text-espresso mb-6 leading-tight">התוכנית שלכם</h2>
 
       <dl className="divide-y divide-sand-light/70 mb-6">
-        {sub ? <Row label="תוכנית" value={`${status.plan.name} · ${formatIls(status.plan.priceIls)} לחודש`} /> : null}
+        {sub ? <Row label="תוכנית" value={`${planLabel(status.plan)} · ${formatIls(status.plan.priceIls)} ל${intervalWord(status.plan.interval)}`} /> : null}
         <Row label="מצב" value={<StatusBadge status={status} verifying={verification.verifying} />} />
         {sub && periodEnd ? <Row label={ending ? "מסתיים ב" : "חיוב הבא"} value={periodEnd} /> : null}
       </dl>
@@ -91,21 +96,27 @@ export function BillingCard({
       {checkoutResult === "failed" || verification.outcome === "failed" ? (
         <Notice tone="warn">התשלום לא הושלם ולא חויבתם. אפשר לנסות שוב.</Notice>
       ) : null}
-      {sub?.status === "past_due" ? (
-        <Notice tone="warn">החיוב האחרון נכשל. עדכנו אמצעי תשלום כדי שהסוכן ימשיך לעבוד.</Notice>
+      {overdue ? (
+        <Notice tone="warn">
+          החיוב האחרון נכשל. עדכנו אמצעי תשלום כדי שהסוכן ימשיך לעבוד, או{" "}
+          <a href={whatsappChatUrl("היי, החיוב במנוי שלי נכשל")} target="_blank" rel="noopener noreferrer" className="underline">
+            כתבו לנו
+          </a>{" "}
+          אם תרצו לבטל.
+        </Notice>
       ) : null}
       {!status.paid && (status.reason === "beta_access" || status.reason === "enforcement_disabled") ? (
         <Notice tone="info">הגישה שלכם פתוחה כרגע ללא מנוי. אפשר להצטרף כבר עכשיו כדי לשמור על הסוכן גם בהמשך.</Notice>
       ) : null}
 
-      {!status.paid && status.available && !verification.verifying ? (
+      {!managesBilling && status.available && !verification.verifying ? (
         <div className="mb-5">
           <PlanPicker plans={status.plans} selected={plan} disabled={busy} onSelect={setPlan} />
         </div>
       ) : null}
 
       <div className="flex flex-col sm:flex-row flex-wrap gap-3">
-        {!status.paid ? (
+        {!managesBilling ? (
           status.available ? (
             <PrimaryButton
               pending={pending === "checkout"}
@@ -137,37 +148,47 @@ export function BillingCard({
           </PrimaryButton>
         ) : null}
 
-        {status.paid && status.available && panel === "none" && status.plans.length > 1 ? (
+        {status.paid && !overdue && status.available && panel === "none" && status.plan.interval !== "year" ? (
           <SecondaryButton disabled={busy} onClick={() => setPanel("changePlan")}>
             שינוי תוכנית
           </SecondaryButton>
         ) : null}
 
-        {status.paid && status.capabilities.updatePaymentMethod ? (
-          <SecondaryButton
-            disabled={busy}
-            pending={pending === "paymentMethod"}
-            busyText="פותחים…"
-            onClick={() =>
-              run("paymentMethod", async () => window.location.assign(await fetchUpdatePaymentMethodUrl()), true)
-            }
+        {status.paid && panel === "none" && status.plan.interval === "year" ? (
+          <a
+            href={whatsappChatUrl("היי, אני רוצה לשנות את התוכנית השנתית שלי")}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-4 py-3 rounded-lg text-sm text-espresso-light hover:text-espresso hover:bg-cream-dark transition"
           >
-            עדכון אמצעי תשלום
-          </SecondaryButton>
+            שינוי תוכנית שנתית דרכנו
+          </a>
         ) : null}
 
-        {status.paid && status.capabilities.customerPortal ? (
+        {managesBilling && status.capabilities.updatePaymentMethod ? (
+          overdue ? (
+            <PrimaryButton pending={pending === "paymentMethod"} busyText="פותחים…" disabled={busy} onClick={updatePaymentMethod}>
+              עדכון אמצעי תשלום
+            </PrimaryButton>
+          ) : (
+            <SecondaryButton disabled={busy} pending={pending === "paymentMethod"} busyText="פותחים…" onClick={updatePaymentMethod}>
+              עדכון אמצעי תשלום
+            </SecondaryButton>
+          )
+        ) : null}
+
+        {managesBilling && status.capabilities.customerPortal ? (
           <SecondaryButton
             disabled={busy}
             pending={pending === "portal"}
             busyText="פותחים…"
-            onClick={() => run("portal", async () => void window.open(await fetchPortalUrl(), "_blank", "noopener"))}
+            onClick={() => run("portal", async () => window.location.assign(await fetchPortalUrl()), true)}
           >
             ניהול חשבוניות ותשלומים
           </SecondaryButton>
         ) : null}
 
-        {status.paid && sub && !sub.cancelAtPeriodEnd && status.capabilities.cancel && panel === "none" ? (
+        {status.paid && !overdue && sub && !sub.cancelAtPeriodEnd && status.capabilities.cancel && panel === "none" ? (
           <button
             type="button"
             disabled={busy}

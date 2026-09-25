@@ -2,6 +2,9 @@ export type BillingErrorCode =
   | "billing_unavailable"
   | "invalid_amount"
   | "same_plan"
+  | "plan_change_unavailable"
+  | "payment_overdue"
+  | "renewal_imminent"
   | "already_subscribed"
   | "no_subscription"
   | "unsupported_operation"
@@ -45,6 +48,26 @@ export class InvalidTopupAmountError extends BillingError {
 export class SamePlanError extends BillingError {
   constructor(plan: string) {
     super(`already on plan ${plan}`, "same_plan", 409);
+  }
+}
+
+export class YearlyPlanChangeError extends BillingError {
+  constructor() {
+    super("a yearly plan cannot be changed before it ends", "plan_change_unavailable", 409);
+  }
+}
+
+// A past-due order blocks a new one (it could recover and bill twice); Paddle also refuses any change to it.
+export class PaymentOverdueError extends BillingError {
+  constructor() {
+    super("the subscription has an overdue payment", "payment_overdue", 409);
+  }
+}
+
+// Paddle refuses any change in the 30 minutes before a renewal, so the old order could not be ended and would bill again.
+export class RenewalImminentError extends BillingError {
+  constructor() {
+    super("the current plan renews too soon to change it", "renewal_imminent", 409);
   }
 }
 
@@ -106,6 +129,13 @@ export class TooManyCheckoutsError extends BillingError {
 export class WebhookVerificationError extends BillingError {
   constructor(reason: string) {
     super(`webhook rejected: ${reason}`, "invalid_signature", 401);
+  }
+}
+
+// A redelivery of an event still being processed: non-2xx makes the provider retry after the first attempt settles.
+export class WebhookInFlightError extends BillingError {
+  constructor() {
+    super("event is still being processed", "conflict", 409);
   }
 }
 

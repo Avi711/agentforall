@@ -18,6 +18,7 @@ export class DisabledPaymentProvider implements PaymentProvider {
     resume: false,
     customerPortal: false,
     updatePaymentMethod: false,
+    cancelWhilePastDue: true,
   };
 
   constructor(

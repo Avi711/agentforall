@@ -1,10 +1,13 @@
 import "server-only";
+import { after } from "next/server";
 import { readBillingConfig } from "./config";
+import { BillingUnavailableError } from "./errors";
 import { OrchestratorLlmBudget } from "./credits/orchestrator-budget";
 import { CreditService } from "./credits/service";
 import { consoleBillingLogger } from "./logger";
 import { createProviderRegistry } from "./provider/registry";
 import { MockCheckoutSimulator } from "./providers/mock/simulator";
+import { readPaddleClientConfig, type PaddleClientConfig } from "./providers/paddle/config";
 import type { BillingUser } from "./domain";
 import {
   DrizzleBillingEventRepository,
@@ -45,10 +48,21 @@ export function getBillingService(): BillingService {
       credits,
       enforcement: config.enforcement,
       appUrl: config.appUrl,
+      background: (work) => after(work),
       logger: consoleBillingLogger,
     });
   }
   return cached;
+}
+
+// Null when Paddle is not configured, so its payment page does not exist.
+export function getPaddleClientConfig(): PaddleClientConfig | null {
+  try {
+    return readPaddleClientConfig(process.env);
+  } catch (err) {
+    if (err instanceof BillingUnavailableError) return null;
+    throw err;
+  }
 }
 
 export function getBotLifecycleHooks(): BotLifecycleHooks {

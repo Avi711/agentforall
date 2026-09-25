@@ -62,6 +62,7 @@ export interface NewCheckoutSession {
 export interface CheckoutSessionRepository {
   create(input: NewCheckoutSession): Promise<CheckoutSession>;
   findById(id: string): Promise<CheckoutSession | null>;
+  findByProviderCheckoutId(provider: PaymentProviderName, providerCheckoutId: string): Promise<CheckoutSession | null>;
   hasPendingSince(userId: string, since: Date): Promise<boolean>;
   setProviderCheckoutId(id: string, providerCheckoutId: string): Promise<void>;
   // Only a pending session settles; a second outcome for the same session is a no-op.
@@ -107,6 +108,8 @@ export interface PaymentRepository {
   // Payment row + subscription write in one transaction, so a crash can never leave money without state.
   recordFirstPayment(input: FirstPaymentInput): Promise<PaymentApplication>;
   recordRenewal(input: RenewalInput): Promise<PaymentApplication>;
+  // The paying user, or null when this payment was never recorded.
+  markRefunded(provider: PaymentProviderName, providerPaymentId: string): Promise<{ userId: string | null } | null>;
 }
 
 export interface NewCreditGrant {
@@ -122,6 +125,8 @@ export interface CreditGrantRepository {
   listByUserIds(userIds: readonly string[]): Promise<CreditGrant[]>;
   // Null = a grant with this sourceRef already exists (idempotent redelivery).
   insertIfAbsent(input: NewCreditGrant): Promise<CreditGrant | null>;
+  // Shrinks each grant to what was already spent from it; returns the owners of grants that shrank.
+  revokeUnused(sourceRefs: readonly string[]): Promise<string[]>;
 }
 
 // `userId` is null once the claiming account was deleted; the claim itself stands.

@@ -22,4 +22,7 @@ export const MockCheckoutCompleteBodySchema = z
 
 export const CheckoutSessionQuerySchema = z.object({ session: z.string().uuid() });
 
+// Our checkout names its session; Paddle's own links (payment-method update) carry `_ptxn`.
+export const PaddlePayQuerySchema = z.union([CheckoutSessionQuerySchema, z.object({ _ptxn: z.string().regex(/^txn_[a-z0-9]+$/) })]);
+
 export const CheckoutSessionParamsSchema = z.object({ id: z.string().uuid() });

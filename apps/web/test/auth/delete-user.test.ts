@@ -4,7 +4,8 @@ import { betterAuth } from "better-auth";
 import { memoryAdapter } from "better-auth/adapters/memory";
 import { APIError } from "better-auth/api";
 import { deleteUserOptions, type AccountCleanup } from "../../src/lib/auth/delete-user";
-import { PendingCheckoutError } from "../../src/lib/billing/errors";
+import { PaymentOverdueError, PendingCheckoutError } from "../../src/lib/billing/errors";
+import { CHECKOUT_PENDING_HE, PAYMENT_OVERDUE_HE } from "../../src/lib/messages.he";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -77,25 +78,30 @@ test("a session older than a day must sign in again, and nothing is touched", as
   assert.equal(db.user.length, 1);
 });
 
-test("a pending checkout blocks the deletion with a Hebrew conflict, and the bots stay", async () => {
-  const { cleanup, calls } = recordingCleanup({
-    cancelBilling: async () => {
-      throw new PendingCheckoutError();
-    },
-  });
-  const { auth, db, signIn } = setup(cleanup);
-  const headers = await signIn();
+for (const [blocker, message] of [
+  [new PendingCheckoutError(), CHECKOUT_PENDING_HE],
+  [new PaymentOverdueError(), PAYMENT_OVERDUE_HE],
+] as const) {
+  test(`${blocker.code} blocks the deletion with a Hebrew conflict, and the bots stay`, async () => {
+    const { cleanup, calls } = recordingCleanup({
+      cancelBilling: async () => {
+        throw blocker;
+      },
+    });
+    const { auth, db, signIn } = setup(cleanup);
+    const headers = await signIn();
 
-  await assert.rejects(auth.api.deleteUser({ headers, body: {} }), (err: unknown) => {
-    assert.ok(err instanceof APIError);
-    assert.equal(err.status, "CONFLICT");
-    assert.match(err.message, /תשלום/);
-    return true;
-  });
+    await assert.rejects(auth.api.deleteUser({ headers, body: {} }), (err: unknown) => {
+      assert.ok(err instanceof APIError);
+      assert.equal(err.status, "CONFLICT");
+      assert.equal(err.message, message);
+      return true;
+    });
 
-  assert.deepEqual(calls, []);
-  assert.equal(db.user.length, 1);
-});
+    assert.deepEqual(calls, []);
+    assert.equal(db.user.length, 1);
+  });
+}
 
 test("a failed bot cleanup keeps the account and its session, so the user can retry", async () => {
   const { cleanup, calls } = recordingCleanup({

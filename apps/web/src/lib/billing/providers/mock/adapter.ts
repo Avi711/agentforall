@@ -24,6 +24,7 @@ export class MockPaymentProvider implements PaymentProvider {
     resume: true,
     customerPortal: false,
     updatePaymentMethod: false,
+    cancelWhilePastDue: true,
   };
 
   constructor(private readonly config: MockProviderConfig) {}

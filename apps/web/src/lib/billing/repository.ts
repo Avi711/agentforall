@@ -133,6 +133,15 @@ export class DrizzleCheckoutSessionRepository implements CheckoutSessionReposito
     return rows[0] ? toCheckoutSession(rows[0]) : null;
   }
 
+  async findByProviderCheckoutId(provider: PaymentProviderName, providerCheckoutId: string): Promise<CheckoutSession | null> {
+    const rows = await this.db
+      .select()
+      .from(billingCheckoutSessions)
+      .where(and(eq(billingCheckoutSessions.provider, provider), eq(billingCheckoutSessions.providerCheckoutId, providerCheckoutId)))
+      .limit(1);
+    return rows[0] ? toCheckoutSession(rows[0]) : null;
+  }
+
   async setProviderCheckoutId(id: string, providerCheckoutId: string): Promise<void> {
     await this.db
       .update(billingCheckoutSessions)
@@ -180,6 +189,15 @@ export class DrizzlePaymentRepository implements PaymentRepository {
 
   async record(input: NewPayment): Promise<boolean> {
     return insertPayment(this.db, input);
+  }
+
+  async markRefunded(provider: PaymentProviderName, providerPaymentId: string): Promise<{ userId: string | null } | null> {
+    const rows = await this.db
+      .update(billingPayments)
+      .set({ status: "refunded" })
+      .where(and(eq(billingPayments.provider, provider), eq(billingPayments.providerPaymentId, providerPaymentId)))
+      .returning({ userId: billingPayments.userId });
+    return rows[0] ?? null;
   }
 
   async lastSucceededAmountAgorot(subscriptionId: string): Promise<number | null> {
@@ -254,6 +272,17 @@ export class DrizzleCreditGrantRepository implements CreditGrantRepository {
       .onConflictDoNothing({ target: billingCreditGrants.sourceRef })
       .returning();
     return rows[0] ? toGrant(rows[0]) : null;
+  }
+
+  // A sync racing this update fails its `used + x <= credits` guard and retries against the shrunk grant.
+  async revokeUnused(sourceRefs: readonly string[]): Promise<string[]> {
+    if (sourceRefs.length === 0) return [];
+    const rows = await this.db
+      .update(billingCreditGrants)
+      .set({ credits: billingCreditGrants.usedCredits })
+      .where(and(inArray(billingCreditGrants.sourceRef, [...sourceRefs]), sql`${billingCreditGrants.credits} > ${billingCreditGrants.usedCredits}`))
+      .returning({ userId: billingCreditGrants.userId });
+    return rows.map((row) => row.userId);
   }
 }
 

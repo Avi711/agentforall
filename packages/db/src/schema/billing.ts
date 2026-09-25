@@ -12,7 +12,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { user } from "./auth.js";
 
-export const PAYMENT_PROVIDERS = ["mock"] as const;
+export const PAYMENT_PROVIDERS = ["mock", "paddle"] as const;
 
 export const SUBSCRIPTION_STATUSES = [
   "trialing",
@@ -56,7 +56,11 @@ export const billingCheckoutSessions = pgTable(
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     settledAt: timestamp("settled_at", { withTimezone: true }),
   },
-  (t) => [index("idx_billing_checkout_sessions_user_created").on(t.userId, t.createdAt)],
+  (t) => [
+    index("idx_billing_checkout_sessions_user_created").on(t.userId, t.createdAt),
+    // A provider link (Paddle's `_ptxn` in its emails) names only the provider's checkout.
+    uniqueIndex("idx_billing_checkout_sessions_provider_checkout").on(t.provider, t.providerCheckoutId),
+  ],
 );
 
 // user_id nullable + set null: the financial record must outlive the account.

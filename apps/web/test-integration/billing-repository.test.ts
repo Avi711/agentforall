@@ -125,9 +125,15 @@ describe("billing repositories (postgres)", { skip: url ? false : "BILLING_TEST_
   test("checkout sessions settle once and count by user since a point in time", async () => {
     const input = { userId, provider: "mock" as const, kind: "subscription" as const, productCode: "standard", credits: 2500, amountAgorot: 20000, expiresAt: new Date(NOW.getTime() + 3600_000) };
     const created = await checkouts.create(input);
-    await checkouts.setProviderCheckoutId(created.id, "prov-1");
+    const providerCheckoutId = `prov-${randomUUID()}`;
+    await checkouts.setProviderCheckoutId(created.id, providerCheckoutId);
     const found = await checkouts.findById(created.id);
-    assert.deepEqual({ status: found?.status, providerCheckoutId: found?.providerCheckoutId, settledAt: found?.settledAt }, { status: "pending", providerCheckoutId: "prov-1", settledAt: null });
+    assert.deepEqual({ status: found?.status, providerCheckoutId: found?.providerCheckoutId, settledAt: found?.settledAt }, { status: "pending", providerCheckoutId, settledAt: null });
+    assert.equal((await checkouts.findByProviderCheckoutId("mock", providerCheckoutId))?.id, created.id);
+    assert.equal(await checkouts.findByProviderCheckoutId("paddle", providerCheckoutId), null);
+    const twin = await checkouts.create(input);
+    await assert.rejects(checkouts.setProviderCheckoutId(twin.id, providerCheckoutId));
+    await checkouts.settle(twin.id, "failed", NOW);
 
     await checkouts.settle(created.id, "completed", NOW);
     await checkouts.settle(created.id, "failed", new Date(NOW.getTime() + 1));
@@ -141,7 +147,7 @@ describe("billing repositories (postgres)", { skip: url ? false : "BILLING_TEST_
       checkouts.hasPendingSince(userId, new Date(0)),
       checkouts.hasPendingSince(userId, new Date(Date.now() + 60_000)),
     ]);
-    assert.deepEqual({ sinceEpoch, sinceFuture, pendingNow, pendingLater }, { sinceEpoch: 2, sinceFuture: 0, pendingNow: true, pendingLater: false });
+    assert.deepEqual({ sinceEpoch, sinceFuture, pendingNow, pendingLater }, { sinceEpoch: 3, sinceFuture: 0, pendingNow: true, pendingLater: false });
   });
 
   test("a trial claim belongs to one mailbox and is idempotent for the same user only", async () => {
@@ -213,6 +219,27 @@ describe("billing repositories (postgres)", { skip: url ? false : "BILLING_TEST_
     assert.ok(listed.some((g) => g.id === granted.id && g.usedCredits === 0));
     const users = await usage.listMeteredUserIds();
     assert.equal(users.filter((id) => id === userId).length, 1);
+  });
+
+  test("a refund marks the payment and shrinks only that charge's grants to what was spent", async () => {
+    const paymentId = `${userId}:refund-pay`;
+    await payments.record({ userId, subscriptionId: null, provider: "paddle", providerPaymentId: paymentId, status: "succeeded", amountAgorot: 5000, currency: "ILS", occurredAt: NOW });
+    const refunded = await grants.insertIfAbsent({ userId, kind: "topup", credits: 2000, sourceRef: `topup:paddle:${paymentId}`, expiresAt: null });
+    const untouched = await grants.insertIfAbsent({ userId, kind: "topup", credits: 700, sourceRef: `${userId}:other-topup`, expiresAt: null });
+    assert.ok(refunded && untouched);
+    await db.update(billingCreditGrants).set({ usedCredits: 150 }).where(eq(billingCreditGrants.id, refunded.id));
+
+    assert.deepEqual(await payments.markRefunded("paddle", paymentId), { userId });
+    assert.equal(await payments.markRefunded("paddle", `${userId}:never-paid`), null);
+    assert.deepEqual(await grants.revokeUnused([`topup:paddle:${paymentId}`, `plan:paddle:${paymentId}`]), [userId]);
+    assert.deepEqual(await grants.revokeUnused([`topup:paddle:${paymentId}`]), []);
+    const after = await grants.listByUserId(userId);
+    assert.deepEqual(
+      [after.find((g) => g.id === refunded.id)?.credits, after.find((g) => g.id === untouched.id)?.credits],
+      [150, 700],
+    );
+    const [stored] = await db.select().from(billingPayments).where(eq(billingPayments.providerPaymentId, paymentId));
+    assert.equal(stored?.status, "refunded");
   });
 
   test("a user metered with no credits at all is listed for the cron", async () => {

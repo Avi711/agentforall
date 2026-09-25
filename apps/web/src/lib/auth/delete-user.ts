@@ -1,7 +1,7 @@
 import type { BetterAuthOptions } from "better-auth";
 import { APIError } from "better-auth/api";
-import { PendingCheckoutError } from "../billing/errors";
-import { CHECKOUT_PENDING_HE } from "../messages.he";
+import { PaymentOverdueError, PendingCheckoutError } from "../billing/errors";
+import { CHECKOUT_PENDING_HE, PAYMENT_OVERDUE_HE } from "../messages.he";
 
 type DeleteUserOptions = NonNullable<NonNullable<BetterAuthOptions["user"]>["deleteUser"]>;
 
@@ -20,6 +20,7 @@ export function deleteUserOptions(cleanup: AccountCleanup): DeleteUserOptions {
         await cleanup.cancelBilling(user.id);
       } catch (err) {
         if (err instanceof PendingCheckoutError) throw new APIError("CONFLICT", { message: CHECKOUT_PENDING_HE });
+        if (err instanceof PaymentOverdueError) throw new APIError("CONFLICT", { message: PAYMENT_OVERDUE_HE });
         throw err;
       }
       await cleanup.deleteBots(user.id);

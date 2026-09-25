@@ -1,4 +1,4 @@
-import type { BillingInterval } from "./pricing";
+import { MONTHS_PER_INTERVAL, type BillingInterval } from "./pricing";
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
 export const HOUR_MS = 60 * 60 * 1000;
@@ -23,10 +23,7 @@ export function addMonths(date: Date, months: number): Date {
 }
 
 export function addInterval(date: Date, interval: BillingInterval): Date {
-  switch (interval) {
-    case "month":
-      return addMonths(date, 1);
-  }
+  return addMonths(date, MONTHS_PER_INTERVAL[interval]);
 }
 
 export function laterOf(a: Date, b: Date): Date {

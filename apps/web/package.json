@@ -10,6 +10,7 @@
     "test": "node --conditions=react-server --import tsx --test \"test/**/*.test.ts\"",
     "test:db": "node --conditions=react-server --import tsx --test --test-concurrency=1 \"test/**/*.db.test.ts\"",
     "indexnow": "node scripts/indexnow.mjs",
+    "paddle:catalog": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --import tsx scripts/paddle-catalog.ts",
     "test:integration": "node --conditions=react-server --import tsx --test \"test-integration/**/*.test.ts\""
   },
   "dependencies": {
@@ -17,6 +18,7 @@
     "@mdx-js/loader": "^3.1.1",
     "@mdx-js/react": "^3.1.1",
     "@next/mdx": "^16.3.3",
+    "@paddle/paddle-js": "1.6.5",
     "@types/mdx": "^2.0.14",
     "better-auth": "1.6.11",
     "drizzle-orm": "^0.45.0",

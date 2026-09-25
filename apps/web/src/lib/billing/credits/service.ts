@@ -101,6 +101,12 @@ export class CreditService {
     return grant !== null;
   }
 
+  async revokeUnused(sourceRefs: readonly string[]): Promise<string[]> {
+    const owners = await this.grants.revokeUnused(sourceRefs);
+    if (owners.length > 0) this.log.warn("unused credits revoked", { sourceRefs, owners: owners.length });
+    return owners;
+  }
+
   async grantTopup(userId: string, credits: number, sourceRef: string): Promise<boolean> {
     const grant = await this.grants.insertIfAbsent({ userId, kind: "topup", credits, sourceRef, expiresAt: null });
     if (grant) this.log.info("top-up granted", { userId, credits, sourceRef });

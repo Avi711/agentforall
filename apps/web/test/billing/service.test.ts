@@ -7,15 +7,19 @@ import {
   AlreadySubscribedError,
   InvalidTopupAmountError,
   NoSubscriptionError,
+  PaymentOverdueError,
   PendingCheckoutError,
+  RenewalImminentError,
   SamePlanError,
   TooManyCheckoutsError,
   TrialUnavailableError,
   UnknownProviderError,
   UnsupportedBillingOperationError,
+  WebhookInFlightError,
   WebhookVerificationError,
+  YearlyPlanChangeError,
 } from "../../src/lib/billing/errors";
-import { MAX_OPEN_CHECKOUTS_PER_HOUR, TRIAL_CREDITS, TRIAL_DAYS, usdCentsFromCredits } from "../../src/lib/billing/pricing";
+import { MAX_OPEN_CHECKOUTS_PER_HOUR, PLANS, PLAN_CODES, TRIAL_CREDITS, TRIAL_DAYS, creditsForTopupIls, usdCentsFromCredits, type PlanCode } from "../../src/lib/billing/pricing";
 import type { ProviderEvent } from "../../src/lib/billing/provider/types";
 import {
   BOT_ID,
@@ -38,7 +42,7 @@ const first = <T,>(rows: readonly T[]): T => {
   return row;
 };
 
-async function openSubscriptionCheckout(h: Harness, plan: "basic" | "standard" | "pro" = "standard"): Promise<CheckoutSession> {
+async function openSubscriptionCheckout(h: Harness, plan: PlanCode = "standard"): Promise<CheckoutSession> {
   await h.service.startCheckout(USER, plan);
   return last(h.checkouts.rows);
 }
@@ -107,7 +111,7 @@ describe("checkout", () => {
     assert.equal(session.providerCheckoutId, `chk_${session.id}`);
     assert.deepEqual(
       { kind: session.kind, productCode: session.productCode, credits: session.credits, amountAgorot: session.amountAgorot },
-      { kind: "subscription", productCode: "standard", credits: 2500, amountAgorot: 20000 },
+      { kind: "subscription", productCode: "standard", credits: PLANS.standard.includedCredits, amountAgorot: 20000 },
     );
     const input = first(h.provider.checkoutInputs);
     assert.equal(input.checkoutSessionId, session.id);
@@ -128,6 +132,67 @@ describe("checkout", () => {
     h.subscriptions.rows = [subscription({ status: "expired" })];
     await h.service.startCheckout(USER, "pro");
     assert.equal(h.provider.checkoutInputs.length, 3);
+  });
+
+  test("an overdue standing order blocks a new one, even after its grace period; top-ups stay open while entitled", async () => {
+    let now = NOW;
+    const h = harness({ now: () => now });
+    h.subscriptions.seed(subscription({ status: "past_due", currentPeriodEnd: NOW }));
+    await h.service.startTopup(USER, 50);
+    now = new Date(NOW.getTime() + 8 * DAY_MS);
+    await assert.rejects(h.service.startCheckout(USER, "standard"), PaymentOverdueError);
+    assert.equal(h.provider.checkoutInputs.length, 1);
+  });
+
+  test("a provider that can end an overdue order keeps the subscribe path: the new order ends the old one", async () => {
+    let now = NOW;
+    const h = harness({ now: () => now });
+    h.provider.capabilities = { ...h.provider.capabilities, cancelWhilePastDue: true };
+    h.subscriptions.seed(subscription({ providerSubscriptionId: "sub_old", status: "past_due", currentPeriodEnd: NOW }));
+    now = new Date(NOW.getTime() + 8 * DAY_MS);
+    const session = await openSubscriptionCheckout(h);
+    await deliver(h, paymentSucceeded({ providerSubscriptionId: "sub_new", occurredAt: now, reference: { checkoutSessionId: session.id } }));
+    assert.deepEqual(h.provider.callsTo("cancelSubscription").map((c) => c.args[0]), ["sub_old"]);
+  });
+
+  test("an overdue order the provider cannot end makes an old checkout unpayable and blocks cancel without touching anything", async () => {
+    const h = harness();
+    const session = await openSubscriptionCheckout(h);
+    h.subscriptions.seed(subscription({ providerSubscriptionId: "sub_ok", createdAt: at("2026-08-20T10:00:00.000Z") }));
+    h.subscriptions.seed(subscription({ providerSubscriptionId: "sub_due", status: "past_due" }));
+    await assert.rejects(h.service.cancel(USER), PaymentOverdueError);
+    assert.equal(h.provider.callsTo("cancelSubscription").length, 0);
+    assert.equal(await h.service.isPayable(session), false);
+  });
+
+  test("a provider link finds our checkout; the provider's own transactions are not ours", async () => {
+    const h = harness();
+    const session = await openSubscriptionCheckout(h);
+    assert.equal((await h.service.findCheckoutByProviderCheckoutId("mock", `chk_${session.id}`))?.id, session.id);
+    assert.equal(await h.service.findCheckoutByProviderCheckoutId("mock", "txn_renewal"), null);
+  });
+
+  test("a checkout the provider could not create is settled as failed, so it blocks nothing", async () => {
+    const h = harness();
+    h.provider.createCheckout = async () => {
+      throw new Error("gateway down");
+    };
+    await assert.rejects(h.service.startCheckout(USER, "standard"), /gateway down/);
+    assert.equal(first(h.checkouts.rows).status, "failed");
+    await h.service.cancelForAccountDeletion(USER.id);
+  });
+
+  test("a session stays payable while pending, until a subscription starts after it was opened", async () => {
+    let now = NOW;
+    const h = harness({ now: () => now });
+    const abandoned = await openSubscriptionCheckout(h);
+    now = new Date(NOW.getTime() + 2 * HOUR_MS);
+    assert.equal(await h.service.isPayable(abandoned), true);
+    const paid = await openSubscriptionCheckout(h);
+    await deliver(h, paymentSucceeded({ reference: { checkoutSessionId: paid.id } }));
+    assert.deepEqual({ abandoned: await h.service.isPayable(abandoned), paid: await h.service.isPayable(paid) }, { abandoned: false, paid: false });
+    await h.service.startTopup(USER, 50);
+    assert.equal(await h.service.isPayable(last(h.checkouts.rows)), true);
   });
 
   test("caps hosted pages per user per hour with a durable count", async () => {
@@ -155,11 +220,49 @@ describe("first payment", () => {
     assert.equal(session.status, "completed");
     assert.deepEqual(h.payments.rows.map((p) => ({ userId: p.userId, subscriptionId: p.subscriptionId })), [{ userId: USER.id, subscriptionId: sub.id }]);
     const plan = h.grants.rows.find((g) => g.kind === "plan");
-    assert.deepEqual({ credits: plan?.credits, sourceRef: plan?.sourceRef, expiresAt: plan?.expiresAt?.toISOString() }, { credits: 2500, sourceRef: "plan:mock:pay_1", expiresAt: "2026-09-29T10:00:00.000Z" });
-    assert.equal(h.llm.lastCeiling(BOT_ID), usdCentsFromCredits(2500));
+    assert.deepEqual({ credits: plan?.credits, sourceRef: plan?.sourceRef, expiresAt: plan?.expiresAt?.toISOString() }, { credits: PLANS.standard.includedCredits, sourceRef: "plan:mock:pay_1", expiresAt: "2026-09-29T10:00:00.000Z" });
+    assert.equal(h.llm.lastCeiling(BOT_ID), usdCentsFromCredits(PLANS.standard.includedCredits));
     assert.deepEqual({ status: h.events.rows[0]?.status, userId: h.events.rows[0]?.userId }, { status: "processed", userId: USER.id });
     const status = await h.service.getStatus(USER);
     assert.deepEqual({ paid: status.paid, plan: status.plan.code, action: status.creditsAction }, { paid: true, plan: "standard", action: "topup" });
+  });
+
+  test("a yearly plan runs a year and grants the whole year's credits up front", async () => {
+    const h = harness();
+    h.llm.addBot(USER.id, BOT_ID);
+    const session = await openSubscriptionCheckout(h, "standard_yearly");
+    assert.deepEqual({ credits: session.credits, amount: session.amountAgorot }, { credits: PLANS.standard_yearly.includedCredits, amount: 216000 });
+
+    await deliver(h, paymentSucceeded({ planCode: null, payment: { providerPaymentId: "pay_y1", amountAgorot: 216000, currency: "ILS" }, reference: { checkoutSessionId: session.id } }));
+
+    const sub = first(h.subscriptions.rows);
+    assert.deepEqual({ plan: sub.planCode, end: sub.currentPeriodEnd?.toISOString() }, { plan: "standard_yearly", end: "2027-08-26T10:00:00.000Z" });
+    const plan = h.grants.rows.find((g) => g.kind === "plan");
+    assert.deepEqual({ credits: plan?.credits, expiresAt: plan?.expiresAt?.toISOString() }, { credits: PLANS.standard_yearly.includedCredits, expiresAt: "2027-08-29T10:00:00.000Z" });
+    assert.equal(h.llm.lastCeiling(BOT_ID), usdCentsFromCredits(PLANS.standard_yearly.includedCredits));
+    assert.deepEqual({ mode: first(h.provider.checkoutInputs).mode, interval: first(h.provider.checkoutInputs).interval }, { mode: "subscription", interval: "year" });
+  });
+
+  test("a yearly renewal with no session extends by a year and grants another year of credits", async () => {
+    const h = harness();
+    h.subscriptions.seed(subscription({ planCode: "standard_yearly", currentPeriodEnd: new Date("2027-08-26T10:00:00.000Z") }));
+    await deliver(h, paymentSucceeded({ planCode: null, payment: { providerPaymentId: "pay_y2", amountAgorot: 216000, currency: "ILS" }, occurredAt: new Date("2027-08-26T09:00:00.000Z") }));
+    assert.equal(h.subscriptions.rows[0]?.currentPeriodEnd?.toISOString(), "2028-08-26T10:00:00.000Z");
+    assert.equal(h.grants.rows.find((g) => g.sourceRef === "plan:mock:pay_y2")?.credits, PLANS.standard_yearly.includedCredits);
+  });
+
+  test("a yearly plan cannot be changed in the app: the prepaid year would keep running under new charges", async () => {
+    const h = harness();
+    h.subscriptions.seed(subscription({ planCode: "standard_yearly" }));
+    await assert.rejects(h.service.changePlan(USER, "standard"), YearlyPlanChangeError);
+    assert.deepEqual({ checkouts: h.checkouts.rows.length, ending: h.subscriptions.rows[0]?.cancelAtPeriodEnd }, { checkouts: 0, ending: false });
+  });
+
+  test("switching to the yearly plan of the same tier is a plan change, not a no-op", async () => {
+    const h = harness();
+    h.subscriptions.seed(subscription());
+    await h.service.changePlan(USER, "standard_yearly");
+    assert.deepEqual({ product: last(h.checkouts.rows).productCode, ending: h.subscriptions.rows[0]?.cancelAtPeriodEnd }, { product: "standard_yearly", ending: false });
   });
 
   test("a provider-reported period end is used as-is on creation", async () => {
@@ -220,18 +323,45 @@ describe("first payment", () => {
     assert.deepEqual(h.provider.callsTo("cancelSubscription").map((c) => c.args[0]), ["sub_old"]);
     const old = h.subscriptions.rows.find((s) => s.providerSubscriptionId === "sub_old");
     assert.deepEqual({ ending: old?.cancelAtPeriodEnd, current: (await h.service.getStatus(USER)).subscription?.status }, { ending: true, current: "active" });
-    assert.ok(h.logs.warnings.some((m) => m.includes("ended a second standing order")));
+    assert.ok(h.logs.warnings.some((m) => m.includes("ended an older standing order")));
   });
 
-  test("a provider that cannot end the old standing order does not fail the payment", async () => {
+  test("an older order the provider cannot end yet keeps the new credits and retries until it is ended", async () => {
     const h = harness();
     const session = await openSubscriptionCheckout(h);
     h.subscriptions.seed(subscription({ providerSubscriptionId: "sub_old" }));
+    const cancel = h.provider.cancelSubscription;
     h.provider.cancelSubscription = async () => {
       throw new Error("provider down");
     };
-    assert.equal(await deliver(h, paymentSucceeded({ providerSubscriptionId: "sub_new", reference: { checkoutSessionId: session.id } })), "processed");
-    assert.ok(h.logs.errors.some((m) => m.includes("could not end a second standing order")));
+    const charge = paymentSucceeded({ providerSubscriptionId: "sub_new", reference: { checkoutSessionId: session.id } });
+    await deliverExpectingFailure(h, charge, "standing_order_not_ended");
+    assert.equal(h.grants.rows.filter((g) => g.kind === "plan").length, 1);
+    h.provider.cancelSubscription = cancel;
+    assert.equal(await deliver(h, charge), "processed");
+    assert.deepEqual(
+      { oldEnding: h.subscriptions.rows.find((s) => s.providerSubscriptionId === "sub_old")?.cancelAtPeriodEnd, grants: h.grants.rows.filter((g) => g.kind === "plan").length },
+      { oldEnding: true, grants: 1 },
+    );
+  });
+
+  test("the newest order always survives: an older one that charges again is the one ended", async () => {
+    const h = harness();
+    h.subscriptions.seed(subscription({ providerSubscriptionId: "sub_older" }));
+    h.subscriptions.seed(subscription({ providerSubscriptionId: "sub_newer", createdAt: at("2026-08-27T10:00:00.000Z") }));
+    await deliver(h, paymentSucceeded({ providerSubscriptionId: "sub_older", payment: { providerPaymentId: "pay_r", amountAgorot: 20000, currency: "ILS" } }));
+    assert.deepEqual(h.provider.callsTo("cancelSubscription").map((c) => c.args[0]), ["sub_older"]);
+  });
+
+  test("an older order the provider cannot end while overdue is left to dunning, and ended by its own renewal if it recovers", async () => {
+    const h = harness();
+    h.subscriptions.seed(subscription({ providerSubscriptionId: "sub_old", status: "past_due" }));
+    h.subscriptions.seed(subscription({ providerSubscriptionId: "sub_new", createdAt: at("2026-08-27T10:00:00.000Z") }));
+    await deliver(h, paymentSucceeded({ providerSubscriptionId: "sub_new", payment: { providerPaymentId: "pay_n", amountAgorot: 20000, currency: "ILS" } }));
+    assert.equal(h.provider.callsTo("cancelSubscription").length, 0);
+    assert.ok(h.logs.warnings.some((m) => m.includes("left to dunning")));
+    await deliver(h, paymentSucceeded({ providerSubscriptionId: "sub_old", payment: { providerPaymentId: "pay_recovered", amountAgorot: 20000, currency: "ILS" } }));
+    assert.deepEqual(h.provider.callsTo("cancelSubscription").map((c) => c.args[0]), ["sub_old"]);
   });
 });
 
@@ -266,7 +396,7 @@ describe("renewal", () => {
     const session = first(h.checkouts.rows);
     await deliver(h, paymentSucceeded({ payment: { providerPaymentId: "pay_up", amountAgorot: 40000, currency: "ILS" }, reference: { checkoutSessionId: session.id } }));
     assert.deepEqual({ plan: h.subscriptions.rows[0]?.planCode, ending: h.subscriptions.rows[0]?.cancelAtPeriodEnd }, { plan: "pro", ending: false });
-    assert.equal(h.grants.rows[0]?.credits, 6000);
+    assert.equal(h.grants.rows[0]?.credits, PLANS.pro.includedCredits);
   });
 
   test("the same payment under a new event id extends nothing twice and grants once", async () => {
@@ -285,6 +415,15 @@ describe("renewal", () => {
     await deliverExpectingFailure(h, paymentSucceeded({ payment: { providerPaymentId: "pay_1", amountAgorot: 100, currency: "ILS" } }), "amount_mismatch");
     await deliverExpectingFailure(h, paymentSucceeded({ payment: { providerPaymentId: "pay_2", amountAgorot: 20000, currency: "USD" } }), "amount_mismatch");
     assert.deepEqual({ payments: h.payments.rows.length, grants: h.grants.rows.length, end: first(h.subscriptions.rows).currentPeriodEnd?.toISOString() }, { payments: 0, grants: 0, end: "2026-09-26T10:00:00.000Z" });
+  });
+
+  test("a renewal for the plan its charged price names adopts it, so a downgrade made at the provider is not a short payment", async () => {
+    const h = harness();
+    const sub = h.subscriptions.seed(subscription({ planCode: "pro" }));
+    h.payments.rows.push({ userId: USER.id, subscriptionId: sub.id, provider: "mock", providerPaymentId: "pay_signup", status: "succeeded", amountAgorot: 40000, currency: "ILS", occurredAt: at("2026-07-26T10:00:00.000Z") });
+    assert.equal(await deliver(h, paymentSucceeded({ planCode: "basic", payment: { providerPaymentId: "pay_basic", amountAgorot: 10000, currency: "ILS" } })), "processed");
+    assert.deepEqual({ plan: first(h.subscriptions.rows).planCode, credits: last(h.grants.rows).credits }, { plan: "basic", credits: PLANS.basic.includedCredits });
+    await deliverExpectingFailure(h, paymentSucceeded({ planCode: "basic", payment: { providerPaymentId: "pay_short", amountAgorot: 9999, currency: "ILS" } }), "amount_mismatch");
   });
 
   test("a renewal is measured against what the order last paid, so a catalogue price rise never fails loyal subscribers", async () => {
@@ -372,7 +511,7 @@ describe("event inbox", () => {
     assert.equal(h.events.rows[0]?.status, "received");
 
     h.payments.recordFirstPayment = original;
-    assert.equal(await deliver(h, event), "duplicate");
+    await assert.rejects(deliver(h, event), WebhookInFlightError);
     now = new Date(NOW.getTime() + 11 * 60 * 1000);
     assert.equal(await deliver(h, event), "processed");
   });
@@ -401,6 +540,17 @@ describe("event inbox", () => {
     const h = harness();
     assert.equal(await deliver(h, { kind: "ignored", providerEventId: "evt_x", eventType: "ping", occurredAt: NOW, payload: {} }), "ignored");
     assert.equal(h.events.rows[0]?.status, "ignored");
+  });
+
+  test("with a background runner the re-cap leaves the response path and still runs", async () => {
+    const deferred: Promise<unknown>[] = [];
+    const h = harness({ background: (work) => void deferred.push(work) });
+    h.llm.addBot(USER.id, BOT_ID);
+    const session = await openSubscriptionCheckout(h);
+    assert.equal(await deliver(h, paymentSucceeded({ reference: { checkoutSessionId: session.id } })), "processed");
+    assert.equal(deferred.length, 1);
+    await Promise.all(deferred);
+    assert.equal(h.llm.lastCeiling(BOT_ID), usdCentsFromCredits(PLANS.standard.includedCredits));
   });
 
   test("a gateway outage after the ledger is written does not fail the event", async () => {
@@ -475,6 +625,106 @@ describe("snapshots", () => {
   test("a snapshot with no owner is retried later", async () => {
     await deliverExpectingFailure(harness(), snapshot("2026-08-20T00:00:00.000Z", "active"), "unresolved_user");
   });
+
+  test("an older order the provider itself reports overdue is left to dunning instead of failing the charge", async () => {
+    const h = harness();
+    h.subscriptions.seed(subscription({ providerSubscriptionId: "sub_old" }));
+    h.provider.cancelSubscription = async () => {
+      throw new PaymentOverdueError();
+    };
+    await h.service.changePlan(USER, "pro");
+    await deliver(h, paymentSucceeded({ providerSubscriptionId: "sub_new", payment: { providerPaymentId: "pay_pro", amountAgorot: 40000, currency: "ILS" }, reference: { checkoutSessionId: last(h.checkouts.rows).id } }));
+    assert.deepEqual({ status: last(h.events.rows).status, grants: h.grants.rows.length }, { status: "processed", grants: 1 });
+    assert.ok(h.logs.warnings.some((m) => m.includes("left to dunning")));
+  });
+
+  test("a deleted account's subscription still follows its provider state", async () => {
+    const h = harness();
+    h.subscriptions.seed(subscription({ userId: null }));
+    assert.equal(await deliver(h, snapshot("2026-08-27T10:00:00.000Z", "canceled")), "processed");
+    assert.deepEqual({ status: h.subscriptions.rows[0]?.status, note: last(h.events.rows).note }, { status: "canceled", note: "account_deleted" });
+  });
+
+  test("a plan change ends the old order once the new order's charge lands, even when its snapshot came first", async () => {
+    const h = harness();
+    h.subscriptions.seed(subscription({ id: "old", providerSubscriptionId: "sub_old" }));
+    await h.service.changePlan(USER, "pro");
+    const session = last(h.checkouts.rows);
+    await deliver(h, snapshot("2026-08-26T10:00:00.000Z", "active", session.id));
+    assert.equal(h.subscriptions.rows.find((s) => s.id === "old")?.cancelAtPeriodEnd, false);
+    await deliver(h, paymentSucceeded({ planCode: null, payment: { providerPaymentId: "pay_pro", amountAgorot: 40000, currency: "ILS" }, periodEnd: at("2026-09-26T10:00:00.000Z"), reference: { checkoutSessionId: session.id } }));
+    assert.equal(h.subscriptions.rows.find((s) => s.id === "old")?.cancelAtPeriodEnd, true);
+  });
+
+  test("lifecycle providers deliver in any order: snapshot then charge makes one subscription, one period, one grant", async () => {
+    const h = harness();
+    const session = await openSubscriptionCheckout(h);
+    const periodEnd = at("2026-09-26T10:00:00.000Z");
+    await deliver(h, snapshot("2026-08-26T10:00:00.000Z", "active", session.id));
+    await deliver(h, paymentSucceeded({ planCode: null, periodEnd, reference: { checkoutSessionId: session.id } }));
+    await deliver(h, paymentSucceeded({ planCode: null, periodEnd, reference: { checkoutSessionId: session.id } }));
+    assert.deepEqual(
+      { subs: h.subscriptions.rows.length, end: h.subscriptions.rows[0]?.currentPeriodEnd?.toISOString(), grants: h.grants.rows.filter((g) => g.kind === "plan").length, payments: h.payments.rows.length },
+      { subs: 1, end: periodEnd.toISOString(), grants: 1, payments: 1 },
+    );
+  });
+});
+
+describe("refunds", () => {
+  const refunded = (overrides: Partial<Extract<ProviderEvent, { kind: "payment.refunded" }>> = {}): ProviderEvent => ({
+    kind: "payment.refunded",
+    providerEventId: nextEventId(),
+    eventType: "adjustment.updated",
+    occurredAt: NOW,
+    payload: {},
+    providerPaymentId: "pay_1",
+    providerSubscriptionId: "sub_1",
+    full: true,
+    reference: { checkoutSessionId: null },
+    ...overrides,
+  });
+
+  test("a full refund marks the payment and takes back only the unspent credits of that charge", async () => {
+    const h = harness();
+    h.llm.addBot(USER.id, BOT_ID);
+    const session = await openSubscriptionCheckout(h);
+    await deliver(h, paymentSucceeded({ planCode: null, reference: { checkoutSessionId: session.id } }));
+    const plan = h.grants.rows.find((g) => g.kind === "plan")!;
+    plan.usedCredits = 100;
+    assert.equal(await deliver(h, refunded()), "processed");
+    assert.equal(await deliver(h, refunded()), "processed");
+    assert.deepEqual({ credits: plan.credits, used: plan.usedCredits, payment: h.payments.rows[0]?.status }, { credits: 100, used: 100, payment: "refunded" });
+    assert.equal(h.llm.lastCeiling(BOT_ID), 0);
+  });
+
+  test("a partial refund changes nothing and is left for a human; a refund ahead of its charge retries", async () => {
+    const h = harness();
+    const session = await openSubscriptionCheckout(h);
+    await deliver(h, paymentSucceeded({ planCode: null, reference: { checkoutSessionId: session.id } }));
+    await deliver(h, refunded({ full: false }));
+    assert.deepEqual({ credits: h.grants.rows[0]?.credits, payment: h.payments.rows[0]?.status, note: last(h.events.rows).note }, { credits: PLANS.standard.includedCredits, payment: "succeeded", note: "partial_refund" });
+    await deliverExpectingFailure(h, refunded({ providerPaymentId: "pay_unknown" }), "unknown_payment");
+  });
+
+  test("a refund of a deleted account's payment is recorded and acknowledged", async () => {
+    const h = harness();
+    const session = await openSubscriptionCheckout(h);
+    await deliver(h, paymentSucceeded({ reference: { checkoutSessionId: session.id } }));
+    h.payments.rows[0]!.userId = null;
+    h.grants.rows = [];
+    assert.equal(await deliver(h, refunded()), "processed");
+    assert.equal(h.payments.rows[0]?.status, "refunded");
+  });
+
+  test("a refunded top-up takes back its unspent credits", async () => {
+    const h = harness();
+    h.subscriptions.seed(subscription());
+    await h.service.startTopup(USER, 50);
+    const session = last(h.checkouts.rows);
+    await deliver(h, paymentSucceeded({ providerSubscriptionId: null, payment: { providerPaymentId: "pay_top", amountAgorot: 5000, currency: "ILS" }, reference: { checkoutSessionId: session.id } }));
+    await deliver(h, refunded({ providerPaymentId: "pay_top", providerSubscriptionId: null }));
+    assert.deepEqual(h.grants.rows.map((g) => ({ kind: g.kind, credits: g.credits })), [{ kind: "topup", credits: 0 }]);
+  });
 });
 
 describe("top-ups", () => {
@@ -489,7 +739,7 @@ describe("top-ups", () => {
     const session = first(h.checkouts.rows);
     assert.deepEqual(
       { kind: session.kind, credits: session.credits, amountAgorot: session.amountAgorot, productCode: session.productCode, mode: h.provider.checkoutInputs[0]?.mode },
-      { kind: "topup", credits: 1000, amountAgorot: 5000, productCode: "topup_ils_50", mode: "one_time" },
+      { kind: "topup", credits: creditsForTopupIls(50), amountAgorot: 5000, productCode: "topup_ils_50", mode: "one_time" },
     );
   });
 
@@ -504,8 +754,8 @@ describe("top-ups", () => {
     assert.equal(h.subscriptions.rows[0]?.currentPeriodEnd?.toISOString(), "2026-09-26T10:00:00.000Z");
     assert.deepEqual({ userId: h.payments.rows[0]?.userId, subscriptionId: h.payments.rows[0]?.subscriptionId }, { userId: USER.id, subscriptionId: null });
     const topup = first(h.grants.rows);
-    assert.deepEqual({ kind: topup.kind, credits: topup.credits, sourceRef: topup.sourceRef, expiresAt: topup.expiresAt }, { kind: "topup", credits: 2500, sourceRef: "topup:mock:pay_t1", expiresAt: null });
-    assert.equal(h.llm.lastCeiling(BOT_ID), usdCentsFromCredits(2500));
+    assert.deepEqual({ kind: topup.kind, credits: topup.credits, sourceRef: topup.sourceRef, expiresAt: topup.expiresAt }, { kind: "topup", credits: creditsForTopupIls(125), sourceRef: "topup:mock:pay_t1", expiresAt: null });
+    assert.equal(h.llm.lastCeiling(BOT_ID), usdCentsFromCredits(creditsForTopupIls(125)));
   });
 
   test("a redelivered top-up grants nothing twice", async () => {
@@ -582,7 +832,7 @@ describe("cancel, resume, plan change", () => {
   test("operations respect provider capabilities", async () => {
     const h = harness();
     h.subscriptions.seed(subscription({ cancelAtPeriodEnd: true }));
-    h.provider.capabilities = { cancel: false, resume: false, customerPortal: false, updatePaymentMethod: false };
+    h.provider.capabilities = { cancel: false, resume: false, customerPortal: false, updatePaymentMethod: false, cancelWhilePastDue: true };
     await assert.rejects(h.service.resume(USER), UnsupportedBillingOperationError);
     await assert.rejects(h.service.getCustomerPortalUrl(USER), UnsupportedBillingOperationError);
     await assert.rejects(h.service.getUpdatePaymentMethodUrl(USER), UnsupportedBillingOperationError);
@@ -599,15 +849,15 @@ describe("cancel, resume, plan change", () => {
     await assert.rejects(h.service.getCustomerPortalUrl(USER), UnsupportedBillingOperationError);
   });
 
-  test("changePlan ends the current standing order and opens a checkout for the new tier", async () => {
+  test("changePlan opens a checkout for the new tier and leaves the current order running until it is paid", async () => {
     const h = harness();
     await assert.rejects(h.service.changePlan(USER, "pro"), NoSubscriptionError);
     h.subscriptions.seed(subscription());
     await assert.rejects(h.service.changePlan(USER, "standard"), SamePlanError);
     await h.service.changePlan(USER, "pro");
-    assert.equal(h.subscriptions.rows[0]?.cancelAtPeriodEnd, true);
+    assert.deepEqual({ cancels: h.provider.callsTo("cancelSubscription").length, ending: h.subscriptions.rows[0]?.cancelAtPeriodEnd }, { cancels: 0, ending: false });
     const session = first(h.checkouts.rows);
-    assert.deepEqual({ kind: session.kind, productCode: session.productCode, credits: session.credits, amount: session.amountAgorot }, { kind: "subscription", productCode: "pro", credits: 6000, amount: 40000 });
+    assert.deepEqual({ kind: session.kind, productCode: session.productCode, credits: session.credits, amount: session.amountAgorot }, { kind: "subscription", productCode: "pro", credits: PLANS.pro.includedCredits, amount: 40000 });
   });
 
   test("changePlan refuses before touching the provider when the checkout limit is reached", async () => {
@@ -619,17 +869,23 @@ describe("cancel, resume, plan change", () => {
     assert.deepEqual({ cancels: h.provider.callsTo("cancelSubscription").length, ending: first(h.subscriptions.rows).cancelAtPeriodEnd }, { cancels: 0, ending: false });
   });
 
-  test("changePlan resumes the standing order when the new checkout cannot be opened", async () => {
+  test("a plan change is refused, and its open checkout unpayable, in the hours before the current order renews", async () => {
+    let now = NOW;
+    const h = harness({ now: () => now });
+    h.subscriptions.seed(subscription({ currentPeriodEnd: at("2026-09-26T10:00:00.000Z") }));
+    await h.service.changePlan(USER, "pro");
+    const session = last(h.checkouts.rows);
+    assert.equal(await h.service.isPayable(session), true);
+    now = at("2026-09-26T08:30:00.000Z");
+    await assert.rejects(h.service.changePlan(USER, "basic"), RenewalImminentError);
+    assert.equal(await h.service.isPayable(session), false);
+  });
+
+  test("changePlan is refused while the current order is overdue", async () => {
     const h = harness();
-    h.subscriptions.seed(subscription());
-    h.provider.createCheckout = async () => {
-      throw new Error("gateway down");
-    };
-    await assert.rejects(h.service.changePlan(USER, "pro"), /gateway down/);
-    assert.deepEqual(
-      { resumes: h.provider.callsTo("resumeSubscription").length, ending: first(h.subscriptions.rows).cancelAtPeriodEnd, status: first(h.subscriptions.rows).status },
-      { resumes: 1, ending: false, status: "active" },
-    );
+    h.subscriptions.seed(subscription({ status: "past_due" }));
+    await assert.rejects(h.service.changePlan(USER, "pro"), PaymentOverdueError);
+    assert.equal(h.checkouts.rows.length, 0);
   });
 
   test("cancel ends every standing order the user still has", async () => {
@@ -649,16 +905,6 @@ describe("cancel, resume, plan change", () => {
     assert.equal(h.checkouts.rows[0]?.productCode, "pro");
   });
 
-  test("changePlan opens no checkout when the provider refuses to cancel", async () => {
-    const h = harness();
-    h.subscriptions.seed(subscription());
-    h.provider.cancelSubscription = async () => {
-      throw new Error("provider down");
-    };
-    await assert.rejects(h.service.changePlan(USER, "pro"), /provider down/);
-    assert.deepEqual({ checkouts: h.checkouts.rows.length, ending: h.subscriptions.rows[0]?.cancelAtPeriodEnd }, { checkouts: 0, ending: false });
-  });
-
   test("the new tier's first payment becomes the current subscription with its own allowance", async () => {
     const h = harness();
     h.subscriptions.seed(subscription());
@@ -666,7 +912,7 @@ describe("cancel, resume, plan change", () => {
     const session = first(h.checkouts.rows);
     await deliver(h, paymentSucceeded({ providerSubscriptionId: "sub_2", payment: { providerPaymentId: "pay_pro", amountAgorot: 40000, currency: "ILS" }, reference: { checkoutSessionId: session.id } }));
     const status = await h.service.getStatus(USER);
-    assert.deepEqual({ plan: status.plan.code, status: status.subscription?.status, credits: h.grants.rows[0]?.credits }, { plan: "pro", status: "active", credits: 6000 });
+    assert.deepEqual({ plan: status.plan.code, status: status.subscription?.status, credits: h.grants.rows[0]?.credits }, { plan: "pro", status: "active", credits: PLANS.pro.includedCredits });
   });
 });
 
@@ -681,6 +927,14 @@ describe("account deletion", () => {
     await h.service.cancelForAccountDeletion(USER.id);
     assert.deepEqual(h.provider.callsTo("cancelSubscription").map((c) => c.args[0]).sort(), ["a", "d"]);
     assert.equal(h.subscriptions.rows.filter((s) => s.status === "active" && !s.cancelAtPeriodEnd).length, 0);
+  });
+
+  test("an overdue order the provider cannot end blocks the deletion before anything is cancelled", async () => {
+    const h = harness();
+    h.subscriptions.seed(subscription({ providerSubscriptionId: "a", createdAt: at("2026-08-20T10:00:00.000Z") }));
+    h.subscriptions.seed(subscription({ providerSubscriptionId: "b", status: "past_due" }));
+    await assert.rejects(h.service.cancelForAccountDeletion(USER.id), PaymentOverdueError);
+    assert.equal(h.provider.callsTo("cancelSubscription").length, 0);
   });
 
   test("waits for a pending checkout to settle before the account can go", async () => {
@@ -717,7 +971,7 @@ describe("status and entitlement", () => {
     relaxed.grants.rows.push(usedTrial());
     const open = await relaxed.service.getStatus(USER);
     assert.deepEqual({ entitled: open.entitled, reason: open.reason, paid: open.paid, action: open.creditsAction, sub: open.subscription }, { entitled: true, reason: "enforcement_disabled", paid: false, action: "subscribe", sub: null });
-    assert.deepEqual(open.plans.map((p) => p.code), ["basic", "standard", "pro"]);
+    assert.deepEqual(open.plans.map((p) => p.code), [...PLAN_CODES]);
 
     const strict = harness({ enforcement: true });
     strict.grants.rows.push(usedTrial());

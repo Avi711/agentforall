@@ -3,12 +3,15 @@ import Link from "next/link";
 import { formatCredits, formatIls } from "@/lib/billing/format";
 import {
   DEFAULT_PLAN,
-  PLAN_CATALOGUE,
+  PLANS,
+  PLAN_TIERS,
   TOPUP_MIN_ILS,
   TOPUP_TERMS,
   TRIAL_CREDITS,
   TRIAL_DAYS,
+  YEARLY_DISCOUNT_PERCENT,
   estimatedMessages,
+  planFor,
 } from "@/lib/billing/pricing";
 
 // `/app` redirects a signed-out visitor to login and lands a signed-in one on the dashboard.
@@ -27,8 +30,10 @@ export function Pricing({ ctaHref = "/app" }: { ctaHref?: string }) {
         </header>
 
         <div className="sd-stagger grid gap-4 sm:gap-6 sm:grid-cols-3">
-          {PLAN_CATALOGUE.map((plan) => {
-            const featured = plan.code === DEFAULT_PLAN;
+          {PLAN_TIERS.map((tier) => {
+            const plan = planFor(tier, "month");
+            const yearly = planFor(tier, "year");
+            const featured = tier === PLANS[DEFAULT_PLAN].tier;
             return (
               <article
                 key={plan.code}
@@ -46,6 +51,9 @@ export function Pricing({ ctaHref = "/app" }: { ctaHref?: string }) {
                   {formatIls(plan.priceIls)}
                   <span className="text-sm text-espresso-light"> / חודש</span>
                 </p>
+                <p className="mt-1 text-xs text-espresso-light">
+                  או {formatIls(yearly.priceIls)} לשנה ({YEARLY_DISCOUNT_PERCENT}% הנחה)
+                </p>
                 <ul className="mt-6 space-y-2.5 text-sm text-espresso flex-1">
                   <Perk>{formatCredits(plan.includedCredits)} קרדיטים בחודש</Perk>
                   <Perk>≈ {formatCredits(estimatedMessages(plan.includedCredits))} הודעות</Perk>
@@ -53,7 +61,7 @@ export function Pricing({ ctaHref = "/app" }: { ctaHref?: string }) {
                   <Perk>וואטסאפ או טלגרם</Perk>
                   <Perk>מתחבר למעל {CATALOG_SIZE_LABEL} אפליקציות</Perk>
                   <Perk>ביטול בכל רגע</Perk>
-                  {plan.code === "pro" ? (
+                  {tier === "pro" ? (
                     <Perk>
                       וואטסאפ לעסקים דרך Meta API{" "}
                       <span className="rounded-full bg-cream-dark px-2 py-0.5 text-[11px] text-espresso-light">

@@ -6,6 +6,8 @@ import type { BillingLogger } from "../logger";
 import { DisabledPaymentProvider } from "../providers/disabled";
 import { MockPaymentProvider } from "../providers/mock/adapter";
 import { readMockProviderConfig } from "../providers/mock/config";
+import { PaddlePaymentProvider } from "../providers/paddle/adapter";
+import { readPaddleConfig } from "../providers/paddle/config";
 import type { PaymentProvider, ProviderDeps } from "./types";
 
 type ProviderFactory = (env: Env, deps: ProviderDeps) => PaymentProvider;
@@ -13,6 +15,7 @@ type ProviderFactory = (env: Env, deps: ProviderDeps) => PaymentProvider;
 // Adding a provider = one adapter + one line here. Nothing else in the app changes.
 const FACTORIES: Record<PaymentProviderName, ProviderFactory> = {
   mock: (env) => new MockPaymentProvider(readMockProviderConfig(env)),
+  paddle: (env, deps) => new PaddlePaymentProvider(readPaddleConfig(env), deps),
 };
 
 export interface ProviderRegistry {

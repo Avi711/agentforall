@@ -1,5 +1,5 @@
 import type { CreditSummary } from "@/lib/billing/credits/service";
-import { formatCredits, formatDay } from "@/lib/billing/format";
+import { formatCredits, formatDate, formatDay } from "@/lib/billing/format";
 import type { CreditsAction } from "@/lib/billing/service";
 import { CreditsActionLink, OUT_OF_CREDITS_LABEL } from "./credits-copy";
 import { SECTION_LABEL } from "./Marks";
@@ -61,5 +61,6 @@ function nextExpiryLabel(credits: CreditSummary): string {
   const soonest = credits.grants
     .flatMap((g) => (g.kind === "plan" && g.live && g.expiresAt ? [g.expiresAt] : []))
     .sort()[0];
-  return soonest ? `קרדיטים של המנוי בתוקף עד ${formatDay(soonest)}` : "";
+  const until = formatDate(soonest ?? null);
+  return until ? `קרדיטים של המנוי בתוקף עד ${until}` : "";
 }

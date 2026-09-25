@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "idx_billing_checkout_sessions_provider_checkout" ON "billing_checkout_sessions" USING btree ("provider","provider_checkout_id");

@@ -21,12 +21,16 @@ import {
   AlreadySubscribedError,
   InvalidTopupAmountError,
   NoSubscriptionError,
+  PaymentOverdueError,
   PendingCheckoutError,
+  RenewalImminentError,
   SamePlanError,
   TooManyCheckoutsError,
   TrialUnavailableError,
   UnknownProviderError,
   UnsupportedBillingOperationError,
+  WebhookInFlightError,
+  YearlyPlanChangeError,
 } from "./errors";
 import { consoleBillingLogger, errorMessage, type BillingLogger } from "./logger";
 import type {
@@ -52,12 +56,15 @@ import {
   isValidTopupAmountIls,
   planAmountAgorot,
   resolvePlan,
+  type BillingInterval,
   type Plan,
   type PlanCode,
   type TopupTerms,
 } from "./pricing";
 import type { ProviderRegistry } from "./provider/registry";
 import type {
+  CreateCheckoutInput,
+  CreateCheckoutResult,
   PaymentProvider,
   ProviderCapabilities,
   ProviderEvent,
@@ -68,6 +75,8 @@ import type {
 import { SETTINGS_PATH, settingsReturnPath, type CheckoutReturn } from "./urls";
 
 const CHECKOUT_TTL_MS = HOUR_MS;
+// A plan change must be paid before the old order's renewal locks it (Paddle: 30 minutes); the checkout lives an hour.
+const PLAN_CHANGE_RENEWAL_BUFFER_MS = 2 * HOUR_MS;
 const RENEWAL_ATTEMPTS = 3;
 
 export interface SubscriptionView {
@@ -113,7 +122,11 @@ export type ProcessingNote =
   | "unresolved_user"
   | "unknown_plan"
   | "amount_mismatch"
-  | "topup_with_subscription";
+  | "topup_with_subscription"
+  | "unknown_payment"
+  | "partial_refund"
+  | "standing_order_not_ended"
+  | "account_deleted";
 
 export interface BillingServiceDeps {
   providers: ProviderRegistry;
@@ -125,14 +138,17 @@ export interface BillingServiceDeps {
   credits: CreditService;
   enforcement: boolean;
   appUrl: string;
+  // Runs work after the response (Next's `after`): a provider expects its webhook answered within seconds. Inline when absent.
+  background?: (work: Promise<unknown>) => void;
   now?: () => Date;
   logger?: BillingLogger;
 }
 
 interface CheckoutProduct {
   kind: CheckoutKind;
+  // Null for a one-time charge.
+  interval: BillingInterval | null;
   productCode: string;
-  description: string;
   credits: number;
   amountAgorot: number;
 }
@@ -141,6 +157,7 @@ type PaymentSucceeded = Extract<ProviderEvent, { kind: "payment.succeeded" }>;
 type PaymentFailed = Extract<ProviderEvent, { kind: "payment.failed" }>;
 type SubscriptionCanceled = Extract<ProviderEvent, { kind: "subscription.canceled" }>;
 type SubscriptionSnapshot = Extract<ProviderEvent, { kind: "subscription.snapshot" }>;
+type PaymentRefunded = Extract<ProviderEvent, { kind: "payment.refunded" }>;
 
 interface Applied {
   userId: string | null;
@@ -168,6 +185,7 @@ export class BillingService {
   private readonly credits: CreditService;
   private readonly enforcement: boolean;
   private readonly appUrl: string;
+  private readonly background: ((work: Promise<unknown>) => void) | undefined;
   private readonly now: () => Date;
   private readonly log: BillingLogger;
 
@@ -181,6 +199,7 @@ export class BillingService {
     this.credits = deps.credits;
     this.enforcement = deps.enforcement;
     this.appUrl = deps.appUrl;
+    this.background = deps.background;
     this.now = deps.now ?? (() => new Date());
     this.log = deps.logger ?? consoleBillingLogger;
   }
@@ -260,6 +279,23 @@ export class BillingService {
     return session && session.userId === user.id ? session : null;
   }
 
+  // Null for a provider transaction that is not one of our checkouts (a renewal, a payment-method update).
+  findCheckoutByProviderCheckoutId(provider: PaymentProviderName, providerCheckoutId: string): Promise<CheckoutSession | null> {
+    return this.checkouts.findByProviderCheckoutId(provider, providerCheckoutId);
+  }
+
+  // A reopened or bookmarked checkout must pass the rules a new one would, against the order it would replace.
+  async isPayable(session: CheckoutSession): Promise<boolean> {
+    if (session.status !== "pending") return false;
+    if (session.kind !== "subscription") return true;
+    const current = await this.subscriptions.findCurrentByUserId(session.userId);
+    const now = this.now();
+    if (!current) return true;
+    if (this.isStuckOverdue(current)) return false;
+    if (!isContinuing(current, now)) return true;
+    return current.createdAt.getTime() <= session.createdAt.getTime() && !renewsWithin(current, now, PLAN_CHANGE_RENEWAL_BUFFER_MS);
+  }
+
   // A subscription that is already ending may be replaced; only a live, continuing one blocks a new checkout.
   async startCheckout(user: BillingUser, planCode: PlanCode): Promise<{ url: string }> {
     const current = await this.subscriptions.findCurrentByUserId(user.id);
@@ -267,22 +303,13 @@ export class BillingService {
     return this.openCheckout(user, subscriptionProduct(PLANS[planCode]));
   }
 
-  // Israeli standing orders cannot be re-priced: the current one ends at its period end and a new one starts now.
+  // A new order at the new price; the current one is ended once that order's first charge lands. A prepaid year only changes by hand.
   async changePlan(user: BillingUser, planCode: PlanCode): Promise<{ url: string }> {
     const current = await this.requireEntitledSubscription(user.id);
-    if (current.cancelAtPeriodEnd) return this.openCheckout(user, subscriptionProduct(PLANS[planCode]));
-    if (current.planCode === planCode) throw new SamePlanError(planCode);
-
-    await this.assertCheckoutAllowed(user.id, this.now());
-    const provider = this.providerFor(current, "cancel");
-    await this.cancelAtProvider(current, provider);
-    this.log.info("subscription cancelled for plan change", { userId: user.id, from: current.planCode, to: planCode });
-    try {
-      return await this.openCheckout(user, subscriptionProduct(PLANS[planCode]));
-    } catch (err) {
-      await this.tryResume(current, provider);
-      throw err;
-    }
+    if (findPlan(current.planCode)?.interval === "year") throw new YearlyPlanChangeError();
+    if (!current.cancelAtPeriodEnd && current.planCode === planCode) throw new SamePlanError(planCode);
+    if (!current.cancelAtPeriodEnd && renewsWithin(current, this.now(), PLAN_CHANGE_RENEWAL_BUFFER_MS)) throw new RenewalImminentError();
+    return this.openCheckout(user, subscriptionProduct(PLANS[planCode]));
   }
 
   // Top-ups require a paid relationship; trial users are pointed at the subscription instead.
@@ -292,8 +319,8 @@ export class BillingService {
     const credits = creditsForTopupIls(amountIls);
     return this.openCheckout(user, {
       kind: "topup",
+      interval: null,
       productCode: `topup_ils_${amountIls}`,
-      description: `${credits} קרדיטים`,
       credits,
       amountAgorot: agorotFromIls(amountIls),
     });
@@ -303,7 +330,7 @@ export class BillingService {
   async cancel(user: BillingUser): Promise<BillingStatus> {
     const current = await this.requireEntitledSubscription(user.id);
     let latest = current;
-    for (const subscription of await this.subscriptions.listLiveByUserId(user.id)) {
+    for (const subscription of await this.endableLiveOrders(user.id)) {
       if (subscription.cancelAtPeriodEnd) continue;
       const provider = this.providerFor(subscription, "cancel");
       const cancelled = await this.cancelAtProvider(subscription, provider);
@@ -344,7 +371,7 @@ export class BillingService {
     if (await this.checkouts.hasPendingSince(userId, new Date(now.getTime() - CHECKOUT_TTL_MS))) {
       throw new PendingCheckoutError();
     }
-    for (const subscription of await this.subscriptions.listLiveByUserId(userId)) {
+    for (const subscription of await this.endableLiveOrders(userId)) {
       if (subscription.cancelAtPeriodEnd) continue;
       const provider = this.providers.byName(subscription.provider);
       if (!provider || !provider.capabilities.cancel) {
@@ -371,6 +398,7 @@ export class BillingService {
     });
     if (claim.kind === "duplicate") {
       this.log.info("webhook duplicate", { provider: provider.name, eventType: event.eventType, status: claim.status });
+      if (claim.status === "received") throw new WebhookInFlightError();
       return "duplicate";
     }
 
@@ -392,7 +420,7 @@ export class BillingService {
   private async openCheckout(user: BillingUser, product: CheckoutProduct): Promise<{ url: string }> {
     const provider = this.providers.active;
     const now = this.now();
-    await this.assertCheckoutAllowed(user.id, now);
+    await this.assertCheckoutAllowed(user.id, product.kind, now);
 
     const expiresAt = new Date(now.getTime() + CHECKOUT_TTL_MS);
     const session = await this.checkouts.create({
@@ -404,14 +432,15 @@ export class BillingService {
       amountAgorot: product.amountAgorot,
       expiresAt,
     });
-    const result = await provider.createCheckout({
+    const result = await this.createProviderCheckout(provider, {
       checkoutSessionId: session.id,
       userId: user.id,
       email: user.email,
       name: user.name,
       mode: product.kind === "subscription" ? "subscription" : "one_time",
+      interval: product.interval,
       productCode: product.productCode,
-      description: product.description,
+      credits: product.credits,
       amountAgorot: product.amountAgorot,
       currency: "ILS",
       successUrl: this.returnUrl("success", session.id),
@@ -429,6 +458,15 @@ export class BillingService {
       sessionId: session.id,
     });
     return { url: result.url };
+  }
+
+  private async createProviderCheckout(provider: PaymentProvider, input: CreateCheckoutInput): Promise<CreateCheckoutResult> {
+    try {
+      return await provider.createCheckout(input);
+    } catch (err) {
+      await this.checkouts.settle(input.checkoutSessionId, "failed", this.now());
+      throw err;
+    }
   }
 
   private async applyEvent(provider: PaymentProviderName, event: ProviderEvent, eventId: string): Promise<WebhookOutcome> {
@@ -462,6 +500,8 @@ export class BillingService {
         return this.applyCanceled(provider, event);
       case "subscription.snapshot":
         return this.applySnapshot(provider, event, session);
+      case "payment.refunded":
+        return this.applyRefund(provider, event);
     }
   }
 
@@ -478,7 +518,7 @@ export class BillingService {
       toNewPayment(provider, event.payment, "succeeded", event.occurredAt, session.userId, null),
     );
     await this.checkouts.settle(session.id, "completed", event.occurredAt);
-    await this.credits.grantTopup(session.userId, session.credits, `topup:${provider}:${event.payment.providerPaymentId}`);
+    await this.credits.grantTopup(session.userId, session.credits, topupGrantRef(provider, event.payment.providerPaymentId));
     await this.recapAfterLedgerWrite(session.userId);
     return { userId: session.userId, note: recorded ? null : "duplicate_payment" };
   }
@@ -511,9 +551,11 @@ export class BillingService {
       userId,
       plan.includedCredits,
       new Date((subscription.currentPeriodEnd ?? event.occurredAt).getTime() + ACTIVE_GRACE_MS),
-      `plan:${provider}:${event.payment.providerPaymentId}`,
+      planGrantRef(provider, event.payment.providerPaymentId),
     );
     await this.recapAfterLedgerWrite(userId);
+    // On every charge, not on creation: a lifecycle provider may create the subscription first, and an older order may recover.
+    await this.endOlderStandingOrders(userId);
     return { userId, note: application.outcome === "duplicate" ? "duplicate_payment" : null };
   }
 
@@ -540,23 +582,34 @@ export class BillingService {
       },
     });
     if (application.outcome === "conflict") throw new Error("first payment reported a conflict");
-    if (application.outcome === "applied") await this.endOtherStandingOrders(userId, application.subscription);
     return application;
   }
 
-  // A lapsed order that later charges again would otherwise bill the user twice a month.
-  private async endOtherStandingOrders(userId: string, kept: Subscription): Promise<void> {
-    for (const other of await this.subscriptions.listLiveByUserId(userId)) {
-      if (other.id === kept.id || other.cancelAtPeriodEnd) continue;
-      const provider = this.providers.byName(other.provider);
+  // One continuing order per user, the newest; a stuck overdue one is left to dunning and ended here if it recovers.
+  private async endOlderStandingOrders(userId: string): Promise<void> {
+    const continuing = (await this.subscriptions.listLiveByUserId(userId)).filter((s) => !s.cancelAtPeriodEnd);
+    const kept = continuing.reduce<Subscription | null>((newest, s) => (newest && newest.createdAt >= s.createdAt ? newest : s), null);
+    for (const other of continuing) {
+      if (!kept || other.id === kept.id) continue;
       try {
-        if (provider?.capabilities.cancel) await this.cancelAtProvider(other, provider);
-        else await this.applyCancellation(other, null);
-        this.log.warn("ended a second standing order", { userId, kept: kept.id, ended: other.id });
+        await this.endStandingOrder(other);
+        this.log.warn("ended an older standing order", { userId, kept: kept.id, ended: other.id });
       } catch (err) {
-        this.log.error("could not end a second standing order", { userId, ended: other.id, error: errorMessage(err) });
+        if (!(err instanceof PaymentOverdueError)) {
+          this.log.error("could not end an older standing order", { userId, ended: other.id, error: errorMessage(err) });
+          throw new EventProcessingError("standing_order_not_ended", userId);
+        }
+        this.log.warn("older standing order is overdue; left to dunning", { userId, kept: kept.id, overdue: other.id });
       }
     }
+  }
+
+  // Our state may lag the provider's past_due; the adapter refuses with the same error then.
+  private async endStandingOrder(subscription: Subscription): Promise<void> {
+    if (this.isStuckOverdue(subscription)) throw new PaymentOverdueError();
+    const provider = this.providers.byName(subscription.provider);
+    if (provider?.capabilities.cancel) await this.cancelAtProvider(subscription, provider);
+    else await this.applyCancellation(subscription, null);
   }
 
   // State follows the money, except that a charge older than the stored state extends the period without reviving it.
@@ -626,34 +679,41 @@ export class BillingService {
   ): Promise<Applied> {
     const existing = await this.subscriptions.findByProviderRef(provider, event.subscription.providerSubscriptionId);
     const userId = session?.userId ?? existing?.userId ?? null;
-    if (!userId) throw new EventProcessingError("unresolved_user", null);
+    if (!userId && !existing) throw new EventProcessingError("unresolved_user", null);
     const result = await this.subscriptions.upsertIfNewer(toUpsert(provider, event.subscription, userId));
     if (session) await this.checkouts.settle(session.id, "completed", event.occurredAt);
-    return { userId, note: result.applied ? null : "stale_event" };
+    return { userId, note: !userId ? "account_deleted" : result.applied ? null : "stale_event" };
+  }
+
+  // Unspent credits from the refunded charge go; spent ones cannot be taken back.
+  private async applyRefund(provider: PaymentProviderName, event: PaymentRefunded): Promise<Applied> {
+    const paymentId = event.providerPaymentId;
+    if (!event.full) {
+      this.log.warn("partial refund left for manual review", { provider, paymentId });
+      return { userId: null, note: "partial_refund" };
+    }
+    const payment = await this.payments.markRefunded(provider, paymentId);
+    const owners = await this.credits.revokeUnused([planGrantRef(provider, paymentId), topupGrantRef(provider, paymentId)]);
+    if (!payment && owners.length === 0) throw new EventProcessingError("unknown_payment", null);
+    // A deleted account keeps its payment rows with no user; there is nothing left to re-cap.
+    const userId = payment?.userId ?? owners[0] ?? null;
+    if (userId) await this.recapAfterLedgerWrite(userId);
+    this.log.warn("payment refunded", { provider, paymentId, userId });
+    return { userId, note: null };
   }
 
   // The ledger is durable at this point; a gateway hiccup must not make the provider redeliver money.
   private async recapAfterLedgerWrite(userId: string): Promise<void> {
-    try {
-      await this.credits.sync(userId);
-    } catch (err) {
+    const recap = this.credits.sync(userId).catch((err: unknown) => {
       this.log.error("re-cap after payment failed; cron will repair", { userId, error: errorMessage(err) });
-    }
+    });
+    if (this.background) this.background(recap);
+    else await recap;
   }
 
   private async cancelAtProvider(subscription: Subscription, provider: PaymentProvider): Promise<Subscription> {
     const snapshot = await provider.cancelSubscription(subscription.providerSubscriptionId);
     return this.applyCancellation(subscription, snapshot);
-  }
-
-  // Best-effort undo when the step after a cancellation fails; the user can always resume by hand.
-  private async tryResume(subscription: Subscription, provider: PaymentProvider): Promise<void> {
-    if (!provider.capabilities.resume) return;
-    try {
-      await this.applyResumption(subscription, await provider.resumeSubscription(subscription.providerSubscriptionId));
-    } catch (err) {
-      this.log.error("could not resume after a failed plan change", { subscriptionId: subscription.id, error: errorMessage(err) });
-    }
   }
 
   private async applyResumption(current: Subscription, snapshot: ProviderSubscription | null): Promise<Subscription> {
@@ -667,9 +727,25 @@ export class BillingService {
     });
   }
 
-  private async assertCheckoutAllowed(userId: string, now: Date): Promise<void> {
+  private async assertCheckoutAllowed(userId: string, kind: CheckoutKind, now: Date): Promise<void> {
+    if (kind === "subscription") {
+      const current = await this.subscriptions.findCurrentByUserId(userId);
+      if (current && this.isStuckOverdue(current)) throw new PaymentOverdueError();
+    }
     const opened = await this.checkouts.countOpenedSince(userId, new Date(now.getTime() - HOUR_MS));
     if (opened >= MAX_OPEN_CHECKOUTS_PER_HOUR) throw new TooManyCheckoutsError(MAX_OPEN_CHECKOUTS_PER_HOUR);
+  }
+
+  // A new order beside it could not end it, and a recovered charge would bill twice: the overdue charge is paid first.
+  private isStuckOverdue(subscription: Subscription): boolean {
+    return subscription.status === "past_due" && this.providers.byName(subscription.provider)?.capabilities.cancelWhilePastDue === false;
+  }
+
+  // All or nothing: cancelling some orders and then failing on a stuck one would leave the user half-cancelled.
+  private async endableLiveOrders(userId: string): Promise<Subscription[]> {
+    const live = await this.subscriptions.listLiveByUserId(userId);
+    if (live.some((subscription) => this.isStuckOverdue(subscription))) throw new PaymentOverdueError();
+    return live;
   }
 
   private async applyCancellation(current: Subscription, snapshot: ProviderSubscription | null): Promise<Subscription> {
@@ -759,11 +835,19 @@ export class BillingService {
 function subscriptionProduct(plan: Plan): CheckoutProduct {
   return {
     kind: "subscription",
+    interval: plan.interval,
     productCode: plan.code,
-    description: plan.name,
     credits: plan.includedCredits,
     amountAgorot: planAmountAgorot(plan),
   };
+}
+
+function planGrantRef(provider: PaymentProviderName, paymentId: string): string {
+  return `plan:${provider}:${paymentId}`;
+}
+
+function topupGrantRef(provider: PaymentProviderName, paymentId: string): string {
+  return `topup:${provider}:${paymentId}`;
 }
 
 function isContinuing(subscription: Subscription, now: Date): boolean {
@@ -780,16 +864,22 @@ function coversSession(payment: ProviderPayment, session: CheckoutSession): bool
   return payment.currency === "ILS" && payment.amountAgorot >= session.amountAgorot;
 }
 
-// A renewal has no session to compare against: what the order last charged is the floor (a standing order keeps
-// its signup price through catalogue changes); the catalogue price only for an order that never paid.
+// A renewal may keep its signup price (last paid) or move to another plan's price, never below both.
 function coversPlan(payment: ProviderPayment, plan: Plan, lastPaidAgorot: number | null): boolean {
-  return payment.currency === plan.currency && payment.amountAgorot >= (lastPaidAgorot ?? planAmountAgorot(plan));
+  const floor = Math.min(lastPaidAgorot ?? Infinity, planAmountAgorot(plan));
+  return payment.currency === plan.currency && payment.amountAgorot >= floor;
 }
 
-// A checkout session names the plan the user just chose; without one, the stored plan wins over the provider's hint.
+// A checkout session names the plan the user just chose; a renewal is for the plan its charged price names, if the provider says.
 function planCodeFor(event: PaymentSucceeded, session: CheckoutSession | null, existing: Subscription | null): string | null {
   if (session?.kind === "subscription") return session.productCode;
-  return existing?.planCode ?? event.planCode;
+  return event.planCode ?? existing?.planCode ?? null;
+}
+
+// Includes a period end already passed: its renewal may be in flight.
+function renewsWithin(subscription: Subscription, now: Date, windowMs: number): boolean {
+  const end = subscription.currentPeriodEnd;
+  return end !== null && end.getTime() - now.getTime() < windowMs;
 }
 
 // Never lets a late-delivered older payment rewind the period.
@@ -852,6 +942,7 @@ function subscriptionIdOf(event: ProviderEvent): string | null {
       return event.subscription.providerSubscriptionId;
     case "payment.succeeded":
     case "payment.failed":
+    case "payment.refunded":
     case "subscription.canceled":
       return event.providerSubscriptionId;
     case "checkout.failed":

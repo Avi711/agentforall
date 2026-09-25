@@ -1,6 +1,6 @@
 # Agent For All
 
-> A personal AI agent for Israeli consumers that lives inside the messaging app they already use — WhatsApp or Telegram. No app to install, Hebrew-first, available 24/7. Plans: ₪100, ₪200 or ₪400 per month including VAT, with 1,000 / 2,500 / 6,000 monthly credits (a typical message costs about 2 credits); 7-day free trial with 400 credits and no credit card; credit top-ups from ₪20 (₪1 = 20 credits) that never expire. Site language: Hebrew (he-IL).
+> A personal AI agent for Israeli consumers that lives inside the messaging app they already use — WhatsApp or Telegram. No app to install, Hebrew-first, available 24/7. Plans: ₪100, ₪200 or ₪400 per month including VAT, with 2,500 / 6,500 / 14,500 monthly credits (a typical message costs about 2 credits), or yearly at 10% off (₪1,080 / ₪2,160 / ₪4,320); 7-day free trial with 400 credits and no credit card; credit top-ups from ₪20 (₪1 = 40 credits) that never expire. Site language: Hebrew (he-IL).
 
 Agent For All gives each customer their own private AI assistant. The agent runs in an isolated per-customer container on a private server, and it is reached by sending an ordinary chat message — there is no separate app, dashboard chat, or browser extension required.
 
@@ -20,7 +20,7 @@ Business use: the agent handles the operational load of running a small business
 
 Positioning: most Hebrew-language AI offerings for businesses are customer-facing bots that answer *your customers* (סוכן AI לעסקים — customer service, lead qualification, sales automation). Agent For All is the other direction: a private agent that works for *you* — the owner, the freelancer, the person — on your own work and your own life, in the messaging app you already use.
 
-Company facts: Israeli company serving customers in Israel, Hebrew and English support, contact phone +972-55-250-6938. Pricing: three plans — ₪100, ₪200 or ₪400 per month including VAT — with 1,000 / 2,500 / 6,000 monthly credits; 7-day free trial (400 credits, no card); top-ups from ₪20, ₪1 = 20 credits, never expire. Cancel any time; access continues to the end of the paid period.
+Company facts: Israeli company serving customers in Israel, Hebrew and English support, contact phone +972-55-250-6938. Pricing: three plans — ₪100, ₪200 or ₪400 per month including VAT — with 2,500 / 6,500 / 14,500 monthly credits, or yearly at 10% off with the year's credits up front; 7-day free trial (400 credits, no card); top-ups from ₪20, ₪1 = 40 credits, never expire. Cancel any time; access continues to the end of the paid period.
 
 ## Blog (Hebrew guides)
 

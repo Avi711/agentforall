@@ -8,6 +8,7 @@ import {
   UnknownProviderError,
   WebhookVerificationError,
 } from "../../src/lib/billing/errors";
+import { PLANS } from "../../src/lib/billing/pricing";
 import { signBody, verifyBodySignature } from "../../src/lib/billing/provider/hmac";
 import { MockPaymentProvider } from "../../src/lib/billing/providers/mock/adapter";
 import { readMockProviderConfig } from "../../src/lib/billing/providers/mock/config";
@@ -37,9 +38,10 @@ test("createCheckout points at the local mock page with the session id", async (
     userId: USER.id,
     email: USER.email,
     name: USER.name,
+    interval: "month",
     mode: "subscription",
     productCode: "standard",
-    description: "סטנדרט",
+    credits: 6500,
     amountAgorot: 20000,
     currency: "ILS",
     successUrl: "https://app.example/ok",
@@ -228,7 +230,7 @@ test("simulator drives a full mock checkout through the real webhook path", asyn
   assert.equal(session.status, "completed");
   assert.equal((await service.getStatus(USER)).entitled, true);
   assert.equal(h.payments.rows[0]?.amountAgorot, 20000);
-  assert.equal(h.grants.rows.find((g) => g.kind === "plan")?.credits, 2500);
+  assert.equal(h.grants.rows.find((g) => g.kind === "plan")?.credits, PLANS.standard.includedCredits);
 
   await assert.rejects(simulator.complete(USER, session.id, "failure"), CheckoutAlreadySettledError);
 });

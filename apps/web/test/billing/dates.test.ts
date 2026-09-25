@@ -18,6 +18,7 @@ test("addMonths keeps the day when it fits and rolls over years", () => {
 
 test("addInterval maps plan intervals", () => {
   assert.equal(addInterval(iso("2026-01-31T00:00:00.000Z"), "month").toISOString(), "2026-02-28T00:00:00.000Z");
+  assert.equal(addInterval(iso("2028-02-29T00:00:00.000Z"), "year").toISOString(), "2029-02-28T00:00:00.000Z");
 });
 
 test("laterOf picks the later instant and is stable on ties", () => {

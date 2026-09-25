@@ -26,8 +26,8 @@ export function isSettledStatus(status: SubscriptionStatus): boolean {
 // An event still `received` after this long was abandoned mid-flight (function killed) and may be retried.
 export const ABANDONED_EVENT_MINUTES = 10;
 
-// Deliveries after which a failing event is acknowledged instead of retried, so a poison message cannot loop.
-export const MAX_EVENT_ATTEMPTS = 25;
+// Outlasts Paddle's 60 deliveries over 3 days; past it a failing event is acknowledged so a poison message cannot loop.
+export const MAX_EVENT_ATTEMPTS = 60;
 
 export interface Subscription {
   id: string;

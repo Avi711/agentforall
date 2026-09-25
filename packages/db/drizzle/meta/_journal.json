@@ -169,6 +169,13 @@
       "when": 1790022576365,
       "tag": "0023_auth_rate_limit",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1790336328895,
+      "tag": "0024_checkout_provider_ref",
+      "breakpoints": true
     }
   ]
 }
