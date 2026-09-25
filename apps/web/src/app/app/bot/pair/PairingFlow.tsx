@@ -46,7 +46,6 @@ export function PairingFlow({ botId, botName, ownerNumber, suggestedNumber }: Pr
   const router = useRouter();
   const [owner, setOwner] = useState<string | null>(ownerNumber);
   const [step, setStep] = useState<Step>(ownerNumber ? "ready" : "number");
-  // Asked once: changing the owner number mid-link goes straight back to the code.
   const [botPhoneReady, setBotPhoneReady] = useState(false);
   const [tab, setTab] = useState<Tab>("qr");
   const [status, setStatus] = useState<PairStatus | null>(null);
@@ -84,7 +83,6 @@ export function PairingFlow({ botId, botName, ownerNumber, suggestedNumber }: Pr
     }
   }
 
-  // The pairing, and its short-lived code, starts only once the owner says the bot's WhatsApp is open.
   useEffect(() => {
     if (step !== "link" || !owner) return;
     const ac = new AbortController();
@@ -397,7 +395,6 @@ export function PairingFlow({ botId, botName, ownerNumber, suggestedNumber }: Pr
   );
 }
 
-// Shown before any code exists: a code scanned from the owner's personal WhatsApp links the wrong account.
 function BotPhoneReadyCard({ onReady, onBack }: { onReady: () => void; onBack: () => void }) {
   return (
     <div className="relative bg-white rounded-[24px] border border-sand-light shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)] p-5 sm:p-8 overflow-hidden">

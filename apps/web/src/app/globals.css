@@ -24,7 +24,7 @@
   --color-wa-light: #DCF8C6;
 }
 
-/* Interaction feel for every control, in the base layer so any utility still wins. */
+/* Base layer so any utility still wins. */
 @layer base {
   /* Tailwind 4 leaves buttons on the default cursor. */
   button:not(:disabled),

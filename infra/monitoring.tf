@@ -78,10 +78,11 @@ resource "google_monitoring_alert_policy" "vm_memory" {
   conditions {
     display_name = "Memory used above 85 percent for 5 minutes"
     condition_threshold {
-      filter          = "${local.fleet_filter} AND metric.type=\"agent.googleapis.com/memory/percent_used\" AND metric.labels.state=\"used\""
-      comparison      = "COMPARISON_GT"
-      threshold_value = 85
-      duration        = "300s"
+      filter                  = "${local.fleet_filter} AND metric.type=\"agent.googleapis.com/memory/percent_used\" AND metric.labels.state=\"used\""
+      comparison              = "COMPARISON_GT"
+      threshold_value         = 85
+      duration                = "300s"
+      evaluation_missing_data = "EVALUATION_MISSING_DATA_INACTIVE"
 
       aggregations {
         alignment_period   = "60s"
@@ -129,10 +130,11 @@ resource "google_monitoring_alert_policy" "vm_disk_warning" {
   conditions {
     display_name = "Disk used above 75 percent"
     condition_threshold {
-      filter          = local.disk_used_filter
-      comparison      = "COMPARISON_GT"
-      threshold_value = 75
-      duration        = "300s"
+      filter                  = local.disk_used_filter
+      comparison              = "COMPARISON_GT"
+      threshold_value         = 75
+      duration                = "300s"
+      evaluation_missing_data = "EVALUATION_MISSING_DATA_INACTIVE"
 
       aggregations {
         alignment_period   = "60s"
@@ -151,10 +153,11 @@ resource "google_monitoring_alert_policy" "vm_disk_critical" {
   conditions {
     display_name = "Disk used above 85 percent"
     condition_threshold {
-      filter          = local.disk_used_filter
-      comparison      = "COMPARISON_GT"
-      threshold_value = 85
-      duration        = "300s"
+      filter                  = local.disk_used_filter
+      comparison              = "COMPARISON_GT"
+      threshold_value         = 85
+      duration                = "300s"
+      evaluation_missing_data = "EVALUATION_MISSING_DATA_INACTIVE"
 
       aggregations {
         alignment_period   = "60s"

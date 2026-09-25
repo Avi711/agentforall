@@ -38,7 +38,7 @@ Reference implementations to mirror:
 - Named exports only. No `export default` in backend code.
 - Async functions handle errors via try/catch or a Result. Never swallow exceptions silently.
   Empty `catch {}` is allowed only for documented sentinel patterns (health probes, best-effort cleanup) with a one-line comment explaining why.
-- **Comments: short or none.** Code should be self-explanatory. Only write a comment when the WHY is non-obvious (hidden constraint, subtle invariant, workaround). One line max — no multi-line JSDoc preambles, no "explains what the code does" comments, no SQL file banners. Applies to `.ts`, `.tsx`, `.sql`, everywhere.
+- **Comments: none by default.** Needing a comment means the code is not readable yet: rename or restructure first. A comment that restates a name, a signature or what the code does is redundant; delete it. The only exception is a one-line WHY that no naming can carry (external constraint, measured fact, workaround). No JSDoc preambles, no banners, no repeated comments. Applies to `.ts`, `.tsx`, `.css`, `.sql`, `.tf`, `.sh`, everywhere.
 - **Simple, robust, reusable.** No hacks, no smells. Reuse the existing pattern; extract on the second copy.
 - **UI:** professional, nothing childish; clickable must look clickable. Busy states use `BusyLabel` / `Spinner` from `app/app/Marks.tsx`.
 

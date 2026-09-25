@@ -5,11 +5,9 @@ import { FLOW_BUTTON } from "./flow-buttons";
 interface Props {
   title: string;
   children: ReactNode;
-  // Opens the chat with the bot; absent when there is nowhere to send the owner.
   chat?: { href: string; label: string; icon?: ReactNode };
 }
 
-// The closing screen of every connect flow. The home link replaces history so Back never re-enters a finished flow.
 export function ConnectedCard({ title, children, chat }: Props) {
   return (
     <div className="mx-auto max-w-md space-y-5 rounded-[24px] border border-sand-light bg-white p-6 text-center shadow-sm sm:p-10">
