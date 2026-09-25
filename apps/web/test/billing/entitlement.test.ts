@@ -46,7 +46,7 @@ test("evaluateSubscription: no subscription", () => {
 test("computeEntitlement: paid state outranks trial and local overrides", () => {
   const result = computeEntitlement({
     subscription: subscription(),
-    trial: { kind: "active", expiresAt: at(HOUR_MS).toISOString(), remainingCredits: 10 },
+    trial: { kind: "active", expiresAt: at(HOUR_MS).toISOString(), remainingCredits: 10, daysLeft: 1 },
     betaAccess: true,
     enforcement: false,
     now: NOW,
@@ -56,7 +56,7 @@ test("computeEntitlement: paid state outranks trial and local overrides", () => 
 
 test("computeEntitlement: trial states, beta access, and enforcement rescue in that order", () => {
   const base = { subscription: null, betaAccess: false, enforcement: true, now: NOW };
-  assert.deepEqual(computeEntitlement({ ...base, trial: { kind: "active", expiresAt: at(HOUR_MS).toISOString(), remainingCredits: 10 } }), { entitled: true, reason: "trial" });
+  assert.deepEqual(computeEntitlement({ ...base, trial: { kind: "active", expiresAt: at(HOUR_MS).toISOString(), remainingCredits: 10, daysLeft: 1 } }), { entitled: true, reason: "trial" });
   assert.deepEqual(computeEntitlement({ ...base, trial: { kind: "available" } }), { entitled: true, reason: "trial_available" });
   assert.deepEqual(computeEntitlement({ ...base, trial: USED }), { entitled: false, reason: "no_subscription" });
   assert.deepEqual(computeEntitlement({ ...base, trial: USED, betaAccess: true }), { entitled: true, reason: "beta_access" });

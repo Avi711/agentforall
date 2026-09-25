@@ -46,7 +46,6 @@ import type {
 import {
   MAX_OPEN_CHECKOUTS_PER_HOUR,
   PLANS,
-  PLAN_CATALOGUE,
   TOPUP_MAX_ILS,
   TOPUP_MIN_ILS,
   TOPUP_TERMS,
@@ -89,18 +88,14 @@ export interface SubscriptionView {
 }
 
 export interface BillingStatus {
-  // Null while no provider is configured.
   provider: PaymentProviderName | null;
   available: boolean;
   enforcement: boolean;
   entitled: boolean;
   reason: EntitlementReason;
-  // True when access comes from a paid subscription rather than trial/beta/enforcement-off.
   paid: boolean;
-  // What a user short on credits should do next: top-ups are for subscribers, and with no provider only support can help.
   creditsAction: CreditsAction;
   plan: Plan;
-  plans: readonly Plan[];
   subscription: SubscriptionView | null;
   capabilities: ProviderCapabilities;
   credits: CreditSummary;
@@ -138,7 +133,7 @@ export interface BillingServiceDeps {
   credits: CreditService;
   enforcement: boolean;
   appUrl: string;
-  // Runs work after the response (Next's `after`): a provider expects its webhook answered within seconds. Inline when absent.
+  // Paddle expects a webhook answer within 5 seconds.
   background?: (work: Promise<unknown>) => void;
   now?: () => Date;
   logger?: BillingLogger;
@@ -146,7 +141,6 @@ export interface BillingServiceDeps {
 
 interface CheckoutProduct {
   kind: CheckoutKind;
-  // Null for a one-time charge.
   interval: BillingInterval | null;
   productCode: string;
   credits: number;
@@ -208,7 +202,6 @@ export class BillingService {
     return this.providers.active;
   }
 
-  // Ledger-only; safe for polling.
   async getStatus(user: BillingUser): Promise<BillingStatus> {
     const [subscription, credits] = await Promise.all([
       this.subscriptions.findCurrentByUserId(user.id),
@@ -217,7 +210,6 @@ export class BillingService {
     return this.buildStatus(user, subscription, credits);
   }
 
-  // Pulls spend from the gateway and re-caps bots; falls back to the ledger when the gateway is unreachable.
   async refreshStatus(user: BillingUser): Promise<BillingStatus> {
     const [subscription, credits] = await Promise.all([
       this.subscriptions.findCurrentByUserId(user.id),
@@ -279,12 +271,10 @@ export class BillingService {
     return session && session.userId === user.id ? session : null;
   }
 
-  // Null for a provider transaction that is not one of our checkouts (a renewal, a payment-method update).
   findCheckoutByProviderCheckoutId(provider: PaymentProviderName, providerCheckoutId: string): Promise<CheckoutSession | null> {
     return this.checkouts.findByProviderCheckoutId(provider, providerCheckoutId);
   }
 
-  // A reopened or bookmarked checkout must pass the rules a new one would, against the order it would replace.
   async isPayable(session: CheckoutSession): Promise<boolean> {
     if (session.status !== "pending") return false;
     if (session.kind !== "subscription") return true;
@@ -296,14 +286,12 @@ export class BillingService {
     return current.createdAt.getTime() <= session.createdAt.getTime() && !renewsWithin(current, now, PLAN_CHANGE_RENEWAL_BUFFER_MS);
   }
 
-  // A subscription that is already ending may be replaced; only a live, continuing one blocks a new checkout.
   async startCheckout(user: BillingUser, planCode: PlanCode): Promise<{ url: string }> {
     const current = await this.subscriptions.findCurrentByUserId(user.id);
     if (current && isContinuing(current, this.now())) throw new AlreadySubscribedError();
     return this.openCheckout(user, subscriptionProduct(PLANS[planCode]));
   }
 
-  // A new order at the new price; the current one is ended once that order's first charge lands. A prepaid year only changes by hand.
   async changePlan(user: BillingUser, planCode: PlanCode): Promise<{ url: string }> {
     const current = await this.requireEntitledSubscription(user.id);
     if (findPlan(current.planCode)?.interval === "year") throw new YearlyPlanChangeError();
@@ -312,7 +300,6 @@ export class BillingService {
     return this.openCheckout(user, subscriptionProduct(PLANS[planCode]));
   }
 
-  // Top-ups require a paid relationship; trial users are pointed at the subscription instead.
   async startTopup(user: BillingUser, amountIls: number): Promise<{ url: string }> {
     if (!isValidTopupAmountIls(amountIls)) throw new InvalidTopupAmountError(amountIls, TOPUP_MIN_ILS, TOPUP_MAX_ILS);
     await this.requireEntitledSubscription(user.id);
@@ -326,7 +313,6 @@ export class BillingService {
     });
   }
 
-  // Ends every standing order the user still has, not only the newest one.
   async cancel(user: BillingUser): Promise<BillingStatus> {
     const current = await this.requireEntitledSubscription(user.id);
     let latest = current;
@@ -685,7 +671,6 @@ export class BillingService {
     return { userId, note: !userId ? "account_deleted" : result.applied ? null : "stale_event" };
   }
 
-  // Unspent credits from the refunded charge go; spent ones cannot be taken back.
   private async applyRefund(provider: PaymentProviderName, event: PaymentRefunded): Promise<Applied> {
     const paymentId = event.providerPaymentId;
     if (!event.full) {
@@ -695,7 +680,7 @@ export class BillingService {
     const payment = await this.payments.markRefunded(provider, paymentId);
     const owners = await this.credits.revokeUnused([planGrantRef(provider, paymentId), topupGrantRef(provider, paymentId)]);
     if (!payment && owners.length === 0) throw new EventProcessingError("unknown_payment", null);
-    // A deleted account keeps its payment rows with no user; there is nothing left to re-cap.
+    // A deleted account's payment rows keep no user.
     const userId = payment?.userId ?? owners[0] ?? null;
     if (userId) await this.recapAfterLedgerWrite(userId);
     this.log.warn("payment refunded", { provider, paymentId, userId });
@@ -808,7 +793,6 @@ export class BillingService {
       paid,
       creditsAction: !active.available ? "contact" : paid ? "topup" : "subscribe",
       plan: resolvePlan(subscription?.planCode ?? null),
-      plans: PLAN_CATALOGUE,
       subscription: subscription ? toSubscriptionView(subscription) : null,
       capabilities: (owner ?? active).capabilities,
       credits,

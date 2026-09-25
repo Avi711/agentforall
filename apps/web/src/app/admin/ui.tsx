@@ -1,5 +1,3 @@
-import { DAY_MS } from "@/lib/billing/dates";
-
 const TZ = "Asia/Jerusalem";
 
 const DATE = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: TZ });
@@ -44,11 +42,6 @@ export function usd(cents: number): string {
 
 export function int(value: number): string {
   return INT.format(value);
-}
-
-export function daysUntil(iso: string): number {
-  const d = parse(iso);
-  return d ? Math.ceil((d.getTime() - Date.now()) / DAY_MS) : 0;
 }
 
 export function Panel({ children, className = "" }: { children: React.ReactNode; className?: string }) {

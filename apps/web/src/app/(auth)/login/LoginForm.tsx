@@ -6,7 +6,8 @@ import { authErrorMessage, type AuthFailure } from "@/lib/auth/error-messages";
 import { useTurnstile } from "@/lib/auth/turnstile";
 import { MAX_NAME_LENGTH, MIN_PASSWORD_LENGTH } from "@/lib/auth/policy";
 import { BusyLabel } from "@/app/app/Marks";
-import { AuthAlert, CaptchaSlot, Field, PasswordInput } from "@/components/auth/AuthFields";
+import { CaptchaSlot, Field, PasswordInput } from "@/components/auth/AuthFields";
+import { ErrorAlert } from "@/components/ErrorAlert";
 import { AUTH_INPUT, AUTH_LINK, AUTH_PRIMARY, AUTH_SECONDARY, NEW_PASSWORD_HINT } from "@/components/auth/styles";
 import type { FormMode } from "./modes";
 
@@ -156,7 +157,7 @@ export function LoginForm({
   const captcha = <CaptchaSlot slotRef={turnstile.containerRef} />;
   const messages = (
     <>
-      <AuthAlert>{error}</AuthAlert>
+      <ErrorAlert>{error}</ErrorAlert>
       {notice ? <p role="status" className="text-sm text-espresso bg-cream-dark rounded-lg p-3">{notice}</p> : null}
     </>
   );
@@ -211,7 +212,7 @@ export function LoginForm({
 
   return (
     <div className="space-y-5">
-      <AuthAlert>{urlError}</AuthAlert>
+      <ErrorAlert>{urlError}</ErrorAlert>
       <button
         type="button"
         onClick={() => google.start(redirectTo)}
@@ -221,7 +222,7 @@ export function LoginForm({
         <GoogleMark />
         <span>המשך עם Google</span>
       </button>
-      <AuthAlert>{google.error}</AuthAlert>
+      <ErrorAlert>{google.error}</ErrorAlert>
       <div className="flex items-center gap-3 text-xs text-espresso-light" aria-hidden="true">
         <span className="h-px flex-1 bg-sand-light" />
         או עם מייל

@@ -29,9 +29,7 @@ export function PaddleCheckout({
     let completed = false;
     const onEvent = (event: PaddleEventData) => {
       if (event.name === CheckoutEventNames.CHECKOUT_COMPLETED) completed = true;
-      // An already-paid or cancelled transaction never opens.
       if (event.name === CheckoutEventNames.CHECKOUT_ERROR && active) setFailed(true);
-      // Closing the overlay is not a failure: the user goes back to settings and can try again.
       if (event.name === CheckoutEventNames.CHECKOUT_CLOSED && !completed) window.location.assign(exitPath);
     };
     initializePaddle({
@@ -41,10 +39,9 @@ export function PaddleCheckout({
       checkout: {
         settings: {
           displayMode: "overlay",
-          // Email, country and card on one screen instead of two steps.
           variant: "one-page",
           successUrl: new URL(successPath, window.location.origin).toString(),
-          // The email is the Paddle customer. A discount, or a tax number on our VAT-inclusive price, can lower the total below the amount check.
+          // A discount or a tax number can lower the total below the amount check.
           allowLogout: false,
           showAddDiscounts: false,
           showAddTaxId: false,

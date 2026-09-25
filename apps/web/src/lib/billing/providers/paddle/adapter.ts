@@ -83,7 +83,6 @@ export class PaddlePaymentProvider implements PaymentProvider {
     this.planByPriceId = new Map([...config.priceIds].map(([code, priceId]) => [priceId, code]));
   }
 
-  // The customer lands on our own page, which opens Paddle's overlay for this transaction.
   async createCheckout(input: CreateCheckoutInput): Promise<CreateCheckoutResult> {
     const transaction = await this.api.createTransaction({
       item: this.itemFor(input),
@@ -116,7 +115,6 @@ export class PaddlePaymentProvider implements PaymentProvider {
     return this.api.createPortalUrl(subscription.customer_id, id);
   }
 
-  // Paddle's link is our payment page with the transaction attached; that page returns to settings.
   async getUpdatePaymentMethodUrl(id: string, _returnUrl: string): Promise<string | null> {
     const transaction = await this.api.getPaymentMethodUpdateTransaction(id);
     return transaction.checkout?.url ?? null;
@@ -169,7 +167,6 @@ export class PaddlePaymentProvider implements PaymentProvider {
     }
   }
 
-  // Null = an event this integration does not act on.
   private toProviderEvent(base: EventBase, data: unknown): ProviderEvent | null {
     if (base.eventType === "transaction.completed") return this.toPayment(base, parseData(PaddleTransactionSchema, data));
     if (SUBSCRIPTION_EVENTS.has(base.eventType)) {

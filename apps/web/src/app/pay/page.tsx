@@ -26,7 +26,6 @@ export default async function PayPage({
   if (!query.success) notFound();
 
   const billing = getBillingService();
-  // Paddle.js opens a `_ptxn` transaction by itself; if it is one of our checkouts, it must still be payable.
   if ("_ptxn" in query.data) {
     const ours = await billing.findCheckoutByProviderCheckoutId("paddle", query.data._ptxn);
     if (ours && !(await billing.isPayable(ours))) redirect(SETTINGS_PATH);

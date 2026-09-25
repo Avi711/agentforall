@@ -58,7 +58,6 @@ export const billingCheckoutSessions = pgTable(
   },
   (t) => [
     index("idx_billing_checkout_sessions_user_created").on(t.userId, t.createdAt),
-    // A provider link (Paddle's `_ptxn` in its emails) names only the provider's checkout.
     uniqueIndex("idx_billing_checkout_sessions_provider_checkout").on(t.provider, t.providerCheckoutId),
   ],
 );
@@ -163,7 +162,6 @@ export const billingEvents = pgTable(
     providerSubscriptionId: varchar("provider_subscription_id", { length: 128 }),
     payload: jsonb("payload").notNull(),
     note: text("note"),
-    // Deliveries claimed so far; a poison event stops being retried past MAX_EVENT_ATTEMPTS.
     attempts: integer("attempts").notNull().default(1),
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
     processedAt: timestamp("processed_at", { withTimezone: true }),

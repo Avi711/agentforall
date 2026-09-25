@@ -4,6 +4,7 @@ import { errorMessage, type BillingLogger } from "../logger";
 import type { BotSpend, CreditGrantRepository, CreditUsageRepository, LlmBudgetPort } from "../ports";
 import { LOW_BALANCE_RATIO, TRIAL_CREDITS, TRIAL_DAYS, creditsFromUsdCents, usdCentsFromCredits } from "../pricing";
 import { attributeConsumption, availableCredits, currentAllowance, isGrantLive, remainingCredits } from "./allocation";
+import { runwayDays } from "./runway";
 
 const MAX_ADVANCE_ATTEMPTS = 3;
 const SYNC_ALL_CONCURRENCY = 4;
@@ -11,7 +12,7 @@ const SYNC_ALL_CONCURRENCY = 4;
 // Ledger view: `available` only says this account never had a trial grant; BillingService also checks the trial claim.
 export type TrialState =
   | { kind: "available" }
-  | { kind: "active"; expiresAt: string; remainingCredits: number }
+  | { kind: "active"; expiresAt: string; remainingCredits: number; daysLeft: number }
   | { kind: "used" };
 
 export interface CreditGrantView {
@@ -25,7 +26,7 @@ export interface CreditGrantView {
 
 export type OutOfCreditsReason = "trial-ended" | "plan-ended" | "credits-spent";
 
-// `out` is the only state in which the bot is stopped; `none` = nothing granted and nothing metered yet (a new account).
+// `out` is the only state in which the bot is stopped.
 export type BalanceState =
   | { kind: "none" }
   | { kind: "ok" }
@@ -34,14 +35,15 @@ export type BalanceState =
 
 export interface CreditSummary {
   available: number;
+  topupAvailable: number;
   allowance: number;
   consumed: number;
   unallocated: number;
   balance: BalanceState;
   trial: TrialState;
   grants: CreditGrantView[];
+  runwayDays: number | null;
   syncedAt: string | null;
-  // True when the last refresh could not reach the gateway for at least one bot.
   stale: boolean;
 }
 
@@ -82,7 +84,6 @@ export class CreditService {
     return trialStateOf(await this.grants.listByUserId(userId), this.now());
   }
 
-  // Idempotent per user; the caller decides eligibility.
   async startTrial(userId: string): Promise<boolean> {
     const grant = await this.grants.insertIfAbsent({
       userId,
@@ -127,7 +128,6 @@ export class CreditService {
     }
   }
 
-  // Ledger-only, one round-trip per table; every requested user gets a summary.
   async summaries(userIds: readonly string[]): Promise<Map<string, CreditSummary>> {
     const [grants, cursors] = await Promise.all([this.grants.listByUserIds(userIds), this.usage.listByUserIds(userIds)]);
     const byUser = new Map(userIds.map((id) => [id, { grants: [] as CreditGrant[], cursors: [] as CreditUsageCursor[] }]));
@@ -136,13 +136,11 @@ export class CreditService {
     return new Map([...byUser].map(([userId, entry]) => [userId, this.summarize(entry.grants, entry.cursors, false)]));
   }
 
-  // Ledger-only read for polling: no gateway round-trips.
   async summary(userId: string): Promise<CreditSummary> {
     const [grants, cursors] = await Promise.all([this.grants.listByUserId(userId), this.usage.listByUserId(userId)]);
     return this.summarize(grants, cursors, false);
   }
 
-  // Pulls spend, attributes it to grants, re-caps every live bot; with no credits the cap is what was already spent.
   async sync(userId: string): Promise<CreditSummary> {
     let grants = await this.grants.listByUserId(userId);
     const botIds = await this.llm.listLiveBotIds(userId);
@@ -161,7 +159,7 @@ export class CreditService {
     return this.summarize(grants, cursors, stale);
   }
 
-  // Charges everything the bot spent before its key disappears; throws so the caller can refuse the deletion.
+  // Throws when the spend cannot be read, so the caller refuses the deletion instead of losing that spend.
   async settleBot(userId: string, botId: string): Promise<void> {
     const grants = await this.grants.listByUserId(userId);
     const spend = await this.llm.readSpend(userId, botId);
@@ -240,6 +238,10 @@ export class CreditService {
     );
     return {
       available,
+      topupAvailable: availableCredits(
+        grants.filter((g) => g.kind === "topup"),
+        now,
+      ),
       allowance,
       consumed: cursors.reduce((sum, c) => sum + c.consumedCredits, 0),
       unallocated: cursors.reduce((sum, c) => sum + c.unallocatedCredits, 0),
@@ -253,6 +255,7 @@ export class CreditService {
         expiresAt: g.expiresAt?.toISOString() ?? null,
         live: isGrantLive(g, now),
       })),
+      runwayDays: runwayDays(grants, available, now),
       syncedAt: syncedAt?.toISOString() ?? null,
       stale,
     };
@@ -285,7 +288,12 @@ function trialStateOf(grants: readonly CreditGrant[], now: Date): TrialState {
   const trial = grants.find((g) => g.kind === "trial");
   if (!trial) return { kind: "available" };
   if (trial.expiresAt && isGrantLive(trial, now)) {
-    return { kind: "active", expiresAt: trial.expiresAt.toISOString(), remainingCredits: remainingCredits(trial) };
+    return {
+      kind: "active",
+      expiresAt: trial.expiresAt.toISOString(),
+      remainingCredits: remainingCredits(trial),
+      daysLeft: Math.ceil((trial.expiresAt.getTime() - now.getTime()) / DAY_MS),
+    };
   }
   return { kind: "used" };
 }

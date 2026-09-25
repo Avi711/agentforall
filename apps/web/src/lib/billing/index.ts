@@ -26,7 +26,6 @@ export interface BotLifecycleHooks {
   beforeBotDelete(userId: string, botId: string): Promise<void>;
 }
 
-// Composition root; billing has too many collaborators for the repo-only constructors smaller domains use.
 let cached: BillingService | undefined;
 
 export function getBillingService(): BillingService {
@@ -55,7 +54,6 @@ export function getBillingService(): BillingService {
   return cached;
 }
 
-// Null when Paddle is not configured, so its payment page does not exist.
 export function getPaddleClientConfig(): PaddleClientConfig | null {
   try {
     return readPaddleClientConfig(process.env);

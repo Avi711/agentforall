@@ -10,7 +10,6 @@ export interface PaddleConfig {
   environment: PaddleEnvironment;
   apiKey: string;
   webhookSecret: string;
-  // One catalogue price per plan code; top-ups are priced per checkout against a single product.
   priceIds: ReadonlyMap<PlanCode, string>;
   topupProductId: string;
   clientToken: string;

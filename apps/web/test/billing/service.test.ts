@@ -19,7 +19,7 @@ import {
   WebhookVerificationError,
   YearlyPlanChangeError,
 } from "../../src/lib/billing/errors";
-import { MAX_OPEN_CHECKOUTS_PER_HOUR, PLANS, PLAN_CODES, TRIAL_CREDITS, TRIAL_DAYS, creditsForTopupIls, usdCentsFromCredits, type PlanCode } from "../../src/lib/billing/pricing";
+import { MAX_OPEN_CHECKOUTS_PER_HOUR, PLANS, TRIAL_CREDITS, TRIAL_DAYS, creditsForTopupIls, usdCentsFromCredits, type PlanCode } from "../../src/lib/billing/pricing";
 import type { ProviderEvent } from "../../src/lib/billing/provider/types";
 import {
   BOT_ID,
@@ -966,12 +966,11 @@ describe("account deletion", () => {
 describe("status and entitlement", () => {
   const usedTrial = () => grant({ kind: "trial", credits: 400, usedCredits: 400, expiresAt: new Date(NOW.getTime() - 1) });
 
-  test("reflects enforcement, beta access, provider availability, and the plan catalogue", async () => {
+  test("reflects enforcement, beta access and provider availability", async () => {
     const relaxed = harness({ enforcement: false });
     relaxed.grants.rows.push(usedTrial());
     const open = await relaxed.service.getStatus(USER);
     assert.deepEqual({ entitled: open.entitled, reason: open.reason, paid: open.paid, action: open.creditsAction, sub: open.subscription }, { entitled: true, reason: "enforcement_disabled", paid: false, action: "subscribe", sub: null });
-    assert.deepEqual(open.plans.map((p) => p.code), [...PLAN_CODES]);
 
     const strict = harness({ enforcement: true });
     strict.grants.rows.push(usedTrial());

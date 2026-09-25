@@ -25,11 +25,13 @@ export function BotCard({
   bot: initialBot,
   credits,
   creditsAction,
+  showCredits,
   apps,
 }: {
   bot: BotSnapshot;
   credits: CreditSummary;
   creditsAction: CreditsAction;
+  showCredits: boolean;
   apps: readonly ShowcaseApp[];
 }) {
   const { refreshing, refresh } = useRefresh();
@@ -315,7 +317,7 @@ export function BotCard({
 
           <IntegrationsSection apps={apps} />
 
-          <CreditsSection credits={credits} action={creditsAction} />
+          {showCredits ? <CreditsSection credits={credits} action={creditsAction} /> : null}
 
           {state.restart ? (
             <button

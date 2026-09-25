@@ -6,7 +6,8 @@ import { authClient } from "@/lib/auth/client";
 import { authErrorMessage } from "@/lib/auth/error-messages";
 import { MIN_PASSWORD_LENGTH } from "@/lib/auth/policy";
 import { BusyLabel } from "@/app/app/Marks";
-import { AuthAlert, Field, PasswordInput } from "@/components/auth/AuthFields";
+import { Field, PasswordInput } from "@/components/auth/AuthFields";
+import { ErrorAlert } from "@/components/ErrorAlert";
 import { AUTH_LINK, AUTH_PRIMARY, NEW_PASSWORD_HINT } from "@/components/auth/styles";
 
 export function ResetPasswordForm({ token, linkError }: { token: string | null; linkError: string | null }) {
@@ -19,7 +20,7 @@ export function ResetPasswordForm({ token, linkError }: { token: string | null; 
   if (!token) {
     return (
       <div className="space-y-4 text-center">
-        <AuthAlert>{linkError}</AuthAlert>
+        <ErrorAlert>{linkError}</ErrorAlert>
         <Link href="/login?mode=forgot" className={`inline-block py-2 text-sm ${AUTH_LINK}`}>לבקשת קישור חדש</Link>
       </div>
     );
@@ -63,7 +64,7 @@ export function ResetPasswordForm({ token, linkError }: { token: string | null; 
         <PasswordInput id="new-password" value={password} onChange={setPassword} disabled={busy} isNew />
       </Field>
 
-      <AuthAlert>
+      <ErrorAlert>
         {error}
         {expired ? (
           <>
@@ -71,7 +72,7 @@ export function ResetPasswordForm({ token, linkError }: { token: string | null; 
             <Link href="/login?mode=forgot" className="underline underline-offset-4 font-medium">לבקשת קישור חדש</Link>
           </>
         ) : null}
-      </AuthAlert>
+      </ErrorAlert>
 
       <button
         type="submit"

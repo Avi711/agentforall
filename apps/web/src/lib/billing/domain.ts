@@ -16,7 +16,6 @@ export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 export type BillingEventStatus = (typeof BILLING_EVENT_STATUSES)[number];
 export type CreditGrantKind = (typeof CREDIT_GRANT_KINDS)[number];
 
-// A subscription in one of these states can no longer charge the user.
 export const SETTLED_SUBSCRIPTION_STATUSES: readonly SubscriptionStatus[] = ["canceled", "expired", "unpaid"];
 
 export function isSettledStatus(status: SubscriptionStatus): boolean {

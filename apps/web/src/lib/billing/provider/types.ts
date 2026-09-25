@@ -18,10 +18,8 @@ export interface CreateCheckoutInput {
   email: string;
   name: string | null;
   mode: CheckoutMode;
-  // How often a subscription charges; null for a one-time charge.
   interval: BillingInterval | null;
   productCode: string;
-  // What the buyer gets; each provider names it in its own page's language.
   credits: number;
   amountAgorot: number;
   currency: string;
@@ -73,7 +71,6 @@ export type ProviderEvent =
     })
   | (EventBase & {
       kind: "payment.succeeded";
-      // Null for a one-time charge (top-up).
       providerSubscriptionId: string | null;
       providerCustomerId: string | null;
       planCode: string | null;
@@ -117,7 +114,6 @@ export interface WebhookRequest {
 
 export interface PaymentProvider {
   readonly name: PaymentProviderName;
-  // False = credentials missing; every money operation rejects with BillingUnavailableError.
   readonly available: boolean;
   readonly capabilities: ProviderCapabilities;
   createCheckout(input: CreateCheckoutInput): Promise<CreateCheckoutResult>;

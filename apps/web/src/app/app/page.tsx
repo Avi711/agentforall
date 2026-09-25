@@ -17,6 +17,7 @@ import { BotCardSkeleton } from "./Skeleton";
 import { SHOWCASE_APPS } from "@/lib/integrations/catalog.he";
 import type { BillingStatus } from "@/lib/billing/service";
 import { CreditsActionLink } from "./credits-copy";
+import { TrialBar } from "./TrialBar";
 
 export const metadata: Metadata = {
   title: "הבית שלי — Agent For All",
@@ -61,7 +62,19 @@ async function HomeCard({ user }: { user: AuthenticatedUser }) {
   if (bot) {
     const whatsappCloudHealth = await whatsappCloudHealthOf(user.id, bot);
     const snapshot = toBotSnapshot(bot, { whatsappCloudHealth, whatsappCloudEnabled });
-    return <BotCard bot={snapshot} credits={billing.credits} creditsAction={billing.creditsAction} apps={SHOWCASE_APPS} />;
+    const trial = !billing.paid && billing.credits.trial.kind === "active" ? billing.credits.trial : null;
+    return (
+      <>
+        {trial ? <TrialBar trial={trial} credits={billing.credits} /> : null}
+        <BotCard
+          bot={snapshot}
+          credits={billing.credits}
+          creditsAction={billing.creditsAction}
+          showCredits={trial === null}
+          apps={SHOWCASE_APPS}
+        />
+      </>
+    );
   }
   if (!billing.entitled) return <SubscribeCard status={billing} />;
   return (

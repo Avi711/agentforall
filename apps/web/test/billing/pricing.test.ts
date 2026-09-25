@@ -11,16 +11,30 @@ import {
   YEARLY_DISCOUNT_PERCENT,
   agorotFromIls,
   creditsForTopupIls,
+  creditsRatio,
   creditsFromUsdCents,
   findPlan,
   ilsFromAgorot,
+  isRecommendedPlan,
   isValidTopupAmountIls,
+  monthlyCredits,
   monthlyPriceIls,
   planAmountAgorot,
   planFor,
   resolvePlan,
   usdCentsFromCredits,
+  yearlySavingsIls,
 } from "../../src/lib/billing/pricing";
+import { formatRatio } from "../../src/lib/billing/format";
+
+test("plans compare per month: a yearly plan's monthly credits, its savings in shekels, and its size against Basic", () => {
+  assert.equal(monthlyCredits(PLANS.standard_yearly), monthlyCredits(PLANS.standard));
+  assert.equal(yearlySavingsIls("standard"), PLANS.standard.priceIls * 12 - PLANS.standard_yearly.priceIls);
+  assert.equal(yearlySavingsIls("pro"), 480);
+  assert.equal(creditsRatio(PLANS.pro_yearly, PLANS.basic), creditsRatio(PLANS.pro, PLANS.basic));
+  assert.equal(formatRatio(creditsRatio(PLANS.standard, PLANS.basic)), "פי 2.6");
+  assert.deepEqual(PLAN_CATALOGUE.filter(isRecommendedPlan).map((p) => p.tier), [PLANS[DEFAULT_PLAN].tier, PLANS[DEFAULT_PLAN].tier]);
+});
 
 test("credits ↔ usd cents: consumption rounds up, ceilings round down, so a user is never over-capped", () => {
   assert.equal(creditsFromUsdCents(0), 0);

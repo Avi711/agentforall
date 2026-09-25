@@ -42,7 +42,6 @@ export interface SubscriptionStatePatch {
 
 export interface SubscriptionRepository {
   findCurrentByUserId(userId: string): Promise<Subscription | null>;
-  // Every subscription of the user that may still be charging (not canceled/expired/unpaid).
   listLiveByUserId(userId: string): Promise<Subscription[]>;
   findByProviderRef(provider: PaymentProviderName, providerSubscriptionId: string): Promise<Subscription | null>;
   upsertIfNewer(input: UpsertSubscriptionInput): Promise<UpsertSubscriptionResult>;
@@ -83,9 +82,7 @@ export interface NewPayment {
 
 export type PaymentApplication =
   | { outcome: "applied"; subscription: Subscription }
-  // The provider payment id was already recorded (redelivery).
   | { outcome: "duplicate" }
-  // Another writer changed the subscription first; re-read and retry.
   | { outcome: "conflict" };
 
 export interface FirstPaymentInput {
@@ -108,7 +105,6 @@ export interface PaymentRepository {
   // Payment row + subscription write in one transaction, so a crash can never leave money without state.
   recordFirstPayment(input: FirstPaymentInput): Promise<PaymentApplication>;
   recordRenewal(input: RenewalInput): Promise<PaymentApplication>;
-  // The paying user, or null when this payment was never recorded.
   markRefunded(provider: PaymentProviderName, providerPaymentId: string): Promise<{ userId: string | null } | null>;
 }
 
@@ -129,7 +125,6 @@ export interface CreditGrantRepository {
   revokeUnused(sourceRefs: readonly string[]): Promise<string[]>;
 }
 
-// `userId` is null once the claiming account was deleted; the claim itself stands.
 export interface TrialClaim {
   userId: string | null;
 }
@@ -173,7 +168,6 @@ export interface BotSpend {
   maxBudgetUsdCents: number | null;
 }
 
-// The LLM gateway seen through the orchestrator: read what a bot spent, cap what it may spend.
 export interface LlmBudgetPort {
   listLiveBotIds(userId: string): Promise<string[]>;
   readSpend(userId: string, botId: string): Promise<BotSpend>;

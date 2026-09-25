@@ -1,4 +1,3 @@
-// `npm run paddle:catalog`: creates the Paddle catalogue from pricing.ts idempotently and prints the env values the adapter needs.
 import { z } from "zod";
 import { PLAN_CATALOGUE, PLAN_TIERS, YEARLY_DISCOUNT_PERCENT, agorotFromIls, type Plan, type PlanTier } from "../src/lib/billing/pricing";
 import { paddleRequest, type PaddleConnection } from "../src/lib/billing/providers/paddle/client";

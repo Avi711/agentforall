@@ -62,19 +62,6 @@ export function BusyLabel({ busy, busyText, children }: { busy: boolean; busyTex
   );
 }
 
-export function OrnamentDivider({ className = "" }: { className?: string }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={`inline-flex items-center gap-2 text-sand ${className}`}
-    >
-      <span className="h-px w-10 bg-current" />
-      <span className="h-1 w-1 rounded-full bg-current" />
-      <span className="h-px w-10 bg-current" />
-    </span>
-  );
-}
-
 export type AvatarTone = "warm" | "muted" | "alert";
 
 export function BotAvatar({
@@ -163,22 +150,39 @@ function firstGlyph(value: string): string {
 
 export function SurfaceCard({
   as: Tag = "section",
+  id,
   className = "",
   cardRef,
   children,
 }: {
   as?: "section" | "article";
+  id?: string;
   className?: string;
   cardRef?: React.Ref<HTMLElement>;
   children: React.ReactNode;
 }) {
   return (
     <Tag
+      id={id}
       ref={cardRef}
       className={`relative bg-white rounded-[28px] border border-sand-light shadow-[0_1px_0_rgba(44,24,16,0.04),0_24px_60px_-32px_rgba(44,24,16,0.18)] overflow-hidden ${className}`}
     >
       <span aria-hidden className="absolute top-0 inset-x-12 h-px bg-gradient-to-r from-transparent via-sand-light to-transparent" />
       {children}
     </Tag>
+  );
+}
+
+export type Tone = "good" | "warn" | "muted";
+
+const TONE_DOT: Record<Tone, string> = { good: "bg-sage", warn: "bg-terra", muted: "bg-sand" };
+const TONE_TEXT: Record<Tone, string> = { good: "text-sage-dark", warn: "text-terra-dark", muted: "text-espresso-light" };
+
+export function StatusLabel({ tone, children }: { tone: Tone; children: ReactNode }) {
+  return (
+    <span className={`inline-flex items-center gap-2 text-[13px] font-bold ${TONE_TEXT[tone]}`}>
+      <span aria-hidden className={`h-2 w-2 rounded-full ${TONE_DOT[tone]}`} />
+      {children}
+    </span>
   );
 }

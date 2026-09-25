@@ -107,7 +107,6 @@ export class CheckoutAlreadySettledError extends BillingError {
   }
 }
 
-// This mailbox already had its trial and nothing else grants access.
 export class TrialUnavailableError extends BillingError {
   constructor() {
     super("no trial available and no active subscription", "payment_required", 402);
@@ -145,7 +144,6 @@ export class MalformedWebhookError extends BillingError {
   }
 }
 
-// Thrown by adapters when the gateway's API misbehaves; `retryable` drives the caller's backoff decision.
 export class PaymentProviderError extends BillingError {
   constructor(
     provider: string,

@@ -15,7 +15,6 @@ import { MOCK_SIGNATURE_HEADER, MockWebhookSchema, type MockWebhookEvent } from 
 
 const NO_REFERENCE = { checkoutSessionId: null } as const;
 
-// Local stand-in shaped like an Israeli hosted-page gateway: redirect out, callbacks per charge, no portal.
 export class MockPaymentProvider implements PaymentProvider {
   readonly name = "mock" as const;
   readonly available = true;
@@ -68,7 +67,6 @@ export class MockPaymentProvider implements PaymentProvider {
     return Promise.resolve(null);
   }
 
-  // Test/dev tooling: produce a delivery exactly as the mock gateway would send it.
   signedWebhook(event: MockWebhookEvent): WebhookRequest {
     const rawBody = JSON.stringify(event);
     const signature = signBody(this.config.webhookSecret, rawBody);

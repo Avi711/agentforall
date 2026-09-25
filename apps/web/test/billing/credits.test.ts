@@ -33,7 +33,10 @@ describe("grants", () => {
     await h.credits.startTrial(USER.id);
     const active = await h.credits.trialState(USER.id);
     assert.equal(active.kind, "active");
-    if (active.kind === "active") assert.equal(active.remainingCredits, TRIAL_CREDITS);
+    if (active.kind === "active") assert.deepEqual({ remaining: active.remainingCredits, daysLeft: active.daysLeft }, { remaining: TRIAL_CREDITS, daysLeft: TRIAL_DAYS });
+    now = new Date(NOW.getTime() + (TRIAL_DAYS - 1) * DAY_MS - 1);
+    const lastDay = await h.credits.trialState(USER.id);
+    assert.equal(lastDay.kind === "active" && lastDay.daysLeft, 2);
     now = new Date(NOW.getTime() + TRIAL_DAYS * DAY_MS + 1);
     assert.deepEqual(await h.credits.trialState(USER.id), { kind: "used" });
   });
@@ -220,6 +223,13 @@ describe("summary and cron", () => {
     const summary = await h.credits.summary(USER.id);
     assert.equal(h.llm.readCalls, reads);
     assert.deepEqual({ consumed: summary.consumed, available: summary.available, balance: summary.balance, syncedAt: summary.syncedAt }, { consumed: 800, available: 200, balance: { kind: "low" }, syncedAt: NOW.toISOString() });
+  });
+
+  test("top-up credits are reported apart from the period's", async () => {
+    const h = creditHarness();
+    h.grants.rows.push(grant({ credits: 2500, usedCredits: 500 }), grant({ kind: "topup", credits: 4000, usedCredits: 1000, expiresAt: null }));
+    const summary = await h.credits.summary(USER.id);
+    assert.deepEqual({ available: summary.available, topup: summary.topupAvailable }, { available: 5000, topup: 3000 });
   });
 
   test("balance flips to low exactly at the ratio and is none for an account with nothing granted or metered", async () => {

@@ -4,11 +4,6 @@ import { useState, type ReactNode } from "react";
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "@/lib/auth/policy";
 import { AUTH_INPUT } from "./styles";
 
-export function AuthAlert({ children }: { children: ReactNode }) {
-  if (!children) return null;
-  return <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">{children}</p>;
-}
-
 export function Field({ id, label, hint, children }: { id: string; label: string; hint?: string; children: ReactNode }) {
   return (
     <div>

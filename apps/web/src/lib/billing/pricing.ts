@@ -1,9 +1,6 @@
-// Every price, rate, and allowance lives here; grace windows are in entitlement.ts.
-
-// 1 credit = $0.005 of LiteLLM spend: a typical message is 1–4 credits, a typical month ~800.
+// 1 credit = $0.005 of LiteLLM spend.
 export const USD_CENTS_PER_CREDIT = 0.5;
 
-// Top-up price: ₪1 = 40 credits.
 export const CREDITS_PER_ILS = 40;
 
 export const PLAN_TIERS = ["basic", "standard", "pro"] as const;
@@ -39,7 +36,6 @@ export interface Plan {
   priceIls: number;
   currency: "ILS";
   interval: BillingInterval;
-  // Granted with each paid period (a yearly plan gets the whole year up front); unused plan credits expire with it.
   includedCredits: number;
 }
 
@@ -83,10 +79,27 @@ export function monthlyPriceIls(plan: Plan): number {
   return plan.priceIls / MONTHS_PER_INTERVAL[plan.interval];
 }
 
+export function isRecommendedPlan(plan: Plan): boolean {
+  return plan.tier === PLANS[DEFAULT_PLAN].tier;
+}
+
+export function monthlyCredits(plan: Plan): number {
+  return plan.includedCredits / MONTHS_PER_INTERVAL[plan.interval];
+}
+
+export function yearlySavingsIls(tier: PlanTier): number {
+  return planFor(tier, "month").priceIls * MONTHS_PER_INTERVAL.year - planFor(tier, "year").priceIls;
+}
+
+export function creditsRatio(plan: Plan, base: Plan): number {
+  return monthlyCredits(plan) / monthlyCredits(base);
+}
+
 export const TRIAL_CREDITS = 400;
-// Ceiling for a single admin top-up; larger amounts are a typo, not a policy.
+// Larger admin grants are a typo, not a policy.
 export const ADMIN_GRANT_MAX_CREDITS = 50_000;
 export const TRIAL_DAYS = 7;
+export const REFUND_WINDOW_DAYS = 14;
 
 // Any whole-shekel amount in range; the minimum keeps card-testing fraud out.
 export const TOPUP_MIN_ILS = 20;
@@ -108,17 +121,8 @@ export const TOPUP_TERMS: TopupTerms = {
   creditsPerIls: CREDITS_PER_ILS,
 };
 
-// User-facing hint: a typical message costs about this many credits.
-export const CREDITS_PER_MESSAGE_ESTIMATE = 2;
-
-export function estimatedMessages(credits: number): number {
-  return Math.floor(credits / CREDITS_PER_MESSAGE_ESTIMATE);
-}
-
-// Below this share of the current allowance the UI nudges toward a top-up.
 export const LOW_BALANCE_RATIO = 0.2;
 
-// Durable per-user cap on hosted checkout pages opened per hour.
 export const MAX_OPEN_CHECKOUTS_PER_HOUR = 5;
 
 export function isPlanCode(value: string): value is PlanCode {

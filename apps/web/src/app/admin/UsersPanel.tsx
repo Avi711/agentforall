@@ -16,7 +16,6 @@ import {
   Panel,
   Pill,
   Th,
-  daysUntil,
   formatDate,
   formatDateTime,
   formatTime,
@@ -533,7 +532,7 @@ function channelsOf(bot: AdminBot): string {
 
 function expiryOf(c: CreditSummary): string {
   if (c.trial.kind === "active") {
-    const days = daysUntil(c.trial.expiresAt);
+    const days = c.trial.daysLeft;
     return `Trial ends ${formatDate(c.trial.expiresAt)}${days > 0 ? ` (${days} day${days === 1 ? "" : "s"})` : ""}`;
   }
   const soonest = c.grants

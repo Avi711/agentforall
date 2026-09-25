@@ -10,7 +10,6 @@ import type {
   WebhookRequest,
 } from "../provider/types";
 
-// Stands in when the configured provider is missing credentials: status reads still work, money paths 503.
 export class DisabledPaymentProvider implements PaymentProvider {
   readonly available = false;
   readonly capabilities: ProviderCapabilities = {

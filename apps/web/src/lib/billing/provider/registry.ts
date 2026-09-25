@@ -12,7 +12,6 @@ import type { PaymentProvider, ProviderDeps } from "./types";
 
 type ProviderFactory = (env: Env, deps: ProviderDeps) => PaymentProvider;
 
-// Adding a provider = one adapter + one line here. Nothing else in the app changes.
 const FACTORIES: Record<PaymentProviderName, ProviderFactory> = {
   mock: (env) => new MockPaymentProvider(readMockProviderConfig(env)),
   paddle: (env, deps) => new PaddlePaymentProvider(readPaddleConfig(env), deps),

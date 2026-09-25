@@ -7,7 +7,7 @@ export interface RetryOptions {
   fetch?: typeof fetch;
 }
 
-// Retries network errors, timeouts, 429 and 5xx; any other answer is final. Only for idempotent requests.
+// Only for idempotent requests.
 export async function fetchWithRetry(url: string, init: RequestInit, options: RetryOptions): Promise<Response> {
   const send = options.fetch ?? fetch;
   for (let attempt = 1; ; attempt++) {

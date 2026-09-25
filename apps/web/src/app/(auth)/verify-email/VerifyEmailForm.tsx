@@ -6,7 +6,8 @@ import { authClient, useOnBfcacheRestore } from "@/lib/auth/client";
 import { authErrorMessage } from "@/lib/auth/error-messages";
 import { useTurnstile } from "@/lib/auth/turnstile";
 import { BusyLabel } from "@/app/app/Marks";
-import { AuthAlert, CaptchaSlot, Field, PasswordInput } from "@/components/auth/AuthFields";
+import { CaptchaSlot, Field, PasswordInput } from "@/components/auth/AuthFields";
+import { ErrorAlert } from "@/components/ErrorAlert";
 import { AUTH_LINK, AUTH_PRIMARY } from "@/components/auth/styles";
 import { CONFIRM_INTENT_COOKIE } from "@/lib/auth/policy";
 
@@ -63,12 +64,12 @@ export function VerifyEmailForm({ token, email, callbackURL }: { token: string; 
           <PasswordInput id="verify-password" value={password} onChange={setPassword} disabled={pending} isNew={false} />
         </Field>
         <CaptchaSlot slotRef={turnstile.containerRef} />
-        <AuthAlert>{error}</AuthAlert>
+        <ErrorAlert>{error}</ErrorAlert>
         {wrongPassword ? (
-          <AuthAlert>
+          <ErrorAlert>
             הסיסמה לא תואמת. שכחתם אותה? אפשר לבחור סיסמה חדשה, וזה גם יאשר את הכתובת.{" "}
             <Link href="/login?mode=forgot" className="underline underline-offset-4 font-medium">בחירת סיסמה חדשה</Link>
-          </AuthAlert>
+          </ErrorAlert>
         ) : null}
         <button type="submit" disabled={pending || !password} aria-busy={pending} className={AUTH_PRIMARY}>
           <BusyLabel busy={pending} busyText="מאשר…">אישור והמשך</BusyLabel>

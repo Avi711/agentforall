@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { LegalPage, WhatsAppLink } from "@/components/LegalPage";
 import { OperatorLine } from "@/components/OperatorLine";
+import { REFUND_WINDOW_DAYS } from "@/lib/billing/pricing";
 
 export const metadata: Metadata = {
   title: "מדיניות החזרים — Agent For All",
@@ -13,7 +14,7 @@ export default function RefundPage() {
       <section>
         <h2 className="mb-3 text-xl font-bold text-espresso">1. החזר על רכישה שלא נוצלה</h2>
         <p>
-          על מנוי או טעינת קרדיטים אפשר לקבל החזר מלא תוך 14 יום מיום התשלום, כל עוד לא נוצלו קרדיטים מאותו תשלום. עם ההחזר, הקרדיטים שנוספו באותו תשלום יורדו מהחשבון.
+          על מנוי או טעינת קרדיטים אפשר לקבל החזר מלא תוך {REFUND_WINDOW_DAYS} יום מיום התשלום, כל עוד לא נוצלו קרדיטים מאותו תשלום. עם ההחזר, הקרדיטים שנוספו באותו תשלום יורדו מהחשבון.
         </p>
       </section>
 

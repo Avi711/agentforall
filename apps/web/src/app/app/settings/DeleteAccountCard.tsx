@@ -4,7 +4,8 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { authClient, useGoogleSignIn } from "@/lib/auth/client";
 import { authErrorMessage, type AuthFailure } from "@/lib/auth/error-messages";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
-import { AuthAlert, Field, PasswordInput } from "@/components/auth/AuthFields";
+import { Field, PasswordInput } from "@/components/auth/AuthFields";
+import { ErrorAlert } from "@/components/ErrorAlert";
 import { AUTH_LINK } from "@/components/auth/styles";
 import { BusyLabel } from "../Marks";
 
@@ -155,7 +156,7 @@ export function DeleteAccountCard() {
 
       {error || google.error ? (
         <div className="mt-4">
-          <AuthAlert>{error ?? google.error}</AuthAlert>
+          <ErrorAlert>{error ?? google.error}</ErrorAlert>
         </div>
       ) : null}
     </section>

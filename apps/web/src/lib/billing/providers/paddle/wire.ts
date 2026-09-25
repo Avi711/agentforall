@@ -5,7 +5,6 @@ export const PADDLE_SIGNATURE_HEADER = "paddle-signature";
 // Our correlation key inside Paddle `custom_data`; Paddle copies it from the checkout transaction to the subscription.
 export const CHECKOUT_SESSION_KEY = "checkout_session_id";
 
-// Every catalogue price names its plan, so a retired price still resolves after the env map moves on.
 export const PRICE_PLAN_KEY = "agentforall_plan";
 
 // Paddle lets the buyer change quantity (1–100 by default) unless the price pins it; one unit is one grant.
