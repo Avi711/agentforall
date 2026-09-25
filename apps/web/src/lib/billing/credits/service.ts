@@ -20,6 +20,7 @@ export interface CreditGrantView {
   kind: CreditGrantKind;
   credits: number;
   usedCredits: number;
+  grantedAt: string;
   expiresAt: string | null;
   live: boolean;
 }
@@ -252,6 +253,7 @@ export class CreditService {
         kind: g.kind,
         credits: g.credits,
         usedCredits: g.usedCredits,
+        grantedAt: g.grantedAt.toISOString(),
         expiresAt: g.expiresAt?.toISOString() ?? null,
         live: isGrantLive(g, now),
       })),

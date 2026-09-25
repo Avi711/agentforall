@@ -25,6 +25,7 @@ import { BusyLabel, Spinner, SurfaceCard } from "../Marks";
 import { useActionRunner } from "../useActionRunner";
 import { usePolling } from "../usePolling";
 import { ChoosePlanHero, SubscriptionHero } from "./BillingHero";
+import { CreditHistory } from "./CreditHistory";
 import { CancelConfirm, ManageBilling, type ManageOption } from "./ManageBilling";
 import { PlanChangePanel, type PlanChangeNotice } from "./PlanChangePanel";
 import { TopupCard } from "./TopupCard";
@@ -241,6 +242,8 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
       {status.creditsAction === "topup" ? (
         <TopupCard terms={status.topup} urgent={status.credits.balance.kind === "low" || status.credits.balance.kind === "out"} />
       ) : null}
+
+      <CreditHistory credits={status.credits} />
 
       {managesBilling ? (
         <ManageBilling options={manageOptions} disabled={busy}>
