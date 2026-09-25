@@ -132,6 +132,7 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
         type="button"
         disabled={busy}
         aria-expanded={panel === "changePlan"}
+        aria-controls="change-plan"
         onClick={() => togglePanel("changePlan")}
         className={SECONDARY_ACTION}
       >
@@ -154,6 +155,7 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
       title: "אמצעי תשלום",
       detail: "עדכון הכרטיס לחיובים הבאים",
       pending: pending === "paymentMethod",
+      external: true,
       onSelect: updatePaymentMethod,
     });
   }
@@ -163,6 +165,7 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
       title: "חשבוניות ותשלומים",
       detail: "כל החיובים והקבלות",
       pending: pending === "portal",
+      external: true,
       onSelect: () => redirect("portal", fetchPortalUrl),
     });
   }
@@ -235,7 +238,9 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
         </Notice>
       ) : null}
 
-      {status.creditsAction === "topup" ? <TopupCard terms={status.topup} /> : null}
+      {status.creditsAction === "topup" ? (
+        <TopupCard terms={status.topup} urgent={status.credits.balance.kind === "low" || status.credits.balance.kind === "out"} />
+      ) : null}
 
       {managesBilling ? (
         <ManageBilling options={manageOptions} disabled={busy}>

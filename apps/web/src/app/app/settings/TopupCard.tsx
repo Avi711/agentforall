@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ErrorAlert } from "@/components/ErrorAlert";
-import { PRIMARY_ACTION } from "@/components/pricing/styles";
+import { PRIMARY_ACTION, SECONDARY_ACTION } from "@/components/pricing/styles";
 import { formatCredits, formatIls } from "@/lib/billing/format";
 import { DEFAULT_TOPUP_PRESET_ILS, creditsForTopupIls, type TopupTerms } from "@/lib/billing/pricing";
 import { SETTINGS_SECTION } from "@/lib/billing/urls";
@@ -19,10 +19,10 @@ const TILE_IDLE = "border-sand-light bg-white hover:border-sand hover:bg-cream";
 
 const RANGE =
   "h-1.5 w-full cursor-pointer appearance-none rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-4 disabled:cursor-not-allowed disabled:opacity-50 " +
-  "[&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-terra [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_1px_4px_rgba(44,24,16,0.25)] " +
-  "[&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-terra [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:shadow-[0_1px_4px_rgba(44,24,16,0.25)]";
+  "[&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-terra [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_1px_4px_rgba(44,24,16,0.25)] " +
+  "[&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-terra [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:shadow-[0_1px_4px_rgba(44,24,16,0.25)]";
 
-export function TopupCard({ terms }: { terms: TopupTerms }) {
+export function TopupCard({ terms, urgent }: { terms: TopupTerms; urgent: boolean }) {
   const [amount, setAmount] = useState(DEFAULT_TOPUP_PRESET_ILS);
   const topup = useActionRunner<"topup">();
   const busy = topup.pending !== null;
@@ -89,7 +89,7 @@ export function TopupCard({ terms }: { terms: TopupTerms }) {
           onClick={() => void topup.redirect("topup", () => startTopup(amount))}
           disabled={busy}
           aria-busy={busy}
-          className={`${PRIMARY_ACTION} sm:px-6`}
+          className={`${urgent ? PRIMARY_ACTION : SECONDARY_ACTION} sm:px-6`}
         >
           <BusyLabel busy={busy} busyText="מעבירים לתשלום…">
             טעינה ב־{formatIls(amount)}

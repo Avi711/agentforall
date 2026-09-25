@@ -1,19 +1,21 @@
 import type { ReactNode } from "react";
 import { DIALOG_ACTION } from "../action-buttons";
-import { BusyLabel, ChevronEnd, Spinner, SurfaceCard } from "../Marks";
+import { BusyLabel, ChevronEnd, SECTION_LABEL, Spinner, SurfaceCard } from "../Marks";
 
 export interface ManageOption {
   key: string;
   title: string;
   detail: string;
   pending: boolean;
+  external?: boolean;
   onSelect: () => void;
 }
 
 export function ManageBilling({ options, disabled, children }: { options: readonly ManageOption[]; disabled: boolean; children?: ReactNode }) {
   if (options.length === 0) return null;
   return (
-    <SurfaceCard className="px-6 py-2 sm:px-8">
+    <SurfaceCard className="px-6 pb-2 pt-6 sm:px-8">
+      <h2 className={SECTION_LABEL}>ניהול החיוב</h2>
       <ul className="divide-y divide-sand-light/70">
         {options.map((option) => (
           <li key={option.key}>
@@ -28,7 +30,7 @@ export function ManageBilling({ options, disabled, children }: { options: readon
                 <span className="text-[15px] font-semibold text-espresso">{option.title}</span>
                 <span className="text-[13px] text-espresso-light">{option.detail}</span>
               </span>
-              <span className="text-espresso-light">{option.pending ? <Spinner /> : <ChevronEnd />}</span>
+              <span className="text-espresso-light">{option.pending ? <Spinner /> : option.external ? <ExternalMark /> : <ChevronEnd />}</span>
             </button>
           </li>
         ))}
@@ -65,5 +67,16 @@ export function CancelConfirm({
         </button>
       </div>
     </div>
+  );
+}
+
+function ExternalMark() {
+  return (
+    <>
+      <span className="sr-only">(נפתח אצל ספק התשלומים)</span>
+      <svg aria-hidden viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+        <path d="M13 7 7 13M8 7h5v5" transform="scale(-1 1) translate(-20 0)" />
+      </svg>
+    </>
   );
 }

@@ -1,10 +1,18 @@
 import type { CreditSummary } from "@/lib/billing/credits/service";
-import type { CreditsAction } from "@/lib/billing/service";
+import type { CreditsAction, SubscriptionView } from "@/lib/billing/service";
 import { CreditsActionLink } from "./credits-copy";
 import { CreditsMeter } from "./CreditsMeter";
 import { SECTION_LABEL } from "./Marks";
 
-export function CreditsSection({ credits, action, planEndsAt }: { credits: CreditSummary; action: CreditsAction; planEndsAt: string | null }) {
+export function CreditsSection({
+  credits,
+  action,
+  subscription,
+}: {
+  credits: CreditSummary;
+  action: CreditsAction;
+  subscription: SubscriptionView | null;
+}) {
   if (credits.balance.kind === "none") return null;
 
   return (
@@ -12,7 +20,7 @@ export function CreditsSection({ credits, action, planEndsAt }: { credits: Credi
       <p className={`${SECTION_LABEL} mb-3`}>יתרת קרדיטים</p>
       <CreditsMeter
         credits={credits}
-        planEndsAt={planEndsAt}
+        subscription={subscription}
         size="sm"
         action={<CreditsActionLink action={action} className="font-medium underline" />}
       />

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { CreditSummary } from "@/lib/billing/credits/service";
+import type { SubscriptionView } from "@/lib/billing/service";
 import { formatCredits, formatDay } from "@/lib/billing/format";
 import { AnimatedCredits } from "./AnimatedCredits";
 import { OUT_OF_CREDITS_LABEL, runwayLabel } from "./credits-copy";
@@ -21,38 +22,34 @@ interface LegendItem {
   swatch: string;
 }
 
-// Two families: greens expire with the plan or the trial, honey is top-ups that never expire.
-const SWATCH = {
-  calm: { plan: "bg-sage", trial: "bg-sage-light" },
-  alert: { plan: "bg-terra", trial: "bg-terra-light" },
-} as const;
+function planPeriodLabel(subscription: SubscriptionView | null): string {
+  const end = subscription?.currentPeriodEnd;
+  if (!end) return "מהתוכנית";
+  const renews = !subscription.cancelAtPeriodEnd && subscription.status !== "canceled";
+  return renews ? `מהתוכנית · מתחדשים ב־${formatDay(end)}` : `מהתוכנית · בתוקף עד ${formatDay(end)}`;
+}
 
-function legendOf(credits: CreditSummary, planEndsAt: string | null, alert: boolean): LegendItem[] {
+// Plan and trial credits are spent first, so they read as one group beside top-ups that never expire.
+function legendOf(credits: CreditSummary, subscription: SubscriptionView | null, alert: boolean): LegendItem[] {
   const hasPlan = credits.grants.some((g) => g.kind === "plan" && g.live);
   if (!hasPlan && credits.topupAvailable === 0) return [];
-  const swatch = SWATCH[alert ? "alert" : "calm"];
-  const trialLeft = credits.trial.kind === "active" ? credits.trial.remainingCredits : 0;
-  const otherPeriodLeft = credits.available - credits.topupAvailable - trialLeft;
+  const periodLeft = credits.available - credits.topupAvailable;
   const items: LegendItem[] = [];
-  if (otherPeriodLeft > 0) {
-    const label = !hasPlan ? "לתקופה הנוכחית" : planEndsAt ? `מהתוכנית · בתוקף עד ${formatDay(planEndsAt)}` : "מהתוכנית";
-    items.push({ amount: otherPeriodLeft, label, swatch: swatch.plan });
+  if (periodLeft > 0) {
+    items.push({ amount: periodLeft, label: hasPlan ? planPeriodLabel(subscription) : "לתקופה הנוכחית", swatch: alert ? "bg-terra" : "bg-sage" });
   }
-  if (credits.trial.kind === "active" && trialLeft > 0) {
-    items.push({ amount: trialLeft, label: `מתקופת הניסיון · בתוקף עד ${formatDay(credits.trial.expiresAt)}`, swatch: swatch.trial });
-  }
-  if (credits.topupAvailable > 0) items.push({ amount: credits.topupAvailable, label: "מטעינות · בלי תאריך תפוגה", swatch: "bg-honey" });
+  if (credits.topupAvailable > 0) items.push({ amount: credits.topupAvailable, label: "מטעינות · לא פגים", swatch: "bg-honey" });
   return items;
 }
 
 export function CreditsMeter({
   credits,
-  planEndsAt = null,
+  subscription = null,
   size = "lg",
   action,
 }: {
   credits: CreditSummary;
-  planEndsAt?: string | null;
+  subscription?: SubscriptionView | null;
   size?: keyof typeof AMOUNT_SIZE;
   action?: ReactNode;
 }) {
@@ -60,8 +57,8 @@ export function CreditsMeter({
   if (balance.kind === "none") return null;
   const periodAvailable = available - topupAvailable;
   const alert = balance.kind === "low" || balance.kind === "out";
-  const legend = legendOf(credits, planEndsAt, alert);
-  const segments = legend.length > 0 ? legend : [{ amount: periodAvailable, swatch: SWATCH[alert ? "alert" : "calm"].plan }];
+  const legend = legendOf(credits, subscription, alert);
+  const segments = legend.length > 0 ? legend : [{ amount: periodAvailable, swatch: alert ? "bg-terra" : "bg-sage" }];
 
   return (
     <div className="flex flex-col gap-3">
@@ -72,7 +69,7 @@ export function CreditsMeter({
           <span className={`${AMOUNT_SIZE[size]} font-bold leading-none tracking-tight text-espresso tabular-nums`}>
             <AnimatedCredits value={available} />
           </span>
-          <span className="text-base text-espresso-light">מתוך {formatCredits(allowance)} קרדיטים</span>
+          <span className="text-base text-espresso-light">קרדיטים זמינים</span>
         </p>
       )}
       {runwayDays !== null ? <p className="text-sm text-espresso-light">{runwayLabel(runwayDays)}</p> : null}

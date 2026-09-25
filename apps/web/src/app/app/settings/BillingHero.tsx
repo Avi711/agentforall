@@ -115,7 +115,7 @@ export function SubscriptionHero({
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">{actions}</div>
       </div>
-      <CreditsMeter credits={status.credits} planEndsAt={status.subscription?.currentPeriodEnd ?? null} />
+      <CreditsMeter credits={status.credits} subscription={status.subscription} />
     </SurfaceCard>
   );
 }

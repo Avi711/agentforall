@@ -103,6 +103,7 @@ function Receipt({ receipt }: { receipt: PaymentReceipt }) {
       }
     >
       <SummaryRows rows={receipt.rows} />
+      <p className="text-xs text-espresso-light">הקבלה נשלחה אליכם במייל.</p>
     </ResultCard>
   );
 }

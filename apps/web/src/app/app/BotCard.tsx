@@ -16,7 +16,7 @@ import { ROW_ACTION_CLASS } from "./action-buttons";
 import type { ShowcaseApp } from "@/lib/integrations/catalog.he";
 import { WhatsappNumberConfirmDialog } from "./WhatsappNumberDialog";
 import type { CreditSummary } from "@/lib/billing/credits/service";
-import type { CreditsAction } from "@/lib/billing/service";
+import type { CreditsAction, SubscriptionView } from "@/lib/billing/service";
 import { CreditsActionLink, OUT_OF_CREDITS_LABEL } from "./credits-copy";
 
 type Channel = "whatsapp" | "telegram" | "whatsapp-cloud";
@@ -25,14 +25,14 @@ export function BotCard({
   bot: initialBot,
   credits,
   creditsAction,
-  planEndsAt,
+  subscription,
   showCredits,
   apps,
 }: {
   bot: BotSnapshot;
   credits: CreditSummary;
   creditsAction: CreditsAction;
-  planEndsAt: string | null;
+  subscription: SubscriptionView | null;
   showCredits: boolean;
   apps: readonly ShowcaseApp[];
 }) {
@@ -319,7 +319,7 @@ export function BotCard({
 
           <IntegrationsSection apps={apps} />
 
-          {showCredits ? <CreditsSection credits={credits} action={creditsAction} planEndsAt={planEndsAt} /> : null}
+          {showCredits ? <CreditsSection credits={credits} action={creditsAction} subscription={subscription} /> : null}
 
           {state.restart ? (
             <button

@@ -5,8 +5,7 @@ import { planLabel } from "@/lib/billing/format";
 import { PLANS, type BillingInterval, type Plan, type PlanCode } from "@/lib/billing/pricing";
 import { BusyLabel } from "../Marks";
 
-const CURRENT_PLAN_LABEL =
-  "inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-cream-dark px-5 text-[15px] font-semibold text-espresso-light";
+const STATIC_ACTION = "flex min-h-12 w-full items-center justify-center text-sm font-semibold text-espresso-light";
 
 export function PlanCheckout({
   onChoose,
@@ -32,7 +31,7 @@ export function PlanCheckout({
       disabled={disabled}
       renderAction={(plan, { current, className }) =>
         current || plan.code === scheduledPlan ? (
-          <span className={CURRENT_PLAN_LABEL}>{current ? "התוכנית הנוכחית" : "המעבר כבר נקבע"}</span>
+          <p className={STATIC_ACTION}>{current ? "זו התוכנית שלכם" : "המעבר כבר נקבע"}</p>
         ) : (
           <button
             type="button"

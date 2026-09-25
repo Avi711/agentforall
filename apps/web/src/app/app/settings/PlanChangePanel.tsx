@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ErrorAlert } from "@/components/ErrorAlert";
-import { formatAgorot, formatCredits, formatDate, planLabel } from "@/lib/billing/format";
+import { formatAgorot, formatCredits, formatDate, formatDay, planLabel } from "@/lib/billing/format";
 import { PLANS, monthlyCredits, type Plan, type PlanCode } from "@/lib/billing/pricing";
 import type { BillingStatus, PlanChangePreview } from "@/lib/billing/service";
 import { BillingClientError, changePlan, previewPlanChange } from "../billing/client";
@@ -32,9 +32,15 @@ export function PlanChangePanel({
   const { pending, error, run } = useActionRunner<PlanCode>();
   const [preview, setPreview] = useState<PlanChangePreview | null>(null);
   const [declined, setDeclined] = useState(false);
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const periodEnd = formatDate(status.subscription?.currentPeriodEnd ?? null);
   const target = preview ? PLANS[preview.plan] : null;
   const chargesNow = preview?.billing === "prorate_now" && preview.chargeNowAgorot !== null;
+  const renewalDay = status.subscription?.currentPeriodEnd ? formatDay(status.subscription.currentPeriodEnd) : null;
+
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, []);
 
   async function confirm(chosen: PlanChangePreview, plan: Plan) {
     try {
@@ -49,10 +55,10 @@ export function PlanChangePanel({
   }
 
   return (
-    <section aria-labelledby="change-plan-title" className="flex flex-col gap-4">
+    <section id="change-plan" aria-labelledby="change-plan-title" className="flex scroll-mt-24 flex-col gap-4">
       <header className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-1.5">
-          <h2 id="change-plan-title" className="font-display text-2xl text-espresso">
+          <h2 id="change-plan-title" ref={headingRef} tabIndex={-1} className="font-display text-2xl text-espresso focus:outline-none">
             מעבר לתוכנית אחרת
           </h2>
           <p className="text-sm leading-relaxed text-espresso-light">
@@ -91,7 +97,14 @@ export function PlanChangePanel({
           open
           title={`מעבר לתוכנית ${planLabel(target)}`}
           description={<PlanChangeSummary preview={preview} current={status.plan} target={target} periodEnd={periodEnd} />}
-          confirmLabel={chargesNow ? `אישור ותשלום ${formatAgorot(preview.chargeNowAgorot ?? 0)}` : "אישור המעבר"}
+          confirmLabel={
+            chargesNow
+              ? `אישור ותשלום ${formatAgorot(preview.chargeNowAgorot ?? 0)}`
+              : preview.billing === "at_renewal" && renewalDay
+                ? `מעבר ל${planLabel(target)} ב־${renewalDay}`
+                : "אישור המעבר"
+          }
+          cancelLabel={preview.billing === "at_renewal" ? `להישאר ב${planLabel(status.plan)}` : "ביטול"}
           busyLabel={preview.billing === "prorate_now" ? "מחייבים…" : "מעדכנים…"}
           onClose={() => setPreview(null)}
           onConfirm={() => confirm(preview, target)}
@@ -113,32 +126,38 @@ function PlanChangeSummary({
   periodEnd: string | null;
 }) {
   const nextChargeAt = formatDate(preview.nextChargeAt);
-  const nextCharge = preview.nextChargeAgorot !== null && nextChargeAt ? [{ label: "החיוב הבא", value: `${formatAgorot(preview.nextChargeAgorot)} ב־${nextChargeAt}` }] : [];
-  const monthly = { label: "קרדיטים בכל חודש", value: formatCredits(monthlyCredits(target)) };
+  const recurring = nextChargeAt
+    ? (
+        <SummaryGroup
+          title={`מ־${nextChargeAt}`}
+          rows={[
+            ...(preview.nextChargeAgorot !== null
+              ? [{ label: target.interval === "year" ? "כל שנה" : "כל חודש", value: formatAgorot(preview.nextChargeAgorot) }]
+              : []),
+            { label: "קרדיטים בחודש", value: formatCredits(monthlyCredits(target)) },
+          ]}
+        />
+      )
+    : null;
 
   if (preview.billing === "at_renewal") {
     return (
       <div className="flex flex-col gap-4">
+        <p className="font-semibold text-espresso">אין חיוב עכשיו.</p>
         <p>
-          אין חיוב עכשיו. תוכנית {planLabel(current)} והקרדיטים שלה נשארים עד {periodEnd ?? "סוף התקופה"}, ומשם ממשיכים בתוכנית{" "}
-          {planLabel(target)}.
+          תוכנית {planLabel(current)} והקרדיטים שלה נשארים עד {periodEnd ?? "החידוש"}. קרדיטים מהתוכנית שלא נוצלו עד אז לא עוברים הלאה,
+          וקרדיטים מטעינות נשארים.
         </p>
-        <SummaryRows rows={[...nextCharge, monthly]} />
+        {recurring}
       </div>
     );
   }
 
   const toYearly = target.interval !== current.interval;
-  const credit =
+  const creditNote =
     preview.creditAgorot > 0
-      ? [
-          {
-            label: toYearly ? "זיכוי על יתרת החודש" : `זיכוי על תוכנית ${planLabel(current)}`,
-            value: <span dir="ltr">−{formatAgorot(preview.creditAgorot)}</span>,
-          },
-        ]
-      : [];
-  const chargeNow = preview.chargeNowAgorot === null ? [] : [{ label: "לתשלום עכשיו", value: formatAgorot(preview.chargeNowAgorot) }];
+      ? `הסכום כולל זיכוי של ${formatAgorot(preview.creditAgorot)} על ${toYearly ? "יתרת החודש" : `יתרת תוכנית ${planLabel(current)}`}. `
+      : "";
   return (
     <div className="flex flex-col gap-4">
       <p>
@@ -146,12 +165,26 @@ function PlanChangeSummary({
           ? `תוכנית ${planLabel(target)} מתחילה היום לשנה שלמה.`
           : `תוכנית ${planLabel(target)} מתחילה מיד, והחיוב מכסה את יתרת התקופה הנוכחית.`}
       </p>
-      <SummaryRows
-        rows={[...credit, ...chargeNow, { label: "קרדיטים שנוספים עכשיו", value: formatCredits(preview.credits) }, monthly, ...nextCharge]}
+      <SummaryGroup
+        title="היום"
+        rows={[
+          ...(preview.chargeNowAgorot === null ? [] : [{ label: "לתשלום", value: formatAgorot(preview.chargeNowAgorot) }]),
+          { label: "קרדיטים שנוספים", value: formatCredits(preview.credits) },
+        ]}
       />
+      {recurring}
       <p className="text-xs">
-        החיוב מהכרטיס השמור במנוי, כולל מע״מ.{toYearly ? " שינוי של תוכנית שנתית אפשרי אחר כך רק דרכנו." : ""}
+        {creditNote}החיוב מהכרטיס השמור במנוי, כולל מע״מ.{toYearly ? " שינוי של תוכנית שנתית אפשרי אחר כך רק דרכנו." : ""}
       </p>
+    </div>
+  );
+}
+
+function SummaryGroup({ title, rows }: { title: string; rows: readonly { label: string; value: string }[] }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="text-xs font-semibold text-espresso-light">{title}</p>
+      <SummaryRows rows={rows} />
     </div>
   );
 }

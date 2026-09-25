@@ -9,6 +9,7 @@ interface Props {
   title: string;
   description: ReactNode;
   confirmLabel: string;
+  cancelLabel?: string;
   busyLabel: string;
   onClose: () => void;
   onConfirm: () => Promise<void>;
@@ -19,6 +20,7 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel,
+  cancelLabel = "ביטול",
   busyLabel,
   onClose,
   onConfirm,
@@ -90,7 +92,7 @@ export function ConfirmDialog({
             disabled={busy}
             className={DIALOG_ACTION.quiet}
           >
-            ביטול
+            {cancelLabel}
           </button>
           <button
             type="button"
