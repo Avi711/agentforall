@@ -51,10 +51,6 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
-export function fetchBillingStatus(): Promise<BillingStatus> {
-  return call<BillingStatus>("/api/billing/status", { cache: "no-store" });
-}
-
 export async function fetchCheckoutSessionStatus(sessionId: string): Promise<CheckoutSessionStatus> {
   const { status } = await call<{ status: CheckoutSessionStatus }>(`/api/billing/checkout/${sessionId}`, { cache: "no-store" });
   return status;

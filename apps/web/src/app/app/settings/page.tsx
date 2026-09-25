@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import { requireSession } from "@/lib/auth/session";
 import { getBillingService } from "@/lib/billing";
-import { CheckoutSessionQuerySchema } from "@/lib/billing/schemas";
-import { isCheckoutReturn } from "@/lib/billing/urls";
 import { toBillingUser } from "@/lib/billing/user";
 import { SurfaceCard } from "../Marks";
 import { ScrollToHashTarget } from "../ScrollToHashTarget";
@@ -16,17 +14,9 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-export default async function SettingsPage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
+export default async function SettingsPage() {
   const session = await requireSession("/login");
-  const params = await searchParams;
   const billing = await getBillingService().refreshStatus(toBillingUser(session.user));
-  const checkoutResult = isCheckoutReturn(params.checkout) ? params.checkout : null;
-  const returned = CheckoutSessionQuerySchema.safeParse(params);
-  const checkoutSessionId = checkoutResult && returned.success ? returned.data.session : null;
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6 px-4 pb-28 pt-10 sm:gap-8 sm:px-6 sm:pt-14">
@@ -35,7 +25,7 @@ export default async function SettingsPage({
         <p className="text-base text-espresso-light">המנוי, הקרדיטים והחשבון שלכם.</p>
       </header>
 
-      <BillingSection initial={billing} checkoutResult={checkoutResult} checkoutSessionId={checkoutSessionId} />
+      <BillingSection initial={billing} />
 
       <SurfaceCard className="px-6 py-2 sm:px-8">
         <h2 className="sr-only">פרטי חשבון</h2>

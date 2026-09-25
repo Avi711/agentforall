@@ -116,8 +116,8 @@ describe("checkout", () => {
     const input = first(h.provider.checkoutInputs);
     assert.equal(input.checkoutSessionId, session.id);
     assert.equal(input.mode, "subscription");
-    assert.equal(input.successUrl, `https://app.example/app/settings?checkout=success&session=${session.id}`);
-    assert.equal(input.failureUrl, `https://app.example/app/settings?checkout=failed&session=${session.id}`);
+    assert.equal(input.successUrl, `https://app.example/app/billing/return?session=${session.id}`);
+    assert.equal(input.failureUrl, input.successUrl);
     assert.equal(input.expiresAt.getTime(), NOW.getTime() + HOUR_MS);
   });
 

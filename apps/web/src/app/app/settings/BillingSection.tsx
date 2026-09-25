@@ -10,7 +10,7 @@ import { CREDITS_EXPLAINER } from "@/content/plans.he";
 import { formatDate } from "@/lib/billing/format";
 import { isPlanCode, type PlanCode } from "@/lib/billing/pricing";
 import type { BillingStatus } from "@/lib/billing/service";
-import { SETTINGS_SECTION, type CheckoutReturn } from "@/lib/billing/urls";
+import { SETTINGS_SECTION } from "@/lib/billing/urls";
 import {
   cancelSubscription,
   changePlan,
@@ -25,25 +25,14 @@ import { useActionRunner } from "../useActionRunner";
 import { ChoosePlanHero, SubscriptionHero } from "./BillingHero";
 import { CancelConfirm, ManageBilling, type ManageOption } from "./ManageBilling";
 import { TopupCard } from "./TopupCard";
-import { useCheckoutVerification, useForgetCheckoutReturn, type CheckoutVerification } from "./useCheckoutReturn";
 
 type PendingAction = "cancel" | "resume" | "portal" | "paymentMethod" | PlanCode;
 type Panel = "none" | "cancel" | "changePlan";
 
-export function BillingSection({
-  initial,
-  checkoutResult,
-  checkoutSessionId,
-}: {
-  initial: BillingStatus;
-  checkoutResult: CheckoutReturn | null;
-  checkoutSessionId: string | null;
-}) {
+export function BillingSection({ initial }: { initial: BillingStatus }) {
   const [status, setStatus] = useState(initial);
   const [panel, setPanel] = useState<Panel>("none");
   const { pending, error, run, redirect } = useActionRunner<PendingAction>();
-  const verification = useCheckoutVerification(checkoutResult === "success" ? checkoutSessionId : null, setStatus);
-  useForgetCheckoutReturn(checkoutResult !== null);
 
   const sub = status.subscription;
   const busy = pending !== null;
@@ -128,12 +117,10 @@ export function BillingSection({
     });
   }
 
-  const canChoosePlan = !managesBilling && status.available && !verification.verifying;
+  const canChoosePlan = !managesBilling && status.available;
 
   return (
     <div className="flex flex-col gap-6 sm:gap-8">
-      <CheckoutNotices checkoutResult={checkoutResult} verification={verification} />
-
       {overdue ? (
         <Notice tone="warn">
           החיוב האחרון נכשל. עדכנו אמצעי תשלום כדי שהסוכן ימשיך לעבוד, או{" "}
@@ -217,23 +204,6 @@ export function BillingSection({
       <ErrorAlert>{error}</ErrorAlert>
     </div>
   );
-}
-
-function CheckoutNotices({ checkoutResult, verification }: { checkoutResult: CheckoutReturn | null; verification: CheckoutVerification }) {
-  if (verification.verifying) return <Notice tone="info">מאמתים את התשלום מול ספק הסליקה… זה לוקח בדרך כלל כמה שניות.</Notice>;
-  if (verification.outcome === "completed") return <Notice tone="info">התשלום אושר. תודה!</Notice>;
-  if (verification.outcome === "timed_out") {
-    return (
-      <Notice tone="warn">
-        התשלום עדיין לא אושר אצלנו. אם חויבתם, הגישה תיפתח אוטומטית תוך דקות ספורות, ואם לא,{" "}
-        <WhatsAppChatLink text="היי, שילמתי אבל המנוי עדיין לא אושר">דברו איתנו</WhatsAppChatLink>.
-      </Notice>
-    );
-  }
-  if (checkoutResult === "failed" || verification.outcome === "failed") {
-    return <Notice tone="warn">התשלום לא הושלם ולא חויבתם. אפשר לנסות שוב.</Notice>;
-  }
-  return null;
 }
 
 function Notice({ tone, children }: { tone: "info" | "warn"; children: ReactNode }) {

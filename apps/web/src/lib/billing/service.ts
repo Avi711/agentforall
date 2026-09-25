@@ -71,7 +71,7 @@ import type {
   ProviderSubscription,
   WebhookRequest,
 } from "./provider/types";
-import { SETTINGS_PATH, settingsReturnPath, type CheckoutReturn } from "./urls";
+import { SETTINGS_PATH, checkoutReturnPath } from "./urls";
 
 const CHECKOUT_TTL_MS = HOUR_MS;
 const REUSED_CHECKOUT_MIN_LIFETIME_MS = HOUR_MS / 4;
@@ -435,8 +435,8 @@ export class BillingService {
       credits: product.credits,
       amountAgorot: product.amountAgorot,
       currency: "ILS",
-      successUrl: this.returnUrl("success", session.id),
-      failureUrl: this.returnUrl("failed", session.id),
+      successUrl: this.checkoutReturnUrl(session.id),
+      failureUrl: this.checkoutReturnUrl(session.id),
       expiresAt,
     });
     if (result.providerCheckoutId) {
@@ -835,8 +835,8 @@ export class BillingService {
     return computeEntitlement({ subscription, trial, betaAccess: user.betaAccess, enforcement: this.enforcement, now: this.now() });
   }
 
-  private returnUrl(checkout: CheckoutReturn, sessionId: string): string {
-    return `${this.appUrl}${settingsReturnPath(checkout, sessionId)}`;
+  private checkoutReturnUrl(sessionId: string): string {
+    return `${this.appUrl}${checkoutReturnPath(sessionId)}`;
   }
 }
 
