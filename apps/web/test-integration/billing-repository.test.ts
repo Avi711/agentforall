@@ -150,6 +150,23 @@ describe("billing repositories (postgres)", { skip: url ? false : "BILLING_TEST_
     assert.deepEqual({ sinceEpoch, sinceFuture, pendingNow, pendingLater }, { sinceEpoch: 3, sinceFuture: 0, pendingNow: true, pendingLater: false });
   });
 
+  test("the open checkout for a product is the newest pending one created at the provider and open past the cutoff", async () => {
+    const product = { userId, provider: "mock" as const, kind: "topup" as const, productCode: "topup_ils_50", credits: 2000, amountAgorot: 5000 };
+    const expiresAt = new Date(NOW.getTime() + 3600_000);
+    const query = { ...product, openUntil: NOW };
+    assert.equal(await checkouts.findReopenable(query), null);
+    const older = await checkouts.create({ ...product, expiresAt });
+    await checkouts.setProviderCheckoutId(older.id, `prov-${randomUUID()}`);
+    const newer = await checkouts.create({ ...product, expiresAt });
+    await checkouts.setProviderCheckoutId(newer.id, `prov-${randomUUID()}`);
+    await checkouts.create({ ...product, expiresAt });
+    assert.equal((await checkouts.findReopenable(query))?.id, newer.id);
+    assert.equal(await checkouts.findReopenable({ ...query, amountAgorot: 6000 }), null);
+    assert.equal(await checkouts.findReopenable({ ...query, openUntil: expiresAt }), null);
+    await checkouts.settle(newer.id, "failed", NOW);
+    assert.equal((await checkouts.findReopenable(query))?.id, older.id);
+  });
+
   test("a trial claim belongs to one mailbox and is idempotent for the same user only", async () => {
     const hash = `${userId}:hash`;
     assert.equal(await trialClaims.findClaimant(hash), null);

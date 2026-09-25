@@ -74,6 +74,7 @@ import type {
 import { SETTINGS_PATH, settingsReturnPath, type CheckoutReturn } from "./urls";
 
 const CHECKOUT_TTL_MS = HOUR_MS;
+const REUSED_CHECKOUT_MIN_LIFETIME_MS = HOUR_MS / 4;
 // A plan change must be paid before the old order's renewal locks it (Paddle: 30 minutes); the checkout lives an hour.
 const PLAN_CHANGE_RENEWAL_BUFFER_MS = 2 * HOUR_MS;
 const RENEWAL_ATTEMPTS = 3;
@@ -406,6 +407,11 @@ export class BillingService {
   private async openCheckout(user: BillingUser, product: CheckoutProduct): Promise<{ url: string }> {
     const provider = this.providers.active;
     const now = this.now();
+    const open = await this.findReopenableCheckout(user.id, provider.name, product, now);
+    if (open) {
+      this.log.info("checkout reopened", { userId: user.id, provider: provider.name, product: product.productCode, sessionId: open.id });
+      return { url: await provider.checkoutUrl(open.id) };
+    }
     await this.assertCheckoutAllowed(user.id, product.kind, now);
 
     const expiresAt = new Date(now.getTime() + CHECKOUT_TTL_MS);
@@ -444,6 +450,24 @@ export class BillingService {
       sessionId: session.id,
     });
     return { url: result.url };
+  }
+
+  private async findReopenableCheckout(
+    userId: string,
+    provider: PaymentProviderName,
+    product: CheckoutProduct,
+    now: Date,
+  ): Promise<CheckoutSession | null> {
+    const open = await this.checkouts.findReopenable({
+      userId,
+      provider,
+      kind: product.kind,
+      productCode: product.productCode,
+      credits: product.credits,
+      amountAgorot: product.amountAgorot,
+      openUntil: new Date(now.getTime() + REUSED_CHECKOUT_MIN_LIFETIME_MS),
+    });
+    return open && (await this.isPayable(open)) ? open : null;
   }
 
   private async createProviderCheckout(provider: PaymentProvider, input: CreateCheckoutInput): Promise<CreateCheckoutResult> {

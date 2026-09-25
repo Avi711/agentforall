@@ -117,6 +117,7 @@ export interface PaymentProvider {
   readonly available: boolean;
   readonly capabilities: ProviderCapabilities;
   createCheckout(input: CreateCheckoutInput): Promise<CreateCheckoutResult>;
+  checkoutUrl(checkoutSessionId: string): Promise<string>;
   // Establishes authenticity (signature or provider re-query) before returning; never trusts the body alone.
   parseWebhook(request: WebhookRequest): Promise<ProviderEvent>;
   // Null = the provider acknowledged but reports no state; the service derives the new state itself.

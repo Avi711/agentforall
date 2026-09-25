@@ -2,7 +2,7 @@ import { SkeletonBar, SkeletonCard, SkeletonPageHeader } from "../Skeleton";
 
 export default function Loading() {
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-10 sm:pt-14 pb-28 space-y-8 sm:space-y-10" aria-busy="true">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-10 sm:pt-14 pb-28 space-y-8 sm:space-y-10" aria-busy="true">
       <p className="sr-only" role="status">
         טוען את ההגדרות…
       </p>

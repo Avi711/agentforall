@@ -28,10 +28,14 @@ export class MockPaymentProvider implements PaymentProvider {
 
   constructor(private readonly config: MockProviderConfig) {}
 
-  createCheckout(input: CreateCheckoutInput): Promise<CreateCheckoutResult> {
+  async createCheckout(input: CreateCheckoutInput): Promise<CreateCheckoutResult> {
+    return { url: await this.checkoutUrl(input.checkoutSessionId), providerCheckoutId: `mock_chk_${input.checkoutSessionId}` };
+  }
+
+  checkoutUrl(checkoutSessionId: string): Promise<string> {
     const url = new URL("/app/billing/mock-checkout", this.config.appUrl);
-    url.searchParams.set("session", input.checkoutSessionId);
-    return Promise.resolve({ url: url.toString(), providerCheckoutId: `mock_chk_${input.checkoutSessionId}` });
+    url.searchParams.set("session", checkoutSessionId);
+    return Promise.resolve(url.toString());
   }
 
   parseWebhook(request: WebhookRequest): Promise<ProviderEvent> {

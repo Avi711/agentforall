@@ -195,11 +195,46 @@ describe("checkout", () => {
     assert.equal(await h.service.isPayable(last(h.checkouts.rows)), true);
   });
 
-  test("caps hosted pages per user per hour with a durable count", async () => {
+  test("caps hosted pages per user per hour with a durable count that includes abandoned ones", async () => {
     const h = harness();
-    for (let i = 0; i < MAX_OPEN_CHECKOUTS_PER_HOUR; i++) await h.service.startCheckout(USER, "standard");
+    for (let i = 0; i < MAX_OPEN_CHECKOUTS_PER_HOUR; i++) await h.checkouts.settle((await openSubscriptionCheckout(h)).id, "failed", NOW);
     await assert.rejects(h.service.startCheckout(USER, "standard"), TooManyCheckoutsError);
     await h.service.startCheckout({ ...USER, id: "user-2" }, "standard");
+  });
+
+  test("choosing the same product again reopens its checkout instead of opening another", async () => {
+    const h = harness();
+    const standard = await h.service.startCheckout(USER, "standard");
+    const pro = await h.service.startCheckout(USER, "pro");
+    assert.deepEqual(await h.service.startCheckout(USER, "standard"), standard);
+    assert.deepEqual(await h.service.startCheckout(USER, "pro"), pro);
+    assert.notDeepEqual(standard, pro);
+    assert.deepEqual({ sessions: h.checkouts.rows.length, providerCheckouts: h.provider.callsTo("createCheckout").length }, { sessions: 2, providerCheckouts: 2 });
+  });
+
+  test("a checkout is reopened only while pending, created at the provider, and open long enough to pay", async () => {
+    let now = NOW;
+    const h = harness({ now: () => now });
+    const settled = await openSubscriptionCheckout(h);
+    await h.checkouts.settle(settled.id, "failed", now);
+    const orphaned = await openSubscriptionCheckout(h);
+    assert.notEqual(orphaned.id, settled.id);
+    const orphanedRow = h.checkouts.rows.find((r) => r.id === orphaned.id);
+    if (orphanedRow) orphanedRow.providerCheckoutId = null;
+    const expiring = await openSubscriptionCheckout(h);
+    assert.notEqual(expiring.id, orphaned.id);
+    now = new Date(expiring.expiresAt.getTime() - HOUR_MS / 4);
+    assert.notEqual((await openSubscriptionCheckout(h)).id, expiring.id);
+  });
+
+  test("a plan-change checkout overtaken by a newer order is not reopened", async () => {
+    const h = harness();
+    h.subscriptions.seed(subscription());
+    await h.service.changePlan(USER, "pro");
+    const overtaken = last(h.checkouts.rows);
+    h.subscriptions.rows = [subscription({ createdAt: new Date(overtaken.createdAt.getTime() + 1) })];
+    await h.service.changePlan(USER, "pro");
+    assert.notEqual(last(h.checkouts.rows).id, overtaken.id);
   });
 });
 
@@ -863,7 +898,10 @@ describe("cancel, resume, plan change", () => {
   test("changePlan refuses before touching the provider when the checkout limit is reached", async () => {
     const h = harness();
     h.subscriptions.seed(subscription({ cancelAtPeriodEnd: true }));
-    for (let i = 0; i < MAX_OPEN_CHECKOUTS_PER_HOUR; i++) await h.service.changePlan(USER, "pro");
+    for (let i = 0; i < MAX_OPEN_CHECKOUTS_PER_HOUR; i++) {
+      await h.service.changePlan(USER, "pro");
+      await h.checkouts.settle(last(h.checkouts.rows).id, "failed", NOW);
+    }
     h.subscriptions.rows = [subscription()];
     await assert.rejects(h.service.changePlan(USER, "pro"), TooManyCheckoutsError);
     assert.deepEqual({ cancels: h.provider.callsTo("cancelSubscription").length, ending: first(h.subscriptions.rows).cancelAtPeriodEnd }, { cancels: 0, ending: false });

@@ -89,9 +89,13 @@ export class PaddlePaymentProvider implements PaymentProvider {
       currencyCode: input.currency,
       checkoutSessionId: input.checkoutSessionId,
     });
+    return { url: await this.checkoutUrl(input.checkoutSessionId), providerCheckoutId: transaction.id };
+  }
+
+  checkoutUrl(checkoutSessionId: string): Promise<string> {
     const url = new URL(PADDLE_PAY_PATH, this.config.appUrl);
-    url.searchParams.set("session", input.checkoutSessionId);
-    return { url: url.toString(), providerCheckoutId: transaction.id };
+    url.searchParams.set("session", checkoutSessionId);
+    return Promise.resolve(url.toString());
   }
 
   async parseWebhook(request: WebhookRequest): Promise<ProviderEvent> {

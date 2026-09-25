@@ -5,6 +5,7 @@ import { CheckoutSessionQuerySchema } from "@/lib/billing/schemas";
 import { isCheckoutReturn } from "@/lib/billing/urls";
 import { toBillingUser } from "@/lib/billing/user";
 import { SurfaceCard } from "../Marks";
+import { ScrollToHashTarget } from "../ScrollToHashTarget";
 import { BillingSection } from "./BillingSection";
 import { DeleteAccountCard } from "./DeleteAccountCard";
 
@@ -45,6 +46,7 @@ export default async function SettingsPage({
       </SurfaceCard>
 
       <DeleteAccountCard />
+      <ScrollToHashTarget />
     </div>
   );
 }

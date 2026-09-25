@@ -29,6 +29,10 @@ export class DisabledPaymentProvider implements PaymentProvider {
     return this.reject();
   }
 
+  checkoutUrl(_checkoutSessionId: string): Promise<string> {
+    return this.reject();
+  }
+
   parseWebhook(_request: WebhookRequest): Promise<ProviderEvent> {
     return this.reject();
   }

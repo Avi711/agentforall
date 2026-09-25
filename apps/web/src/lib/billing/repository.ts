@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq, gte, inArray, lt, not, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, lt, not, or, sql } from "drizzle-orm";
 import { union } from "drizzle-orm/pg-core";
 import {
   billingCheckoutSessions,
@@ -41,6 +41,7 @@ import type {
   PaymentApplication,
   PaymentRepository,
   RenewalInput,
+  ReopenableCheckoutQuery,
   SubscriptionRepository,
   SubscriptionStatePatch,
   TrialClaim,
@@ -138,6 +139,28 @@ export class DrizzleCheckoutSessionRepository implements CheckoutSessionReposito
       .select()
       .from(billingCheckoutSessions)
       .where(and(eq(billingCheckoutSessions.provider, provider), eq(billingCheckoutSessions.providerCheckoutId, providerCheckoutId)))
+      .limit(1);
+    return rows[0] ? toCheckoutSession(rows[0]) : null;
+  }
+
+  async findReopenable(query: ReopenableCheckoutQuery): Promise<CheckoutSession | null> {
+    const rows = await this.db
+      .select()
+      .from(billingCheckoutSessions)
+      .where(
+        and(
+          eq(billingCheckoutSessions.userId, query.userId),
+          eq(billingCheckoutSessions.provider, query.provider),
+          eq(billingCheckoutSessions.kind, query.kind),
+          eq(billingCheckoutSessions.productCode, query.productCode),
+          eq(billingCheckoutSessions.credits, query.credits),
+          eq(billingCheckoutSessions.amountAgorot, query.amountAgorot),
+          eq(billingCheckoutSessions.status, "pending"),
+          isNotNull(billingCheckoutSessions.providerCheckoutId),
+          gt(billingCheckoutSessions.expiresAt, query.openUntil),
+        ),
+      )
+      .orderBy(desc(billingCheckoutSessions.createdAt))
       .limit(1);
     return rows[0] ? toCheckoutSession(rows[0]) : null;
   }

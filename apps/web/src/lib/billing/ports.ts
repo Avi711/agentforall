@@ -58,10 +58,13 @@ export interface NewCheckoutSession {
   expiresAt: Date;
 }
 
+export type ReopenableCheckoutQuery = Omit<NewCheckoutSession, "expiresAt"> & { openUntil: Date };
+
 export interface CheckoutSessionRepository {
   create(input: NewCheckoutSession): Promise<CheckoutSession>;
   findById(id: string): Promise<CheckoutSession | null>;
   findByProviderCheckoutId(provider: PaymentProviderName, providerCheckoutId: string): Promise<CheckoutSession | null>;
+  findReopenable(query: ReopenableCheckoutQuery): Promise<CheckoutSession | null>;
   hasPendingSince(userId: string, since: Date): Promise<boolean>;
   setProviderCheckoutId(id: string, providerCheckoutId: string): Promise<void>;
   // Only a pending session settles; a second outcome for the same session is a no-op.

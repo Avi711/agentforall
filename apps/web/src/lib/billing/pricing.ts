@@ -123,7 +123,7 @@ export const TOPUP_TERMS: TopupTerms = {
 
 export const LOW_BALANCE_RATIO = 0.2;
 
-export const MAX_OPEN_CHECKOUTS_PER_HOUR = 5;
+export const MAX_OPEN_CHECKOUTS_PER_HOUR = 10;
 
 export function isPlanCode(value: string): value is PlanCode {
   return (PLAN_CODES as readonly string[]).includes(value);

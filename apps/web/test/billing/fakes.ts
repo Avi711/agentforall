@@ -32,6 +32,7 @@ import type {
   PaymentApplication,
   PaymentRepository,
   RenewalInput,
+  ReopenableCheckoutQuery,
   SubscriptionRepository,
   SubscriptionStatePatch,
   TrialClaim,
@@ -153,6 +154,23 @@ export class InMemoryCheckouts implements CheckoutSessionRepository {
   async findByProviderCheckoutId(provider: PaymentProviderName, providerCheckoutId: string): Promise<CheckoutSession | null> {
     const row = this.rows.find((r) => r.provider === provider && r.providerCheckoutId === providerCheckoutId);
     return row ? { ...row } : null;
+  }
+
+  async findReopenable(query: ReopenableCheckoutQuery): Promise<CheckoutSession | null> {
+    const open = this.rows.filter(
+      (r) =>
+        r.userId === query.userId &&
+        r.provider === query.provider &&
+        r.kind === query.kind &&
+        r.productCode === query.productCode &&
+        r.credits === query.credits &&
+        r.amountAgorot === query.amountAgorot &&
+        r.status === "pending" &&
+        r.providerCheckoutId !== null &&
+        r.expiresAt.getTime() > query.openUntil.getTime(),
+    );
+    const newest = open.at(-1);
+    return newest ? { ...newest } : null;
   }
 
   async setProviderCheckoutId(id: string, providerCheckoutId: string): Promise<void> {
@@ -453,7 +471,11 @@ export class FakeProvider implements PaymentProvider {
   async createCheckout(input: CreateCheckoutInput): Promise<CreateCheckoutResult> {
     this.calls.push({ method: "createCheckout", args: [input] });
     this.checkoutInputs.push(input);
-    return { url: `https://pay.example/${input.checkoutSessionId}`, providerCheckoutId: `chk_${input.checkoutSessionId}` };
+    return { url: await this.checkoutUrl(input.checkoutSessionId), providerCheckoutId: `chk_${input.checkoutSessionId}` };
+  }
+
+  async checkoutUrl(checkoutSessionId: string): Promise<string> {
+    return `https://pay.example/${checkoutSessionId}`;
   }
 
   async parseWebhook(request: WebhookRequest): Promise<ProviderEvent> {
