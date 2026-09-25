@@ -468,6 +468,7 @@ test("the preview reports the charge after Paddle credit, the prorated lines and
           next_billed_at: "2026-10-25T10:00:00Z",
           immediate_transaction: { details: { totals: { grand_total: "9997" }, line_items: UPGRADE_LINES } },
           next_transaction: { details: { totals: { total: "40000" } } },
+          update_summary: { credit: { amount: "-9997" } },
         },
       },
     },
@@ -475,6 +476,7 @@ test("the preview reports the charge after Paddle credit, the prorated lines and
   ]);
   assert.deepEqual(await adapter.previewPlanChange("sub_1", "pro", "prorate_now"), {
     chargeNowAgorot: 9997,
+    creditAgorot: 9997,
     lines: [
       { planCode: "pro", quantity: 1, rate: 0.5 },
       { planCode: "standard", quantity: -1, rate: 0.5 },
@@ -484,6 +486,7 @@ test("the preview reports the charge after Paddle credit, the prorated lines and
   });
   assert.deepEqual(await adapter.previewPlanChange("sub_1", "basic", "at_renewal"), {
     chargeNowAgorot: null,
+    creditAgorot: 0,
     lines: [],
     nextChargeAgorot: 10000,
     nextChargeAt: new Date("2026-10-25T10:00:00Z"),

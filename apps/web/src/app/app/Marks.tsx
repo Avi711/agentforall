@@ -187,7 +187,7 @@ export function StatusLabel({ tone, children }: { tone: Tone; children: ReactNod
   );
 }
 
-export function SummaryRows({ rows }: { rows: readonly { label: string; value: string }[] }) {
+export function SummaryRows({ rows }: { rows: readonly { label: string; value: ReactNode }[] }) {
   return (
     <dl className="w-full divide-y divide-sand-light/70 rounded-2xl bg-cream px-5 text-start">
       {rows.map((row) => (

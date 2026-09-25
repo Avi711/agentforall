@@ -63,6 +63,7 @@ export interface ProrationLine {
 
 export interface ProviderPlanChangePreview {
   chargeNowAgorot: number | null;
+  creditAgorot: number;
   lines: ProrationLine[];
   nextChargeAgorot: number | null;
   nextChargeAt: Date | null;

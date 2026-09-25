@@ -13,6 +13,7 @@ export function PlanCheckout({
   pendingPlan,
   disabled,
   currentPlan = null,
+  scheduledPlan = null,
   initialInterval,
   busyText = "מעבירים לתשלום…",
 }: {
@@ -20,6 +21,7 @@ export function PlanCheckout({
   pendingPlan: PlanCode | null;
   disabled: boolean;
   currentPlan?: PlanCode | null;
+  scheduledPlan?: PlanCode | null;
   initialInterval?: BillingInterval;
   busyText?: string;
 }) {
@@ -29,8 +31,8 @@ export function PlanCheckout({
       initialInterval={initialInterval}
       disabled={disabled}
       renderAction={(plan, { current, className }) =>
-        current ? (
-          <span className={CURRENT_PLAN_LABEL}>התוכנית הנוכחית</span>
+        current || plan.code === scheduledPlan ? (
+          <span className={CURRENT_PLAN_LABEL}>{current ? "התוכנית הנוכחית" : "המעבר כבר נקבע"}</span>
         ) : (
           <button
             type="button"

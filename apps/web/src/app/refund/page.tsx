@@ -26,14 +26,23 @@ export default function RefundPage() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-xl font-bold text-espresso">3. קרדיטים</h2>
+        <h2 className="mb-3 text-xl font-bold text-espresso">3. מעבר בין תוכניות</h2>
+        <p>
+          שדרוג נכנס לתוקף מיד: מחייבים את הכרטיס השמור על יתרת התקופה הנוכחית, והקרדיטים המתאימים נוספים מיד. הסכום המדויק מוצג לפני
+          האישור. מעבר לתוכנית זולה יותר נכנס לתוקף בחידוש הבא, בלי חיוב ובלי החזר: התוכנית הנוכחית והקרדיטים שלה נשארים עד אז, ואפשר
+          לבטל את המעבר עד החידוש. מעבר מתוכנית חודשית לשנתית מחויב מיד ומתחיל שנה חדשה, ותוכנית שנתית משנים דרכנו.
+        </p>
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-xl font-bold text-espresso">4. קרדיטים</h2>
         <p>
           קרדיטים משמשים לתשלום על עבודת הסוכן ברגע שהוא עונה, ולכן קרדיטים שנוצלו אינם ניתנים להחזר. קרדיטים שכלולים במנוי פגים בסוף תקופת החיוב. קרדיטים שנקנו בטעינה נפרדת אינם פגים.
         </p>
       </section>
 
       <section>
-        <h2 className="mb-3 text-xl font-bold text-espresso">4. איך מבקשים החזר</h2>
+        <h2 className="mb-3 text-xl font-bold text-espresso">5. איך מבקשים החזר</h2>
         <p>
           פנו אלינו בוואטסאפ <WhatsAppLink /> או במייל, וציינו את כתובת המייל של החשבון. ההחזר יוחזר לאמצעי התשלום המקורי. הזמן עד שהכסף מופיע בחשבון תלוי בחברת האשראי.
         </p>
@@ -43,7 +52,7 @@ export default function RefundPage() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-xl font-bold text-espresso">5. יצירת קשר</h2>
+        <h2 className="mb-3 text-xl font-bold text-espresso">6. יצירת קשר</h2>
         <p>
           <OperatorLine />
         </p>

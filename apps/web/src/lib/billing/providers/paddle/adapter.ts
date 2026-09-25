@@ -149,6 +149,7 @@ export class PaddlePaymentProvider implements PaymentProvider {
     if (!lines) throw new PaymentProviderError("paddle", `plan change on subscription ${id} prices a plan we do not sell`, null, false);
     return {
       chargeNowAgorot: immediate ? Number(immediate.totals.grand_total) : null,
+      creditAgorot: Math.abs(Number(preview.update_summary?.credit.amount ?? 0)),
       lines,
       nextChargeAgorot: preview.next_transaction ? Number(preview.next_transaction.details.totals.total) : null,
       nextChargeAt: preview.next_billed_at ? new Date(preview.next_billed_at) : null,

@@ -70,7 +70,7 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
   const periodEnd = formatDate(sub?.currentPeriodEnd ?? null);
   const scheduledPlan = findPlan(sub?.scheduledPlanCode ?? null);
   const changesPlans = status.paid && !overdue && !ending && status.available && status.capabilities.changePlan;
-  const canChangePlan = changesPlans && !scheduledPlan && status.plan.interval === "month";
+  const canChangePlan = changesPlans && status.plan.interval === "month";
 
   const run = (key: PendingAction, work: () => Promise<void>) => {
     setNotice(null);

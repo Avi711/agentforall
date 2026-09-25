@@ -11,7 +11,6 @@ import {
   PaymentDeclinedError,
   PaymentOverdueError,
   PendingCheckoutError,
-  PlanChangeScheduledError,
   RenewalImminentError,
   SamePlanError,
   SubscriptionEndingError,
@@ -1035,12 +1034,14 @@ describe("plan change", () => {
     assert.deepEqual({ plan: row.planCode, scheduled: row.scheduledPlanCode }, { plan: "standard", scheduled: null });
   });
 
-  test("while a downgrade is scheduled an upgrade waits for the paid plan to be kept, and the same switch is a no-op", async () => {
+  test("an upgrade while a downgrade is pending is charged now and drops the pending move; the same move again is a no-op", async () => {
     const h = harness();
     h.subscriptions.seed(subscription({ scheduledPlanCode: "basic" }));
-    await assert.rejects(h.service.changePlan(USER, "pro"), PlanChangeScheduledError);
     await assert.rejects(h.service.changePlan(USER, "basic"), SamePlanError);
-    assert.equal(h.provider.calls.length, 0);
+    await h.service.changePlan(USER, "pro");
+    assert.deepEqual(h.provider.callsTo("changePlan")[0]?.args, ["sub_1", "pro", "prorate_now"]);
+    const row = first(h.subscriptions.rows);
+    assert.deepEqual({ plan: row.planCode, scheduled: row.scheduledPlanCode }, { plan: "pro", scheduled: null });
   });
 
   test("moving to a yearly plan is charged now even at the same tier", async () => {
@@ -1053,11 +1054,12 @@ describe("plan change", () => {
   test("the preview shows the charge, the credits it adds, and the next renewal", async () => {
     const h = harness();
     h.subscriptions.seed(subscription());
-    h.provider.planChangePreview = { chargeNowAgorot: 10000, lines: halfPeriodUpgrade, nextChargeAgorot: 40000, nextChargeAt: at("2026-09-26T10:00:00.000Z") };
+    h.provider.planChangePreview = { chargeNowAgorot: 10000, creditAgorot: 10000, lines: halfPeriodUpgrade, nextChargeAgorot: 40000, nextChargeAt: at("2026-09-26T10:00:00.000Z") };
     assert.deepEqual(await h.service.previewPlanChange(USER, "pro"), {
       plan: "pro",
       billing: "prorate_now",
       chargeNowAgorot: 10000,
+      creditAgorot: 10000,
       credits: Math.round(0.5 * PLANS.pro.includedCredits - 0.5 * PLANS.standard.includedCredits),
       nextChargeAgorot: 40000,
       nextChargeAt: "2026-09-26T10:00:00.000Z",

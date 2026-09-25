@@ -14,7 +14,7 @@ const HOME_PATH = "/app";
 export interface PaymentReceipt {
   title: string;
   lead: string;
-  rows: readonly { label: string; value: string }[];
+  rows: readonly { label: string; value: ReactNode }[];
 }
 
 export type CheckoutOutcome = { status: "completed"; receipt: PaymentReceipt } | { status: "pending" } | { status: "failed" };

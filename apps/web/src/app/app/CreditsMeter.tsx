@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { CreditSummary } from "@/lib/billing/credits/service";
-import { formatCredits } from "@/lib/billing/format";
+import { formatCredits, formatDay } from "@/lib/billing/format";
+import { AnimatedCredits } from "./AnimatedCredits";
 import { OUT_OF_CREDITS_LABEL, runwayLabel } from "./credits-copy";
 
 const AMOUNT_SIZE = { lg: "text-5xl", sm: "text-2xl" } as const;
@@ -12,6 +13,15 @@ const BALANCE_NOTE = {
 
 function percentOf(part: number, whole: number): string {
   return `${whole > 0 ? (part / whole) * 100 : 0}%`;
+}
+
+// The trial's own card already shows its end date, so only plan credits need their source spelled out.
+function periodSource(credits: CreditSummary): { label: string; fromPlan: boolean } | null {
+  // ISO timestamps sort as text.
+  const planUntil = credits.grants.flatMap((g) => (g.kind === "plan" && g.live && g.expiresAt ? [g.expiresAt] : [])).sort()[0];
+  if (planUntil) return { label: `מהתוכנית · בתוקף עד ${formatDay(planUntil)}`, fromPlan: true };
+  if (credits.trial.kind === "active") return { label: `מתקופת הניסיון · בתוקף עד ${formatDay(credits.trial.expiresAt)}`, fromPlan: false };
+  return null;
 }
 
 export function CreditsMeter({
@@ -27,6 +37,7 @@ export function CreditsMeter({
   if (balance.kind === "none") return null;
   const periodAvailable = available - topupAvailable;
   const alert = balance.kind === "low" || balance.kind === "out";
+  const period = periodSource(credits);
 
   return (
     <div className="flex flex-col gap-3">
@@ -35,7 +46,7 @@ export function CreditsMeter({
       ) : (
         <p className="flex flex-wrap items-baseline gap-x-2.5">
           <span className={`${AMOUNT_SIZE[size]} font-bold leading-none tracking-tight text-espresso tabular-nums`}>
-            {formatCredits(available)}
+            <AnimatedCredits value={available} showGain />
           </span>
           <span className="text-base text-espresso-light">מתוך {formatCredits(allowance)} קרדיטים</span>
         </p>
@@ -57,16 +68,20 @@ export function CreditsMeter({
           ) : null}
         </div>
       ) : null}
-      {topupAvailable > 0 ? (
+      {topupAvailable > 0 || period?.fromPlan ? (
         <ul className="flex flex-wrap gap-x-6 gap-y-1 text-[13px] text-espresso-light">
-          <li className="flex items-center gap-2">
-            <span aria-hidden className={`h-2.5 w-2.5 rounded-sm ${alert ? "bg-terra" : "bg-sage"}`} />
-            לתקופה הנוכחית {formatCredits(periodAvailable)}
-          </li>
-          <li className="flex items-center gap-2">
-            <span aria-hidden className="h-2.5 w-2.5 rounded-sm bg-sand" />
-            לא פגים {formatCredits(topupAvailable)}
-          </li>
+          {period ? (
+            <li className="flex items-center gap-2">
+              <span aria-hidden className={`h-2.5 w-2.5 rounded-sm ${alert ? "bg-terra" : "bg-sage"}`} />
+              <span className="font-semibold text-espresso tabular-nums">{formatCredits(periodAvailable)}</span> {period.label}
+            </li>
+          ) : null}
+          {topupAvailable > 0 ? (
+            <li className="flex items-center gap-2">
+              <span aria-hidden className="h-2.5 w-2.5 rounded-sm bg-sand" />
+              <span className="font-semibold text-espresso tabular-nums">{formatCredits(topupAvailable)}</span> מטעינות · בלי תאריך תפוגה
+            </li>
+          ) : null}
         </ul>
       ) : null}
       {stale ? <p className="text-xs text-espresso-light">הנתונים מהעדכון האחרון</p> : null}

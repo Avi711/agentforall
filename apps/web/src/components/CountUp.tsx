@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { prefersReducedMotion } from "./motion";
 
 const DURATION_MS = 1400;
 
@@ -12,8 +13,7 @@ export function CountUp({ label }: { label: string }) {
   useEffect(() => {
     const el = ref.current;
     const target = Number(label.replace(/[^\d]/g, ""));
-    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.hasAttribute("data-reduced-motion");
-    if (!el || !Number.isFinite(target) || still || !("IntersectionObserver" in window)) return;
+    if (!el || !Number.isFinite(target) || prefersReducedMotion() || !("IntersectionObserver" in window)) return;
     let cancelled = false;
     setText("0");
     const observer = new IntersectionObserver((entries) => {

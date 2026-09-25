@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ErrorAlert } from "@/components/ErrorAlert";
 import { formatAgorot, formatCredits, formatDate, planLabel } from "@/lib/billing/format";
-import { PLANS, monthlyCredits, type Plan, type PlanCode } from "@/lib/billing/pricing";
+import { PLANS, findPlan, monthlyCredits, type Plan, type PlanCode } from "@/lib/billing/pricing";
 import type { BillingStatus, PlanChangePreview } from "@/lib/billing/service";
 import { BillingClientError, changePlan, previewPlanChange } from "../billing/client";
 import { PlanCheckout } from "../billing/PlanCheckout";
@@ -54,7 +54,7 @@ export function PlanChangePanel({
             מעבר לתוכנית אחרת
           </h2>
           <p className="text-sm leading-relaxed text-espresso-light">
-            שדרוג מתחיל מיד, ומשלמים רק על ההפרש עד סוף התקופה. מעבר לתוכנית זולה יותר נכנס לתוקף בחידוש הבא, בלי חיוב עכשיו.
+            שדרוג מתחיל מיד, בחיוב על יתרת התקופה. מעבר לתוכנית זולה יותר נכנס לתוקף בחידוש הבא, בלי חיוב עכשיו.
           </p>
         </div>
         <button type="button" onClick={onClose} className="shrink-0 rounded-lg px-2 py-1 text-sm font-semibold text-espresso-light underline hover:text-espresso">
@@ -63,6 +63,7 @@ export function PlanChangePanel({
       </header>
       <PlanCheckout
         currentPlan={status.plan.code}
+        scheduledPlan={findPlan(status.subscription?.scheduledPlanCode ?? null)?.code ?? null}
         initialInterval={status.plan.interval}
         pendingPlan={pending}
         disabled={pending !== null}
@@ -126,15 +127,21 @@ function PlanChangeSummary({
   }
 
   const toYearly = target.interval !== current.interval;
+  const credit =
+    preview.creditAgorot > 0
+      ? [{ label: toYearly ? "זיכוי על יתרת החודש" : `זיכוי על תוכנית ${planLabel(current)}`, value: `−${formatAgorot(preview.creditAgorot)}` }]
+      : [];
   const chargeNow = preview.chargeNowAgorot === null ? [] : [{ label: "לתשלום עכשיו", value: formatAgorot(preview.chargeNowAgorot) }];
   return (
     <div className="flex flex-col gap-4">
       <p>
         {toYearly
-          ? `תוכנית ${planLabel(target)} מתחילה היום לשנה שלמה, והחלק שלא נוצל מהחודש הנוכחי מקוזז מהתשלום.`
-          : `תוכנית ${planLabel(target)} מתחילה מיד. משלמים רק על ההפרש עד סוף התקופה.`}
+          ? `תוכנית ${planLabel(target)} מתחילה היום לשנה שלמה.`
+          : `תוכנית ${planLabel(target)} מתחילה מיד, עד סוף התקופה הנוכחית.`}
       </p>
-      <SummaryRows rows={[...chargeNow, { label: "קרדיטים שנוספים עכשיו", value: formatCredits(preview.credits) }, monthly, ...nextCharge]} />
+      <SummaryRows
+        rows={[...credit, ...chargeNow, { label: "קרדיטים שנוספים עכשיו", value: formatCredits(preview.credits) }, monthly, ...nextCharge]}
+      />
       <p className="text-xs">
         החיוב מהכרטיס השמור במנוי, כולל מע״מ.{toYearly ? " שינוי של תוכנית שנתית אפשרי אחר כך רק דרכנו." : ""}
       </p>

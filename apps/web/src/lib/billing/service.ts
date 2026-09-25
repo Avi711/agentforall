@@ -23,7 +23,6 @@ import {
   NoSubscriptionError,
   PaymentOverdueError,
   PendingCheckoutError,
-  PlanChangeScheduledError,
   RenewalImminentError,
   SamePlanError,
   SubscriptionEndingError,
@@ -114,6 +113,7 @@ export interface PlanChangePreview {
   plan: PlanCode;
   billing: PlanChangeBilling;
   chargeNowAgorot: number | null;
+  creditAgorot: number;
   credits: number;
   nextChargeAgorot: number | null;
   nextChargeAt: string | null;
@@ -321,6 +321,7 @@ export class BillingService {
       plan: planCode,
       billing,
       chargeNowAgorot: preview.chargeNowAgorot,
+      creditAgorot: preview.creditAgorot,
       credits: prorationCredits(preview.lines),
       nextChargeAgorot: preview.nextChargeAgorot,
       nextChargeAt: preview.nextChargeAt?.toISOString() ?? null,
@@ -459,7 +460,6 @@ export class BillingService {
     if (planCode === (scheduled ?? paid.code)) throw new SamePlanError(planCode);
     const target = PLANS[planCode];
     const billing = target.interval !== paid.interval || target.priceIls > paid.priceIls ? "prorate_now" : "at_renewal";
-    if (billing === "prorate_now" && scheduled) throw new PlanChangeScheduledError(scheduled);
     return { subscription, provider, billing };
   }
 

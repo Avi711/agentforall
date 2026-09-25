@@ -17,8 +17,7 @@ export type BillingErrorCode =
   | "payment_required"
   | "checkout_pending"
   | "payment_declined"
-  | "subscription_ending"
-  | "plan_change_scheduled";
+  | "subscription_ending";
 
 export class BillingError extends Error {
   constructor(
@@ -76,13 +75,6 @@ export class PaymentDeclinedError extends BillingError {
 export class SubscriptionEndingError extends BillingError {
   constructor() {
     super("resume the subscription before changing its plan", "subscription_ending", 409);
-  }
-}
-
-// A proration against the scheduled cheaper plan would overcharge; keeping the paid plan first makes it exact.
-export class PlanChangeScheduledError extends BillingError {
-  constructor(scheduledPlan: string) {
-    super(`a switch to ${scheduledPlan} is scheduled; keep the current plan before upgrading`, "plan_change_scheduled", 409);
   }
 }
 

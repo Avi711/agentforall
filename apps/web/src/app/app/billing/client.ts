@@ -27,7 +27,6 @@ const ERROR_MESSAGES_HE: Record<ApiErrorCode, string> = {
   checkout_pending: CHECKOUT_PENDING_HE,
   payment_declined: "הכרטיס סורב ולא חויבתם. עדכנו אמצעי תשלום ונסו שוב.",
   subscription_ending: "המנוי מסתיים. חדשו אותו קודם, ואז אפשר לשנות תוכנית.",
-  plan_change_scheduled: "כבר מתוכנן מעבר לתוכנית אחרת. השאירו את התוכנית הנוכחית, ואז אפשר לשדרג.",
   invalid_body: UNEXPECTED_ERROR_HE,
   invalid_json: UNEXPECTED_ERROR_HE,
   unauthorized: "צריך להתחבר מחדש.",

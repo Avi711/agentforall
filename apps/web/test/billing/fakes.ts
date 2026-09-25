@@ -485,7 +485,7 @@ export class FakeProvider implements PaymentProvider {
   nextEvent: ProviderEvent | Error | null = null;
   cancelResult: ProviderSubscription | null = null;
   resumeResult: ProviderSubscription | null = null;
-  planChangePreview: ProviderPlanChangePreview = { chargeNowAgorot: null, lines: [], nextChargeAgorot: null, nextChargeAt: null };
+  planChangePreview: ProviderPlanChangePreview = { chargeNowAgorot: null, creditAgorot: 0, lines: [], nextChargeAgorot: null, nextChargeAt: null };
   planChangeError: Error | null = null;
   planChangeResult: Omit<ProviderSubscription, "planCode"> = {
     providerSubscriptionId: "sub_1",

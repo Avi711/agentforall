@@ -72,6 +72,7 @@ export const PaddleSubscriptionPreviewSchema = z.object({
     .nullable()
     .optional(),
   next_transaction: z.object({ details: z.object({ totals: z.object({ total: Amount }) }) }).nullable().optional(),
+  update_summary: z.object({ credit: z.object({ amount: z.string().regex(/^-?\d+$/) }) }).nullable().optional(),
 });
 export type PaddleSubscriptionPreview = z.infer<typeof PaddleSubscriptionPreviewSchema>;
 
