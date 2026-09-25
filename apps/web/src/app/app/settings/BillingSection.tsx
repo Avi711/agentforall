@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ErrorAlert } from "@/components/ErrorAlert";
 import { BusinessOffer } from "@/components/pricing/BusinessOffer";
-import { PRIMARY_ACTION, SECONDARY_ACTION } from "@/components/pricing/styles";
 import { TrustPoints } from "@/components/pricing/TrustPoints";
 import { WhatsAppChatLink } from "@/components/WhatsAppChatLink";
 import { CREDITS_EXPLAINER } from "@/content/plans.he";
@@ -21,6 +20,7 @@ import {
   startCheckout,
 } from "../billing/client";
 import { PlanCheckout } from "../billing/PlanCheckout";
+import { ROW_ACTION_CLASS } from "../action-buttons";
 import { BusyLabel, Spinner, SurfaceCard } from "../Marks";
 import { useActionRunner } from "../useActionRunner";
 import { usePolling } from "../usePolling";
@@ -28,7 +28,8 @@ import { ChoosePlanHero, SubscriptionHero } from "./BillingHero";
 import { CreditHistory } from "./CreditHistory";
 import { CancelConfirm, ManageBilling, type ManageOption } from "./ManageBilling";
 import { PlanChangePanel, type PlanChangeNotice } from "./PlanChangePanel";
-import { TopupCard } from "./TopupCard";
+import { PageSection } from "./Section";
+import { TopupPanel } from "./TopupPanel";
 
 type PendingAction = "cancel" | "resume" | "keep" | "portal" | "paymentMethod" | PlanCode;
 type Panel = "none" | "cancel" | "changePlan";
@@ -86,7 +87,7 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
   const heroActions: ReactNode[] = [];
   if (overdue && status.capabilities.updatePaymentMethod) {
     heroActions.push(
-      <button key="paymentMethod" type="button" disabled={busy} onClick={updatePaymentMethod} className={`${PRIMARY_ACTION} sm:px-6`}>
+      <button key="paymentMethod" type="button" disabled={busy} onClick={updatePaymentMethod} className={ROW_ACTION_CLASS.primary}>
         <BusyLabel busy={pending === "paymentMethod"} busyText="פותחים…">עדכון אמצעי תשלום</BusyLabel>
       </button>,
     );
@@ -98,7 +99,7 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
         type="button"
         disabled={busy}
         onClick={() => run("resume", async () => setStatus(await resumeSubscription()))}
-        className={`${PRIMARY_ACTION} sm:px-6`}
+        className={ROW_ACTION_CLASS.primary}
       >
         <BusyLabel busy={pending === "resume"} busyText="מחדשים…">חידוש המנוי</BusyLabel>
       </button>,
@@ -118,10 +119,10 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
             }),
           )
         }
-        className={SECONDARY_ACTION}
+        className={ROW_ACTION_CLASS.quiet}
       >
         <BusyLabel busy={pending === "keep"} busyText="מעדכנים…">
-          ביטול המעבר ל{planLabel(scheduledPlan)}
+          להישאר ב{planLabel(status.plan)}
         </BusyLabel>
       </button>,
     );
@@ -135,7 +136,7 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
         aria-expanded={panel === "changePlan"}
         aria-controls="change-plan"
         onClick={() => togglePanel("changePlan")}
-        className={SECONDARY_ACTION}
+        className={ROW_ACTION_CLASS.quiet}
       >
         שינוי תוכנית
       </button>,
@@ -143,16 +144,15 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
   }
   if (status.paid && !overdue && status.plan.interval === "year") {
     heroActions.push(
-      <WhatsAppChatLink key="yearly" text="היי, אני רוצה לשנות את התוכנית השנתית שלי" className={SECONDARY_ACTION}>
+      <WhatsAppChatLink key="yearly" text="היי, אני רוצה לשנות את התוכנית השנתית שלי" className={ROW_ACTION_CLASS.quiet}>
         שינוי תוכנית שנתית דרכנו
       </WhatsAppChatLink>,
     );
   }
 
-  const manageOptions: ManageOption[] = [];
+  const billingLinks: ManageOption[] = [];
   if (managesBilling && !overdue && status.capabilities.updatePaymentMethod) {
-    manageOptions.push({
-      key: "paymentMethod",
+    billingLinks.push({
       title: "אמצעי תשלום",
       detail: "עדכון הכרטיס לחיובים הבאים",
       pending: pending === "paymentMethod",
@@ -161,67 +161,76 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
     });
   }
   if (managesBilling && status.capabilities.customerPortal) {
-    manageOptions.push({
-      key: "portal",
-      title: "חשבוניות ותשלומים",
-      detail: "כל החיובים והקבלות",
+    billingLinks.push({
+      title: "חשבוניות וקבלות",
+      detail: "כל החיובים, עם קבלה להורדה",
       pending: pending === "portal",
       external: true,
       onSelect: () => redirect("portal", fetchPortalUrl),
     });
   }
-  if (status.paid && !overdue && sub && !ending && status.capabilities.cancel) {
-    manageOptions.push({
-      key: "cancel",
-      title: "ביטול המנוי",
-      detail: `הסוכן ימשיך לעבוד עד ${periodEnd ?? "סוף תקופת החיוב"}`,
-      pending: false,
-      onSelect: () => togglePanel("cancel"),
-    });
-  }
+  const cancelOption: ManageOption | null =
+    status.paid && !overdue && sub && !ending && status.capabilities.cancel
+      ? {
+          title: "ביטול המנוי",
+          detail: `הסוכן ימשיך לעבוד עד ${periodEnd ?? "סוף תקופת החיוב"}`,
+          expanded: panel === "cancel",
+          onSelect: () => togglePanel("cancel"),
+        }
+      : null;
 
   const canChoosePlan = !managesBilling && status.available;
 
   return (
-    <div className="flex flex-col gap-6 sm:gap-8">
-      <div ref={noticeRef} tabIndex={-1} role="status" className="scroll-mt-24 empty:hidden focus:outline-none">
-        {notice ? (
-          <div className={NOTICE_CLASS.info}>
-            {notice.message} {notice.awaitsCredits ? <CreditsArrival state={credits} /> : null}
-          </div>
+    <div className="flex flex-col gap-10 sm:gap-12">
+      <div className="flex flex-col gap-4">
+        <div ref={noticeRef} tabIndex={-1} role="status" className="scroll-mt-24 empty:hidden focus:outline-none">
+          {notice ? (
+            <div className={NOTICE_CLASS.info}>
+              {notice.message} {notice.awaitsCredits ? <CreditsArrival state={credits} /> : null}
+            </div>
+          ) : null}
+        </div>
+
+        {overdue ? (
+          <Notice tone="warn">
+            החיוב האחרון נכשל. עדכנו אמצעי תשלום כדי שהסוכן ימשיך לעבוד, או{" "}
+            <WhatsAppChatLink text="היי, החיוב במנוי שלי נכשל">כתבו לנו</WhatsAppChatLink> אם תרצו לבטל.
+          </Notice>
         ) : null}
+
+        <SurfaceCard>
+          {managesBilling ? (
+            <SubscriptionHero status={status} ending={ending} scheduled={scheduledPlan} actions={heroActions} />
+          ) : (
+            <ChoosePlanHero status={status} canChoosePlan={canChoosePlan} />
+          )}
+          {panel === "changePlan" && canChangePlan ? (
+            <PlanChangePanel
+              status={status}
+              scheduledPlan={scheduledPlan}
+              onChanged={(next, change) => {
+                setPanel("none");
+                announce(next, change);
+              }}
+              onClose={() => setPanel("none")}
+              onUpdatePaymentMethod={updatePaymentMethod}
+            />
+          ) : null}
+          {status.creditsAction === "topup" ? (
+            <TopupPanel terms={status.topup} urgent={status.credits.balance.kind === "low" || status.credits.balance.kind === "out"} />
+          ) : null}
+        </SurfaceCard>
+
+        <ErrorAlert>{error}</ErrorAlert>
       </div>
 
-      {overdue ? (
-        <Notice tone="warn">
-          החיוב האחרון נכשל. עדכנו אמצעי תשלום כדי שהסוכן ימשיך לעבוד, או{" "}
-          <WhatsAppChatLink text="היי, החיוב במנוי שלי נכשל">כתבו לנו</WhatsAppChatLink> אם תרצו לבטל.
-        </Notice>
-      ) : null}
-
-      {managesBilling ? (
-        <SubscriptionHero status={status} ending={ending} periodEnd={periodEnd} scheduled={scheduledPlan} actions={heroActions} />
-      ) : (
-        <ChoosePlanHero status={status} canChoosePlan={canChoosePlan} />
-      )}
-
-      {panel === "changePlan" && canChangePlan ? (
-        <PlanChangePanel
-          status={status}
-          scheduledPlan={scheduledPlan}
-          onChanged={(next, change) => {
-            setPanel("none");
-            announce(next, change);
-          }}
-          onClose={() => setPanel("none")}
-          onUpdatePaymentMethod={updatePaymentMethod}
-        />
-      ) : null}
+      <CreditHistory credits={status.credits} />
 
       {canChoosePlan ? (
         <section id={SETTINGS_SECTION.plans} aria-labelledby="plans-title" className="flex scroll-mt-24 flex-col gap-6">
           <header className="flex flex-col gap-1.5">
-            <h2 id="plans-title" className="font-display text-3xl text-espresso">
+            <h2 id="plans-title" className="font-display text-xl text-espresso sm:text-2xl">
               בחרו תוכנית
             </h2>
             <p className="text-sm text-espresso-light">המחירים כוללים מע״מ. אפשר לשנות או לבטל בכל עת.</p>
@@ -239,14 +248,8 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
         </Notice>
       ) : null}
 
-      {status.creditsAction === "topup" ? (
-        <TopupCard terms={status.topup} urgent={status.credits.balance.kind === "low" || status.credits.balance.kind === "out"} />
-      ) : null}
-
-      <CreditHistory credits={status.credits} />
-
       {managesBilling ? (
-        <ManageBilling options={manageOptions} disabled={busy}>
+        <ManageBilling links={billingLinks} cancel={cancelOption} disabled={busy}>
           {panel === "cancel" ? (
             <CancelConfirm
               periodEnd={periodEnd}
@@ -263,13 +266,10 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
           ) : null}
         </ManageBilling>
       ) : (
-        <SurfaceCard className="flex flex-col gap-3 p-6 sm:p-8">
-          <h2 className="font-display text-xl text-espresso">מה זה קרדיט?</h2>
+        <PageSection id="credits" title="מה זה קרדיט?">
           <p className="text-sm leading-relaxed text-espresso-light">{CREDITS_EXPLAINER}</p>
-        </SurfaceCard>
+        </PageSection>
       )}
-
-      <ErrorAlert>{error}</ErrorAlert>
     </div>
   );
 }

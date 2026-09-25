@@ -1,62 +1,52 @@
+"use client";
+
+import { useState } from "react";
+import { pastPeriods, type PastPeriod } from "@/lib/billing/credits/history";
 import type { CreditSummary } from "@/lib/billing/credits/service";
-import { usageHistory, type UsagePeriod } from "@/lib/billing/credits/history";
 import { formatCredits, formatDay } from "@/lib/billing/format";
-import { SurfaceCard } from "../Marks";
+import { MeterRow } from "./MeterRow";
+import { PageSection } from "./Section";
 
-function titleOf(period: UsagePeriod): { title: string; detail: string | null } {
-  const range = period.startsAt && period.endsAt ? `${formatDay(period.startsAt)} – ${formatDay(period.endsAt)}` : null;
-  switch (period.kind) {
-    case "plan":
-      return period.current ? { title: "התקופה הנוכחית", detail: range } : { title: range ?? "תקופה קודמת", detail: null };
-    case "trial":
-      return { title: "תקופת הניסיון", detail: range };
-    case "topups":
-      return { title: "טעינות", detail: "כל הטעינות עד היום · לא פגים" };
-  }
-}
+const RECENT_PERIODS = 3;
 
-function percentOf(part: number, whole: number): string {
-  return `${whole > 0 ? Math.min(100, (part / whole) * 100) : 0}%`;
+function PeriodRow({ period }: { period: PastPeriod }) {
+  const range = `${formatDay(period.startsAt)} – ${formatDay(period.endsAt)}`;
+  const trial = period.kind === "trial";
+  return (
+    <MeterRow
+      title={trial ? "תקופת הניסיון" : range}
+      detail={trial ? range : null}
+      used={period.used}
+      of={period.credits}
+      tone={trial ? "bg-sage-light" : "bg-sage"}
+    >
+      נוצלו <span className="font-semibold text-espresso">{formatCredits(period.used)}</span> מתוך {formatCredits(period.credits)}
+    </MeterRow>
+  );
 }
 
 export function CreditHistory({ credits }: { credits: CreditSummary }) {
-  const history = usageHistory(credits.grants);
-  if (!history.some((period) => period.kind !== "trial")) return null;
+  const [showAll, setShowAll] = useState(false);
+  const periods = pastPeriods(credits.grants);
+  if (periods.length === 0) return null;
+  const hidden = showAll ? 0 : Math.max(0, periods.length - RECENT_PERIODS);
 
   return (
-    <SurfaceCard className="flex flex-col gap-2 p-6 sm:p-8">
-      <h2 className="font-display text-2xl text-espresso">שימוש בקרדיטים</h2>
+    <PageSection id="usage" title="תקופות קודמות">
       <ul className="divide-y divide-sand-light/70">
-        {history.map((period) => {
-          const { title, detail } = titleOf(period);
-          return (
-            <li key={period.key} className="flex flex-col gap-2 py-4">
-              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                <p className="flex flex-col">
-                  <span className="text-[15px] font-semibold text-espresso">{title}</span>
-                  {detail ? <span className="text-[13px] text-espresso-light">{detail}</span> : null}
-                </p>
-                <p className="text-sm text-espresso-light tabular-nums">
-                  נוצלו <span className="font-semibold text-espresso">{formatCredits(period.used)}</span> מתוך {formatCredits(period.credits)}
-                </p>
-              </div>
-              <div
-                role="meter"
-                aria-label={`${title}: נוצלו ${formatCredits(period.used)} מתוך ${formatCredits(period.credits)}`}
-                aria-valuemin={0}
-                aria-valuemax={period.credits}
-                aria-valuenow={period.used}
-                className="h-1.5 overflow-hidden rounded-full bg-cream-dark"
-              >
-                <div
-                  className={`h-full rounded-full ${period.kind === "topups" ? "bg-honey" : "bg-sage"}`}
-                  style={{ width: percentOf(period.used, period.credits) }}
-                />
-              </div>
-            </li>
-          );
-        })}
+        {periods.slice(0, periods.length - hidden).map((period) => (
+          <PeriodRow key={period.key} period={period} />
+        ))}
       </ul>
-    </SurfaceCard>
+      {hidden > 0 ? (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          className="self-start py-1 text-sm font-medium text-espresso-light underline-offset-4 hover:text-espresso hover:underline"
+        >
+          הצגת כל התקופות ({hidden} נוספות)
+        </button>
+      ) : null}
+    </PageSection>
   );
 }

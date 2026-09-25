@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { CreditGrantView } from "../../src/lib/billing/credits/service";
-import { usageHistory } from "../../src/lib/billing/credits/history";
+import { pastPeriods } from "../../src/lib/billing/credits/history";
 
 const view = (overrides: Partial<CreditGrantView>): CreditGrantView => ({
   id: "g",
@@ -10,26 +10,33 @@ const view = (overrides: Partial<CreditGrantView>): CreditGrantView => ({
   usedCredits: 0,
   grantedAt: "2026-09-25T10:00:00.000Z",
   expiresAt: "2026-10-28T10:00:00.000Z",
+  periodEnd: "2026-10-25T10:00:00.000Z",
   live: true,
+  inCurrentPeriod: true,
   ...overrides,
 });
 
-test("a period's renewal and upgrade credits add up; periods run newest first, then the trial, then all top-ups", () => {
-  const history = usageHistory([
-    view({ id: "aug", credits: 2500, usedCredits: 2400, grantedAt: "2026-08-25T10:00:00.000Z", expiresAt: "2026-09-28T10:00:00.000Z", live: false }),
+const ended = { live: false, inCurrentPeriod: false } as const;
+
+test("past periods add up a period's renewal and upgrade, newest first, then the trial; the current period and top-ups stay out", () => {
+  const history = pastPeriods([
+    view({ id: "jul", credits: 2500, usedCredits: 1200, grantedAt: "2026-07-25T10:00:00.000Z", periodEnd: "2026-08-25T10:00:00.000Z", ...ended }),
+    view({ id: "aug", credits: 2500, usedCredits: 2400, grantedAt: "2026-08-25T10:00:00.000Z", periodEnd: "2026-09-25T10:00:00.000Z", ...ended }),
+    view({ id: "aug-up", credits: 3985, usedCredits: 3985, grantedAt: "2026-09-01T08:00:00.000Z", periodEnd: "2026-09-25T10:00:05.000Z", ...ended }),
     view({ id: "sep", credits: 2500, usedCredits: 900 }),
-    view({ id: "upgrade", credits: 3985, usedCredits: 0, grantedAt: "2026-09-30T08:00:00.000Z", expiresAt: "2026-10-28T10:00:05.000Z" }),
-    view({ id: "trial", kind: "trial", credits: 400, usedCredits: 400, grantedAt: "2026-08-18T10:00:00.000Z", expiresAt: "2026-08-25T10:00:00.000Z", live: false }),
-    view({ id: "t1", kind: "topup", credits: 4000, usedCredits: 1000, expiresAt: null }),
-    view({ id: "t2", kind: "topup", credits: 2000, usedCredits: 0, expiresAt: null }),
+    view({ id: "trial", kind: "trial", credits: 400, usedCredits: 400, grantedAt: "2026-07-18T10:00:00.000Z", periodEnd: "2026-07-25T10:00:00.000Z", ...ended }),
+    view({ id: "t1", kind: "topup", credits: 4000, usedCredits: 1000, expiresAt: null, periodEnd: null }),
   ]);
   assert.deepEqual(
-    history.map(({ key, credits, used, current, startsAt, endsAt }) => ({ key, credits, used, current, startsAt, endsAt })),
+    history.map(({ key, kind, credits, used, startsAt }) => ({ key, kind, credits, used, startsAt })),
     [
-      { key: "2026-10-25", credits: 6485, used: 900, current: true, startsAt: "2026-09-25T10:00:00.000Z", endsAt: "2026-10-25T10:00:00.000Z" },
-      { key: "2026-09-25", credits: 2500, used: 2400, current: false, startsAt: "2026-08-25T10:00:00.000Z", endsAt: "2026-09-25T10:00:00.000Z" },
-      { key: "trial", credits: 400, used: 400, current: false, startsAt: "2026-08-18T10:00:00.000Z", endsAt: "2026-08-25T10:00:00.000Z" },
-      { key: "topups", credits: 6000, used: 1000, current: true, startsAt: null, endsAt: null },
+      { key: "2026-09-25", kind: "plan", credits: 6485, used: 6385, startsAt: "2026-08-25T10:00:00.000Z" },
+      { key: "2026-08-25", kind: "plan", credits: 2500, used: 1200, startsAt: "2026-07-25T10:00:00.000Z" },
+      { key: "trial", kind: "trial", credits: 400, used: 400, startsAt: "2026-07-18T10:00:00.000Z" },
     ],
   );
+});
+
+test("a live trial is not history yet", () => {
+  assert.deepEqual(pastPeriods([view({ kind: "trial", periodEnd: "2026-10-02T10:00:00.000Z" })]), []);
 });

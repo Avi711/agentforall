@@ -55,6 +55,7 @@ import {
   findPlan,
   isValidTopupAmountIls,
   planAmountAgorot,
+  planChangeBilling,
   resolvePlan,
   type BillingInterval,
   type Plan,
@@ -458,9 +459,7 @@ export class BillingService {
     if (renewsWithin(subscription, this.now(), PLAN_CHANGE_RENEWAL_BUFFER_MS)) throw new RenewalImminentError();
     const scheduled = subscription.scheduledPlanCode;
     if (planCode === (scheduled ?? paid.code)) throw new SamePlanError(planCode);
-    const target = PLANS[planCode];
-    const billing = target.interval !== paid.interval || target.priceIls > paid.priceIls ? "prorate_now" : "at_renewal";
-    return { subscription, provider, billing };
+    return { subscription, provider, billing: planChangeBilling(paid, PLANS[planCode]) };
   }
 
   private async openCheckout(user: BillingUser, product: CheckoutProduct): Promise<{ url: string }> {

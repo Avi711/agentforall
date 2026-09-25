@@ -1,17 +1,18 @@
 import type { ReactNode } from "react";
-import { PRIMARY_ACTION } from "@/components/pricing/styles";
 import type { EntitlementReason } from "@/lib/billing/entitlement";
-import { formatIls, intervalAdjective, planLabel } from "@/lib/billing/format";
-import type { Plan } from "@/lib/billing/pricing";
+import { formatCredits, formatDay, formatIls, planLabel } from "@/lib/billing/format";
+import type { BillingInterval, Plan } from "@/lib/billing/pricing";
 import type { BillingStatus } from "@/lib/billing/service";
 import { SETTINGS_SECTION } from "@/lib/billing/urls";
-import { CreditsMeter } from "../CreditsMeter";
-import { StatusLabel, SurfaceCard, type Tone } from "../Marks";
-import { TrialSummary } from "../TrialSummary";
+import { ROW_ACTION_CLASS } from "../action-buttons";
+import { daysLeftLabel } from "../credits-copy";
+import { StatusLabel, type Tone } from "../Marks";
+import { CreditBreakdown } from "./CreditBreakdown";
 
 const TRIAL_NOTE = "כשהניסיון נגמר הסוכן מפסיק לענות. בחרו תוכנית והוא ימשיך בלי הפסקה, עם כל ההגדרות והחיבורים שלו.";
 const OPEN_ACCESS_NOTE = "הגישה שלכם פתוחה כרגע ללא מנוי. אפשר להצטרף כבר עכשיו כדי לשמור על הסוכן גם בהמשך.";
 const OPEN_ACCESS_REASONS: ReadonlySet<EntitlementReason> = new Set(["beta_access", "enforcement_disabled"]);
+const PER_INTERVAL: Record<BillingInterval, string> = { month: "לחודש", year: "לשנה" };
 
 function planlessLabel(status: BillingStatus): { tone: Tone; text: string } {
   switch (status.reason) {
@@ -36,29 +37,30 @@ export function ChoosePlanHero({ status, canChoosePlan }: { status: BillingStatu
   const note = trial ? TRIAL_NOTE : OPEN_ACCESS_REASONS.has(status.reason) ? OPEN_ACCESS_NOTE : null;
 
   return (
-    <SurfaceCard className="flex flex-col gap-5 p-6 sm:p-8">
+    <div className="flex flex-col gap-5 p-6 sm:p-8">
       <h2 className="sr-only">המנוי שלכם</h2>
-      <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-        {trial ? (
-          <TrialSummary trial={trial} credits={credits} size="lg" />
-        ) : (
-          <div className="flex min-w-0 flex-1 flex-col gap-4">
-            <StatusLabel tone={label.tone}>{label.text}</StatusLabel>
-            {hasCredits ? (
-              <CreditsMeter credits={credits} />
-            ) : (
-              <p className="text-base leading-relaxed text-espresso">בחרו תוכנית, והסוכן שלכם יעבוד בשבילכם כל יום.</p>
-            )}
-          </div>
-        )}
-        {canChoosePlan ? (
-          <a href={`#${SETTINGS_SECTION.plans}`} className={`${PRIMARY_ACTION} sm:shrink-0 sm:px-6`}>
-            בחירת תוכנית
-          </a>
-        ) : null}
-      </div>
+      {trial ? (
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <StatusLabel tone="good">ניסיון חינם</StatusLabel>
+          <span className="text-[13px] text-espresso-light">{daysLeftLabel(trial.daysLeft)}</span>
+        </p>
+      ) : (
+        <StatusLabel tone={label.tone}>{label.text}</StatusLabel>
+      )}
+      {trial || hasCredits ? (
+        <CreditBreakdown credits={credits} renews={false} />
+      ) : (
+        <p className="text-base leading-relaxed text-espresso">בחרו תוכנית, והסוכן שלכם יעבוד בשבילכם כל יום.</p>
+      )}
       {note ? <p className="text-sm leading-relaxed text-espresso-light">{note}</p> : null}
-    </SurfaceCard>
+      {canChoosePlan ? (
+        <div className="flex sm:justify-end">
+          <a href={`#${SETTINGS_SECTION.plans}`} className={`${ROW_ACTION_CLASS.quiet} w-full sm:w-auto`}>
+            לבחירת תוכנית
+          </a>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -83,39 +85,49 @@ function subscriptionLabel(status: BillingStatus): { tone: Tone; text: string } 
   }
 }
 
+function billingLine(status: BillingStatus, ending: boolean, scheduled: Plan | null): string {
+  const price = `${formatIls(status.plan.priceIls)} ${PER_INTERVAL[status.plan.interval]}`;
+  const end = status.subscription?.currentPeriodEnd;
+  if (!end || status.subscription?.status === "past_due") return price;
+  const day = formatDay(end);
+  if (ending) return `פעיל עד ${day}, בלי חיובים נוספים`;
+  if (scheduled) return `עוברים ל${planLabel(scheduled)} ב־${day}, ואז ${formatIls(scheduled.priceIls)} ${PER_INTERVAL[scheduled.interval]}`;
+  return `${price}, החיוב הבא ב־${day}`;
+}
+
 export function SubscriptionHero({
   status,
   ending,
-  periodEnd,
   scheduled,
   actions,
 }: {
   status: BillingStatus;
   ending: boolean;
-  periodEnd: string | null;
   scheduled: Plan | null;
   actions: ReactNode;
 }) {
   const label = subscriptionLabel(status);
-  const billingLine = ending
-    ? `פעיל עד ${periodEnd}`
-    : scheduled
-      ? `עוברים לתוכנית ${planLabel(scheduled)} ב־${periodEnd} · החיוב הבא ${formatIls(scheduled.priceIls)}`
-      : `חיוב ${intervalAdjective(status.plan.interval)} · החיוב הבא ${formatIls(status.plan.priceIls)} ב־${periodEnd}`;
+  const renews = status.paid && !ending && Boolean(status.subscription?.currentPeriodEnd) && status.subscription?.status !== "past_due";
+  const nextPlan = scheduled ?? status.plan;
 
   return (
-    <SurfaceCard className="flex flex-col gap-6 p-6 sm:p-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex flex-col gap-1.5">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <h2 className="font-display text-3xl leading-tight text-espresso">{planLabel(status.plan)}</h2>
-            <StatusLabel tone={label.tone}>{label.text}</StatusLabel>
-          </div>
-          {periodEnd ? <p className="text-sm text-espresso-light">{billingLine}</p> : null}
+    <div className="flex flex-col gap-6 p-6 sm:grid sm:grid-cols-[1fr_auto] sm:gap-x-6 sm:p-8">
+      <div className="flex flex-col gap-1.5">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <h2 className="font-display text-2xl leading-tight text-espresso">{planLabel(status.plan)}</h2>
+          <StatusLabel tone={label.tone}>{label.text}</StatusLabel>
         </div>
-        <div className="flex flex-col gap-3 sm:flex-row">{actions}</div>
+        <p className="text-sm text-espresso-light">{billingLine(status, ending, scheduled)}</p>
       </div>
-      <CreditsMeter credits={status.credits} subscription={status.subscription} />
-    </SurfaceCard>
+      <div className="flex flex-col gap-3 sm:col-span-2">
+        <CreditBreakdown credits={status.credits} renews={renews} />
+        {renews ? (
+          <p className="text-sm text-espresso-light">
+            בחידוש, הקרדיטים מהתוכנית מתאפסים ל־{formatCredits(nextPlan.includedCredits)}. מה שלא נוצל לא עובר הלאה.
+          </p>
+        ) : null}
+      </div>
+      <div className="flex flex-col gap-3 empty:hidden sm:col-start-2 sm:row-start-1 sm:flex-row sm:items-start">{actions}</div>
+    </div>
   );
 }

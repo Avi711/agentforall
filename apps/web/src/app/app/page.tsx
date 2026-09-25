@@ -70,7 +70,6 @@ async function HomeCard({ user }: { user: AuthenticatedUser }) {
           bot={snapshot}
           credits={billing.credits}
           creditsAction={billing.creditsAction}
-          subscription={billing.subscription}
           showCredits={trial === null}
           apps={SHOWCASE_APPS}
         />

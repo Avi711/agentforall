@@ -4,7 +4,8 @@ import { errorMessage, type BillingLogger } from "../logger";
 import type { BotSpend, CreditGrantRepository, CreditUsageRepository, LlmBudgetPort } from "../ports";
 import { LOW_BALANCE_RATIO, TRIAL_CREDITS, TRIAL_DAYS, creditsFromUsdCents, usdCentsFromCredits } from "../pricing";
 import { attributeConsumption, availableCredits, currentAllowance, isGrantLive, remainingCredits } from "./allocation";
-import { runwayDays } from "./runway";
+import { isInCurrentPeriod, periodEndOf } from "./period";
+import { creditPace, type CreditPace } from "./runway";
 
 const MAX_ADVANCE_ATTEMPTS = 3;
 const SYNC_ALL_CONCURRENCY = 4;
@@ -22,7 +23,9 @@ export interface CreditGrantView {
   usedCredits: number;
   grantedAt: string;
   expiresAt: string | null;
+  periodEnd: string | null;
   live: boolean;
+  inCurrentPeriod: boolean;
 }
 
 export type OutOfCreditsReason = "trial-ended" | "plan-ended" | "credits-spent";
@@ -43,7 +46,7 @@ export interface CreditSummary {
   balance: BalanceState;
   trial: TrialState;
   grants: CreditGrantView[];
-  runwayDays: number | null;
+  pace: CreditPace;
   syncedAt: string | null;
   stale: boolean;
 }
@@ -255,9 +258,11 @@ export class CreditService {
         usedCredits: g.usedCredits,
         grantedAt: g.grantedAt.toISOString(),
         expiresAt: g.expiresAt?.toISOString() ?? null,
+        periodEnd: periodEndOf(g)?.toISOString() ?? null,
         live: isGrantLive(g, now),
+        inCurrentPeriod: isInCurrentPeriod(g, now),
       })),
-      runwayDays: runwayDays(grants, available, now),
+      pace: creditPace(grants, available, now),
       syncedAt: syncedAt?.toISOString() ?? null,
       stale,
     };

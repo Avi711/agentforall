@@ -3,9 +3,8 @@
 import { useEffect, useId, useRef } from "react";
 
 import { ROW_ACTION_CLASS } from "./action-buttons";
-import { BusyLabel, ChevronEnd, Spinner, TelegramGlyph } from "./Marks";
+import { BusyLabel, ChevronEnd, CloseButton, Spinner, TelegramGlyph } from "./Marks";
 
-const QUIET = `${ROW_ACTION_CLASS.quiet} disabled:opacity-60`;
 
 export function WhatsappNumberConfirmDialog({
   open,
@@ -44,16 +43,7 @@ export function WhatsappNumberConfirmDialog({
     >
       <form method="dialog" onSubmit={(e) => e.preventDefault()} dir="rtl">
         <div className="relative rounded-t-2xl border-b-2 border-terra bg-terra-pale px-5 py-5 sm:px-7">
-          <button
-            type="button"
-            onClick={() => dialogRef.current?.close()}
-            aria-label="סגירה"
-            className="absolute top-3 end-3 inline-flex h-8 w-8 items-center justify-center rounded-full text-espresso-light hover:bg-white/70 hover:text-espresso transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra"
-          >
-            <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M5 5l10 10M15 5L5 15" />
-            </svg>
-          </button>
+          <CloseButton onClick={() => dialogRef.current?.close()} className="absolute top-3 end-3" />
           <div className="flex items-start gap-3 pe-8">
             <span
               aria-hidden="true"
@@ -101,7 +91,7 @@ export function WhatsappNumberConfirmDialog({
         </div>
 
         <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 px-5 pb-5 sm:px-7 sm:pb-6">
-          <button type="button" onClick={onConfirm} disabled={pending !== null} aria-busy={pending === "pair"} className={QUIET}>
+          <button type="button" onClick={onConfirm} disabled={pending !== null} aria-busy={pending === "pair"} className={ROW_ACTION_CLASS.quiet}>
             <BusyLabel busy={pending === "pair"} busyText="פותחים…">יש לי מספר, נמשיך</BusyLabel>
           </button>
           {/* Arrow icons imply direction, so they mirror in RTL (Material/HIG); the X and ! badges stay as-is. */}

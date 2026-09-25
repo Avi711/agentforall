@@ -1,3 +1,5 @@
+import type { PlanChangeBilling } from "./provider/types";
+
 // 1 credit = $0.005 of LiteLLM spend.
 export const USD_CENTS_PER_CREDIT = 0.5;
 
@@ -89,6 +91,10 @@ export function monthlyCredits(plan: Plan): number {
 
 export function yearlySavingsIls(tier: PlanTier): number {
   return planFor(tier, "month").priceIls * MONTHS_PER_INTERVAL.year - planFor(tier, "year").priceIls;
+}
+
+export function planChangeBilling(from: Plan, to: Plan): PlanChangeBilling {
+  return to.interval !== from.interval || to.priceIls > from.priceIls ? "prorate_now" : "at_renewal";
 }
 
 export function creditsRatio(plan: Plan, base: Plan): number {

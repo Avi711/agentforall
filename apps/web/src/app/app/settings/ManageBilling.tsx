@@ -1,42 +1,43 @@
 import type { ReactNode } from "react";
 import { DIALOG_ACTION } from "../action-buttons";
-import { BusyLabel, ChevronEnd, SECTION_LABEL, Spinner, SurfaceCard } from "../Marks";
+import { BusyLabel } from "../Marks";
+import { OptionRow, PageSection, type OptionRowProps } from "./Section";
 
-export interface ManageOption {
-  key: string;
-  title: string;
-  detail: string;
-  pending: boolean;
-  external?: boolean;
-  onSelect: () => void;
-}
+export type ManageOption = OptionRowProps;
 
-export function ManageBilling({ options, disabled, children }: { options: readonly ManageOption[]; disabled: boolean; children?: ReactNode }) {
-  if (options.length === 0) return null;
+export function ManageBilling({
+  links,
+  cancel,
+  disabled,
+  children,
+}: {
+  links: readonly ManageOption[];
+  cancel: ManageOption | null;
+  disabled: boolean;
+  children?: ReactNode;
+}) {
+  if (links.length === 0 && !cancel) return null;
   return (
-    <SurfaceCard className="px-6 pb-2 pt-6 sm:px-8">
-      <h2 className={SECTION_LABEL}>ניהול החיוב</h2>
-      <ul className="divide-y divide-sand-light/70">
-        {options.map((option) => (
-          <li key={option.key}>
-            <button
-              type="button"
-              disabled={disabled}
-              aria-busy={option.pending}
-              onClick={option.onSelect}
-              className="flex w-full items-center justify-between gap-4 py-5 text-start transition hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra disabled:opacity-60"
-            >
-              <span className="flex flex-col gap-0.5">
-                <span className="text-[15px] font-semibold text-espresso">{option.title}</span>
-                <span className="text-[13px] text-espresso-light">{option.detail}</span>
-              </span>
-              <span className="text-espresso-light">{option.pending ? <Spinner /> : option.external ? <ExternalMark /> : <ChevronEnd />}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-      {children}
-    </SurfaceCard>
+    <PageSection id="billing" title="ניהול המנוי">
+      {links.length > 0 ? (
+        <>
+          <p className="text-sm text-espresso-light">התשלומים, הכרטיס והקבלות מנוהלים אצל פאדל, ספק התשלומים שלנו.</p>
+          <ul className="divide-y divide-sand-light/70">
+            {links.map((option) => (
+              <li key={option.title}>
+                <OptionRow {...option} disabled={disabled} />
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {cancel ? (
+        <div className={links.length > 0 ? "mt-4" : ""}>
+          <OptionRow {...cancel} disabled={disabled} />
+          {children}
+        </div>
+      ) : null}
+    </PageSection>
   );
 }
 
@@ -54,7 +55,7 @@ export function CancelConfirm({
   onClose: () => void;
 }) {
   return (
-    <div className="mb-5 flex flex-col gap-3 rounded-2xl border border-red-200 bg-red-50/60 p-4">
+    <div className="mt-2 flex flex-col gap-3 rounded-2xl border border-red-200 bg-red-50/60 p-4">
       <p className="text-sm leading-relaxed text-espresso">
         המנוי יישאר פעיל עד {periodEnd ?? "סוף תקופת החיוב"}, ואחר כך הסוכן יפסיק לעבוד. לבטל?
       </p>
@@ -67,16 +68,5 @@ export function CancelConfirm({
         </button>
       </div>
     </div>
-  );
-}
-
-function ExternalMark() {
-  return (
-    <>
-      <span className="sr-only">(נפתח אצל ספק התשלומים)</span>
-      <svg aria-hidden viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-        <path d="M13 7 7 13M8 7h5v5" transform="scale(-1 1) translate(-20 0)" />
-      </svg>
-    </>
   );
 }

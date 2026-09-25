@@ -1,15 +1,20 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { BillingIntervalToggle } from "@/components/pricing/BillingIntervalToggle";
 import { ErrorAlert } from "@/components/ErrorAlert";
-import { formatAgorot, formatCredits, formatDate, formatDay, planLabel } from "@/lib/billing/format";
-import { PLANS, monthlyCredits, type Plan, type PlanCode } from "@/lib/billing/pricing";
+import { PLAN_COPY } from "@/content/plans.he";
+import { formatAgorot, formatCredits, formatDate, formatDay, formatIls, planLabel } from "@/lib/billing/format";
+import { PLAN_CATALOGUE, PLANS, monthlyCredits, planChangeBilling, type Plan, type PlanCode } from "@/lib/billing/pricing";
 import type { BillingStatus, PlanChangePreview } from "@/lib/billing/service";
+import { ROW_ACTION_CLASS } from "../action-buttons";
 import { BillingClientError, changePlan, previewPlanChange } from "../billing/client";
-import { PlanCheckout } from "../billing/PlanCheckout";
 import { ConfirmDialog } from "../ConfirmDialog";
-import { SummaryRows } from "../Marks";
+import { BusyLabel, CloseButton, SummaryRows } from "../Marks";
 import { useActionRunner } from "../useActionRunner";
+import { CardSection, SUBSECTION_TITLE } from "./Section";
+
+const PER_INTERVAL = { month: "לחודש", year: "לשנה" } as const;
 
 export interface PlanChangeNotice {
   message: string;
@@ -30,6 +35,7 @@ export function PlanChangePanel({
   onUpdatePaymentMethod: () => void;
 }) {
   const { pending, error, run } = useActionRunner<PlanCode>();
+  const [interval, setBillingInterval] = useState(status.plan.interval);
   const [preview, setPreview] = useState<PlanChangePreview | null>(null);
   const [declined, setDeclined] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -55,63 +61,104 @@ export function PlanChangePanel({
   }
 
   return (
-    <section id="change-plan" aria-labelledby="change-plan-title" className="flex scroll-mt-24 flex-col gap-4">
-      <header className="flex items-start justify-between gap-4">
-        <div className="flex flex-col gap-1.5">
-          <h2 id="change-plan-title" ref={headingRef} tabIndex={-1} className="font-display text-2xl text-espresso focus:outline-none">
-            מעבר לתוכנית אחרת
-          </h2>
-          <p className="text-sm leading-relaxed text-espresso-light">
-            שדרוג מתחיל מיד, והסכום המדויק מוצג לפני האישור. מעבר לתוכנית זולה יותר נכנס לתוקף בחידוש הבא, בלי חיוב עכשיו.
-          </p>
-        </div>
-        <button type="button" onClick={onClose} className="shrink-0 rounded-lg px-2 py-1 text-sm font-semibold text-espresso-light underline hover:text-espresso">
-          סגירה
-        </button>
+    <CardSection id="change-plan" labelledBy="change-plan-title" tinted>
+      <header className="flex items-center justify-between gap-4">
+        <h3 id="change-plan-title" ref={headingRef} tabIndex={-1} className={`${SUBSECTION_TITLE} focus:outline-none`}>
+          מעבר לתוכנית אחרת
+        </h3>
+        <CloseButton onClick={onClose} />
       </header>
-      <PlanCheckout
-        currentPlan={status.plan.code}
-        scheduledPlan={scheduledPlan?.code ?? null}
-        initialInterval={status.plan.interval}
-        pendingPlan={pending}
-        disabled={pending !== null}
-        busyText="מחשבים מחיר…"
-        onChoose={(code) => {
-          setDeclined(false);
-          void run(code, async () => setPreview(await previewPlanChange(code)));
-        }}
-      />
-      {declined ? (
-        <ErrorAlert>
-          הכרטיס סורב ולא חויבתם. אפשר לנסות שוב אחרי{" "}
-          <button type="button" onClick={onUpdatePaymentMethod} className="font-semibold underline">
-            עדכון אמצעי התשלום
-          </button>
-          .
-        </ErrorAlert>
-      ) : (
-        <ErrorAlert>{error}</ErrorAlert>
-      )}
-      {preview && target ? (
-        <ConfirmDialog
-          open
-          title={`מעבר לתוכנית ${planLabel(target)}`}
-          description={<PlanChangeSummary preview={preview} current={status.plan} target={target} periodEnd={periodEnd} />}
-          confirmLabel={
-            chargesNow
-              ? `אישור ותשלום ${formatAgorot(preview.chargeNowAgorot ?? 0)}`
-              : preview.billing === "at_renewal" && renewalDay
-                ? `מעבר ל${planLabel(target)} ב־${renewalDay}`
-                : "אישור המעבר"
-          }
-          cancelLabel={preview.billing === "at_renewal" ? `להישאר ב${planLabel(status.plan)}` : "ביטול"}
-          busyLabel={preview.billing === "prorate_now" ? "מחייבים…" : "מעדכנים…"}
-          onClose={() => setPreview(null)}
-          onConfirm={() => confirm(preview, target)}
-        />
-      ) : null}
-    </section>
+      <div className="mt-4 flex flex-col gap-4">
+        <div className="flex">
+          <BillingIntervalToggle value={interval} onChange={setBillingInterval} disabled={pending !== null} />
+        </div>
+        <ul className="divide-y divide-sand-light/70 rounded-2xl border border-sand-light bg-white">
+          {PLAN_CATALOGUE.filter((plan) => plan.interval === interval).map((plan) => (
+            <li key={plan.code} className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:gap-6 sm:px-5">
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <p className="text-[15px] font-semibold text-espresso">{plan.name}</p>
+                <p className="text-[13px] text-espresso-light">{PLAN_COPY[plan.tier].tagline}</p>
+              </div>
+              <div className="flex flex-col gap-0.5 tabular-nums sm:w-40">
+                <p className="text-sm font-semibold text-espresso">
+                  {formatIls(plan.priceIls)} {PER_INTERVAL[plan.interval]}
+                </p>
+                <p className="text-[13px] text-espresso-light">{formatCredits(monthlyCredits(plan))} קרדיטים בחודש</p>
+              </div>
+              <div className="flex flex-col gap-1.5 sm:w-48 sm:items-end">
+                {plan.code === status.plan.code || plan.code === scheduledPlan?.code ? (
+                  <p className="text-sm font-semibold text-espresso-light">
+                    {plan.code === status.plan.code ? "התוכנית הנוכחית" : "המעבר כבר נקבע"}
+                  </p>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      disabled={pending !== null}
+                      aria-busy={pending === plan.code}
+                      aria-describedby={`timing-${plan.code}`}
+                      onClick={() => {
+                        setDeclined(false);
+                        void run(plan.code, async () => setPreview(await previewPlanChange(plan.code)));
+                      }}
+                      className={`${ROW_ACTION_CLASS.quiet} w-full sm:w-auto`}
+                    >
+                      <BusyLabel busy={pending === plan.code} busyText="מחשבים מחיר…">
+                        {actionLabel(plan, status.plan)}
+                      </BusyLabel>
+                    </button>
+                    <p id={`timing-${plan.code}`} className="text-xs text-espresso-light">
+                      {timingOf(plan, status.plan, renewalDay)}
+                    </p>
+                  </>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+        {declined ? (
+          <ErrorAlert>
+            הכרטיס סורב ולא חויבתם. אפשר לנסות שוב אחרי{" "}
+            <button type="button" onClick={onUpdatePaymentMethod} className="font-semibold underline">
+              עדכון אמצעי התשלום
+            </button>
+            .
+          </ErrorAlert>
+        ) : (
+          <ErrorAlert>{error}</ErrorAlert>
+        )}
+        {preview && target ? (
+          <ConfirmDialog
+            open
+            title={`מעבר לתוכנית ${planLabel(target)}`}
+            description={<PlanChangeSummary preview={preview} current={status.plan} target={target} periodEnd={periodEnd} />}
+            confirmLabel={
+              chargesNow
+                ? `אישור ותשלום ${formatAgorot(preview.chargeNowAgorot ?? 0)}`
+                : preview.billing === "at_renewal" && renewalDay
+                  ? `מעבר ל${planLabel(target)} ב־${renewalDay}`
+                  : "אישור המעבר"
+            }
+            cancelLabel={preview.billing === "at_renewal" ? `להישאר ב${planLabel(status.plan)}` : "ביטול"}
+            busyLabel={preview.billing === "prorate_now" ? "מחייבים…" : "מעדכנים…"}
+            onClose={() => setPreview(null)}
+            onConfirm={() => confirm(preview, target)}
+          />
+        ) : null}
+      </div>
+    </CardSection>
   );
+}
+
+function timingOf(plan: Plan, current: Plan, renewalDay: string | null): string {
+  if (planChangeBilling(current, plan) === "prorate_now") {
+    return plan.interval === current.interval ? "מתחיל מיד, בתשלום יחסי" : "מתחיל היום, לשנה שלמה";
+  }
+  return `${renewalDay ? `מ־${renewalDay}` : "מהחידוש הבא"}, בלי חיוב עכשיו`;
+}
+
+function actionLabel(plan: Plan, current: Plan): string {
+  return plan.interval === current.interval && plan.priceIls > current.priceIls ? `שדרוג ל${plan.name}` : `מעבר ל${planLabel(plan)}`;
 }
 
 function PlanChangeSummary({

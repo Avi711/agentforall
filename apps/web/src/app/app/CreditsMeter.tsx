@@ -1,64 +1,29 @@
 import type { ReactNode } from "react";
+import { balancePools } from "@/lib/billing/credits/pools";
 import type { CreditSummary } from "@/lib/billing/credits/service";
-import type { SubscriptionView } from "@/lib/billing/service";
 import { formatCredits, formatDay } from "@/lib/billing/format";
 import { AnimatedCredits } from "./AnimatedCredits";
-import { OUT_OF_CREDITS_LABEL, runwayLabel } from "./credits-copy";
+import { BALANCE_NOTE, OUT_OF_CREDITS_LABEL, POOL_SOURCE, poolSwatch, runwayLabel } from "./credits-copy";
 
 const AMOUNT_SIZE = { lg: "text-5xl", sm: "text-2xl" } as const;
-
-const BALANCE_NOTE = {
-  low: "הקרדיטים עומדים להיגמר. כשהם נגמרים הסוכן מפסיק לענות.",
-  out: "הסוכן לא עונה עד שיהיו קרדיטים.",
-} as const;
 
 function percentOf(part: number, whole: number): string {
   return `${whole > 0 ? (part / whole) * 100 : 0}%`;
 }
 
-interface LegendItem {
-  amount: number;
-  label: string;
-  swatch: string;
-}
-
-function planPeriodLabel(subscription: SubscriptionView | null): string {
-  const end = subscription?.currentPeriodEnd;
-  if (!end) return "מהתוכנית";
-  const renews = !subscription.cancelAtPeriodEnd && subscription.status !== "canceled";
-  return renews ? `מהתוכנית · מתחדשים ב־${formatDay(end)}` : `מהתוכנית · בתוקף עד ${formatDay(end)}`;
-}
-
-// Plan and trial credits are spent first, so they read as one group beside top-ups that never expire.
-function legendOf(credits: CreditSummary, subscription: SubscriptionView | null, alert: boolean): LegendItem[] {
-  const hasPlan = credits.grants.some((g) => g.kind === "plan" && g.live);
-  if (!hasPlan && credits.topupAvailable === 0) return [];
-  const periodLeft = credits.available - credits.topupAvailable;
-  const items: LegendItem[] = [];
-  if (periodLeft > 0) {
-    items.push({ amount: periodLeft, label: hasPlan ? planPeriodLabel(subscription) : "לתקופה הנוכחית", swatch: alert ? "bg-terra" : "bg-sage" });
-  }
-  if (credits.topupAvailable > 0) items.push({ amount: credits.topupAvailable, label: "מטעינות · לא פגים", swatch: "bg-honey" });
-  return items;
-}
-
 export function CreditsMeter({
   credits,
-  subscription = null,
   size = "lg",
   action,
 }: {
   credits: CreditSummary;
-  subscription?: SubscriptionView | null;
   size?: keyof typeof AMOUNT_SIZE;
   action?: ReactNode;
 }) {
-  const { balance, available, allowance, topupAvailable, runwayDays, stale } = credits;
+  const { balance, available, allowance, pace, stale } = credits;
   if (balance.kind === "none") return null;
-  const periodAvailable = available - topupAvailable;
   const alert = balance.kind === "low" || balance.kind === "out";
-  const legend = legendOf(credits, subscription, alert);
-  const segments = legend.length > 0 ? legend : [{ amount: periodAvailable, swatch: alert ? "bg-terra" : "bg-sage" }];
+  const pools = balancePools(credits.grants).filter((pool) => pool.available > 0);
 
   return (
     <div className="flex flex-col gap-3">
@@ -72,7 +37,7 @@ export function CreditsMeter({
           <span className="text-base text-espresso-light">קרדיטים זמינים</span>
         </p>
       )}
-      {runwayDays !== null ? <p className="text-sm text-espresso-light">{runwayLabel(runwayDays)}</p> : null}
+      {pace.kind === "short" ? <p className="text-sm text-espresso-light">{runwayLabel(pace.days)}</p> : null}
       {allowance > 0 ? (
         <div
           role="meter"
@@ -83,17 +48,22 @@ export function CreditsMeter({
           aria-valuetext={`${formatCredits(available)} מתוך ${formatCredits(allowance)}`}
           className="flex h-2 gap-0.5 overflow-hidden rounded-full bg-cream-dark"
         >
-          {segments.map((segment) => (
-            <div key={segment.swatch} className={`h-full rounded-full ${segment.swatch}`} style={{ width: percentOf(segment.amount, allowance) }} />
+          {pools.map((pool) => (
+            <div key={pool.kind} className={`h-full rounded-full ${poolSwatch(pool, alert)}`} style={{ width: percentOf(pool.available, allowance) }} />
           ))}
         </div>
       ) : null}
-      {legend.length > 0 ? (
-        <ul className="flex flex-wrap gap-x-6 gap-y-1 text-[13px] text-espresso-light">
-          {legend.map((item) => (
-            <li key={item.label} className="flex items-center gap-2">
-              <span aria-hidden className={`h-2.5 w-2.5 rounded-sm ${item.swatch}`} />
-              <span className="font-semibold text-espresso tabular-nums">{formatCredits(item.amount)}</span> {item.label}
+      {pools.length > 0 ? (
+        <ul className="flex flex-wrap gap-x-8 gap-y-2 text-[13px] text-espresso-light">
+          {pools.map((pool) => (
+            <li key={pool.kind} className="flex items-start gap-2">
+              <span aria-hidden className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-sm ${poolSwatch(pool, alert)}`} />
+              <span className="flex flex-col">
+                <span>
+                  <span className="font-semibold text-espresso tabular-nums">{formatCredits(pool.available)}</span> {POOL_SOURCE[pool.kind]}
+                </span>
+                <span>{pool.validUntil ? `בתוקף עד ${formatDay(pool.validUntil)}` : "לא פגים"}</span>
+              </span>
             </li>
           ))}
         </ul>
