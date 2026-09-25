@@ -15,7 +15,10 @@ export type BillingErrorCode =
   | "conflict"
   | "rate_limited"
   | "payment_required"
-  | "checkout_pending";
+  | "checkout_pending"
+  | "payment_declined"
+  | "subscription_ending"
+  | "plan_change_scheduled";
 
 export class BillingError extends Error {
   constructor(
@@ -64,7 +67,25 @@ export class PaymentOverdueError extends BillingError {
   }
 }
 
-// Paddle refuses any change in the 30 minutes before a renewal, so the old order could not be ended and would bill again.
+export class PaymentDeclinedError extends BillingError {
+  constructor() {
+    super("the saved payment method was declined; nothing changed", "payment_declined", 402);
+  }
+}
+
+export class SubscriptionEndingError extends BillingError {
+  constructor() {
+    super("resume the subscription before changing its plan", "subscription_ending", 409);
+  }
+}
+
+// A proration against the scheduled cheaper plan would overcharge; keeping the paid plan first makes it exact.
+export class PlanChangeScheduledError extends BillingError {
+  constructor(scheduledPlan: string) {
+    super(`a switch to ${scheduledPlan} is scheduled; keep the current plan before upgrading`, "plan_change_scheduled", 409);
+  }
+}
+
 export class RenewalImminentError extends BillingError {
   constructor() {
     super("the current plan renews too soon to change it", "renewal_imminent", 409);
@@ -150,6 +171,7 @@ export class PaymentProviderError extends BillingError {
     message: string,
     public readonly providerStatus: number | null,
     public readonly retryable: boolean,
+    public readonly providerCode: string | null = null,
   ) {
     super(`${provider}: ${message}`, "provider_error", 502, { provider, providerStatus });
   }

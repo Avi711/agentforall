@@ -23,8 +23,10 @@ import {
   NoSubscriptionError,
   PaymentOverdueError,
   PendingCheckoutError,
+  PlanChangeScheduledError,
   RenewalImminentError,
   SamePlanError,
+  SubscriptionEndingError,
   TooManyCheckoutsError,
   TrialUnavailableError,
   UnknownProviderError,
@@ -65,6 +67,8 @@ import type {
   CreateCheckoutInput,
   CreateCheckoutResult,
   PaymentProvider,
+  PlanChangeBilling,
+  ProrationLine,
   ProviderCapabilities,
   ProviderEvent,
   ProviderPayment,
@@ -75,13 +79,14 @@ import { SETTINGS_PATH, checkoutReturnPath } from "./urls";
 
 const CHECKOUT_TTL_MS = HOUR_MS;
 const REUSED_CHECKOUT_MIN_LIFETIME_MS = HOUR_MS / 4;
-// A plan change must be paid before the old order's renewal locks it (Paddle: 30 minutes); the checkout lives an hour.
-const PLAN_CHANGE_RENEWAL_BUFFER_MS = 2 * HOUR_MS;
+// Paddle locks a subscription against changes 30 minutes before it renews.
+const PLAN_CHANGE_RENEWAL_BUFFER_MS = HOUR_MS;
 const RENEWAL_ATTEMPTS = 3;
 
 export interface SubscriptionView {
   provider: PaymentProviderName;
   planCode: string;
+  scheduledPlanCode: string | null;
   status: SubscriptionStatus;
   cancelAtPeriodEnd: boolean;
   currentPeriodEnd: string | null;
@@ -104,6 +109,21 @@ export interface BillingStatus {
 }
 
 export type CreditsAction = "topup" | "subscribe" | "contact";
+
+export interface PlanChangePreview {
+  plan: PlanCode;
+  billing: PlanChangeBilling;
+  chargeNowAgorot: number | null;
+  credits: number;
+  nextChargeAgorot: number | null;
+  nextChargeAt: string | null;
+}
+
+interface PlanChange {
+  subscription: Subscription;
+  provider: PaymentProvider;
+  billing: PlanChangeBilling;
+}
 
 export type WebhookOutcome = "processed" | "duplicate" | "ignored";
 
@@ -153,6 +173,7 @@ type PaymentFailed = Extract<ProviderEvent, { kind: "payment.failed" }>;
 type SubscriptionCanceled = Extract<ProviderEvent, { kind: "subscription.canceled" }>;
 type SubscriptionSnapshot = Extract<ProviderEvent, { kind: "subscription.snapshot" }>;
 type PaymentRefunded = Extract<ProviderEvent, { kind: "payment.refunded" }>;
+type SubscriptionProrated = Extract<ProviderEvent, { kind: "subscription.prorated" }>;
 
 interface Applied {
   userId: string | null;
@@ -283,8 +304,8 @@ export class BillingService {
     const now = this.now();
     if (!current) return true;
     if (this.isStuckOverdue(current)) return false;
-    if (!isContinuing(current, now)) return true;
-    return current.createdAt.getTime() <= session.createdAt.getTime() && !renewsWithin(current, now, PLAN_CHANGE_RENEWAL_BUFFER_MS);
+    // A second standing order beside a continuing one would bill twice; plan changes go through changePlan.
+    return !isContinuing(current, now);
   }
 
   async startCheckout(user: BillingUser, planCode: PlanCode): Promise<{ url: string }> {
@@ -293,12 +314,34 @@ export class BillingService {
     return this.openCheckout(user, subscriptionProduct(PLANS[planCode]));
   }
 
-  async changePlan(user: BillingUser, planCode: PlanCode): Promise<{ url: string }> {
-    const current = await this.requireEntitledSubscription(user.id);
-    if (findPlan(current.planCode)?.interval === "year") throw new YearlyPlanChangeError();
-    if (!current.cancelAtPeriodEnd && current.planCode === planCode) throw new SamePlanError(planCode);
-    if (!current.cancelAtPeriodEnd && renewsWithin(current, this.now(), PLAN_CHANGE_RENEWAL_BUFFER_MS)) throw new RenewalImminentError();
-    return this.openCheckout(user, subscriptionProduct(PLANS[planCode]));
+  async previewPlanChange(user: BillingUser, planCode: PlanCode): Promise<PlanChangePreview> {
+    const { subscription, provider, billing } = await this.planChange(user.id, planCode);
+    const preview = await provider.previewPlanChange(subscription.providerSubscriptionId, planCode, billing);
+    return {
+      plan: planCode,
+      billing,
+      chargeNowAgorot: preview.chargeNowAgorot,
+      credits: prorationCredits(preview.lines),
+      nextChargeAgorot: preview.nextChargeAgorot,
+      nextChargeAt: preview.nextChargeAt?.toISOString() ?? null,
+    };
+  }
+
+  // An upgrade's prorated charge and its credits arrive as a `subscription.prorated` webhook.
+  async changePlan(user: BillingUser, planCode: PlanCode): Promise<BillingStatus> {
+    const { subscription, provider, billing } = await this.planChange(user.id, planCode);
+    const snapshot = await provider.changePlan(subscription.providerSubscriptionId, planCode, billing);
+    // `do_not_bill` moves neither status nor period; one write holds whichever order the snapshot webhook lands in.
+    const updated =
+      billing === "at_renewal"
+        ? await this.subscriptions.updatePlanIfNewer(
+            subscription.id,
+            { planCode: subscription.planCode, scheduledPlanCode: planCode === subscription.planCode ? null : planCode },
+            snapshot.providerUpdatedAt,
+          )
+        : (await this.subscriptions.upsertIfNewer(toUpsert(provider.name, snapshot, user.id))).subscription;
+    this.log.info("plan changed", { userId: user.id, provider: provider.name, from: subscription.planCode, to: planCode, billing });
+    return this.statusFor(user, updated);
   }
 
   async startTopup(user: BillingUser, amountIls: number): Promise<{ url: string }> {
@@ -402,6 +445,22 @@ export class BillingService {
       this.log.error("webhook processing failed", { provider: provider.name, eventType: event.eventType, note });
       throw err;
     }
+  }
+
+  private async planChange(userId: string, planCode: PlanCode): Promise<PlanChange> {
+    const subscription = await this.requireEntitledSubscription(userId);
+    const provider = this.providerFor(subscription, "changePlan");
+    if (subscription.status === "past_due") throw new PaymentOverdueError();
+    if (subscription.cancelAtPeriodEnd) throw new SubscriptionEndingError();
+    const paid = resolvePlan(subscription.planCode);
+    if (paid.interval === "year") throw new YearlyPlanChangeError();
+    if (renewsWithin(subscription, this.now(), PLAN_CHANGE_RENEWAL_BUFFER_MS)) throw new RenewalImminentError();
+    const scheduled = subscription.scheduledPlanCode;
+    if (planCode === (scheduled ?? paid.code)) throw new SamePlanError(planCode);
+    const target = PLANS[planCode];
+    const billing = target.interval !== paid.interval || target.priceIls > paid.priceIls ? "prorate_now" : "at_renewal";
+    if (billing === "prorate_now" && scheduled) throw new PlanChangeScheduledError(scheduled);
+    return { subscription, provider, billing };
   }
 
   private async openCheckout(user: BillingUser, product: CheckoutProduct): Promise<{ url: string }> {
@@ -512,6 +571,8 @@ export class BillingService {
         return this.applySnapshot(provider, event, session);
       case "payment.refunded":
         return this.applyRefund(provider, event);
+      case "subscription.prorated":
+        return this.applyProration(provider, event);
     }
   }
 
@@ -525,7 +586,7 @@ export class BillingService {
     if (event.providerSubscriptionId !== null) throw new EventProcessingError("topup_with_subscription", session.userId);
     if (!coversSession(event.payment, session)) throw new EventProcessingError("amount_mismatch", session.userId);
     const recorded = await this.payments.record(
-      toNewPayment(provider, event.payment, "succeeded", event.occurredAt, session.userId, null),
+      toNewPayment(provider, event.payment, { status: "succeeded", occurredAt: event.occurredAt, userId: session.userId, subscriptionId: null, planCode: null }),
     );
     await this.checkouts.settle(session.id, "completed", event.occurredAt);
     await this.credits.grantTopup(session.userId, session.credits, topupGrantRef(provider, event.payment.providerPaymentId));
@@ -548,7 +609,7 @@ export class BillingService {
     if (!plan) throw new EventProcessingError("unknown_plan", userId);
     const covered = session
       ? coversSession(event.payment, session)
-      : coversPlan(event.payment, plan, existing ? await this.payments.lastSucceededAmountAgorot(existing.id) : null);
+      : coversPlan(event.payment, plan, existing ? await this.payments.lastSucceededAmountAgorot(existing.id, plan.code) : null);
     if (!covered) throw new EventProcessingError("amount_mismatch", userId);
 
     const application = existing
@@ -577,7 +638,7 @@ export class BillingService {
     userId: string,
   ): Promise<PaymentApplication> {
     const application = await this.payments.recordFirstPayment({
-      payment: toNewPayment(provider, event.payment, "succeeded", event.occurredAt, userId, null),
+      payment: toNewPayment(provider, event.payment, { status: "succeeded", occurredAt: event.occurredAt, userId, subscriptionId: null, planCode: plan.code }),
       subscription: {
         provider,
         providerSubscriptionId,
@@ -634,7 +695,7 @@ export class BillingService {
     for (let attempt = 1; attempt <= RENEWAL_ATTEMPTS; attempt++) {
       const currentPeriodEnd = nextPeriodEnd(current, event.periodEnd, event.occurredAt, plan);
       const application = await this.payments.recordRenewal({
-        payment: toNewPayment(provider, event.payment, "succeeded", event.occurredAt, userId, current.id),
+        payment: toNewPayment(provider, event.payment, { status: "succeeded", occurredAt: event.occurredAt, userId, subscriptionId: current.id, planCode: plan.code }),
         subscriptionId: current.id,
         expectedPeriodEnd: current.currentPeriodEnd,
         patch: isStale(event.occurredAt, current)
@@ -642,6 +703,7 @@ export class BillingService {
           : {
               status: "active",
               planCode: plan.code,
+              scheduledPlanCode: null,
               cancelAtPeriodEnd: false,
               currentPeriodEnd,
               providerCustomerId: event.providerCustomerId ?? current.providerCustomerId,
@@ -661,7 +723,9 @@ export class BillingService {
     const existing = await this.subscriptions.findByProviderRef(provider, event.providerSubscriptionId);
     if (!existing) throw new EventProcessingError("unknown_subscription", null);
     if (event.payment) {
-      await this.payments.record(toNewPayment(provider, event.payment, "failed", event.occurredAt, existing.userId, existing.id));
+      await this.payments.record(
+        toNewPayment(provider, event.payment, { status: "failed", occurredAt: event.occurredAt, userId: existing.userId, subscriptionId: existing.id, planCode: null }),
+      );
     }
     if (isStale(event.occurredAt, existing)) return { userId: existing.userId, note: "stale_event" };
     if (isSettledStatus(existing.status)) return { userId: existing.userId, note: "already_settled" };
@@ -693,6 +757,25 @@ export class BillingService {
     const result = await this.subscriptions.upsertIfNewer(toUpsert(provider, event.subscription, userId));
     if (session) await this.checkouts.settle(session.id, "completed", event.occurredAt);
     return { userId, note: !userId ? "account_deleted" : result.applied ? null : "stale_event" };
+  }
+
+  // Not a full charge of any plan, so it never becomes the floor a renewal is checked against.
+  private async applyProration(provider: PaymentProviderName, event: SubscriptionProrated): Promise<Applied> {
+    const subscription = await this.subscriptions.findByProviderRef(provider, event.providerSubscriptionId);
+    if (!subscription) throw new EventProcessingError("unknown_subscription", null);
+    const userId = subscription.userId;
+    const recorded = await this.payments.record(
+      toNewPayment(provider, event.payment, { status: "succeeded", occurredAt: event.occurredAt, userId, subscriptionId: subscription.id, planCode: null }),
+    );
+    if (!userId) return { userId: null, note: "account_deleted" };
+    const credits = prorationCredits(event.lines);
+    if (credits > 0) {
+      const periodEnd = event.periodEnd ?? subscription.currentPeriodEnd ?? event.occurredAt;
+      const expiresAt = new Date(periodEnd.getTime() + ACTIVE_GRACE_MS);
+      await this.credits.grantPlanCredits(userId, credits, expiresAt, planGrantRef(provider, event.payment.providerPaymentId));
+      await this.recapAfterLedgerWrite(userId);
+    }
+    return { userId, note: recorded ? null : "duplicate_payment" };
   }
 
   private async applyRefund(provider: PaymentProviderName, event: PaymentRefunded): Promise<Applied> {
@@ -850,6 +933,12 @@ function subscriptionProduct(plan: Plan): CheckoutProduct {
   };
 }
 
+// Credits follow the money exactly as the provider prorated it.
+function prorationCredits(lines: readonly ProrationLine[]): number {
+  const total = lines.reduce((sum, line) => sum + line.quantity * line.rate * PLANS[line.planCode].includedCredits, 0);
+  return Math.max(0, Math.round(total));
+}
+
 function planGrantRef(provider: PaymentProviderName, paymentId: string): string {
   return `plan:${provider}:${paymentId}`;
 }
@@ -901,21 +990,9 @@ function nextPeriodEnd(subscription: Subscription, reported: Date | null, paidAt
 function toNewPayment(
   provider: PaymentProviderName,
   payment: ProviderPayment,
-  status: "succeeded" | "failed",
-  occurredAt: Date,
-  userId: string | null,
-  subscriptionId: string | null,
+  recorded: Pick<NewPayment, "status" | "occurredAt" | "userId" | "subscriptionId" | "planCode">,
 ): NewPayment {
-  return {
-    userId,
-    subscriptionId,
-    provider,
-    providerPaymentId: payment.providerPaymentId,
-    status,
-    amountAgorot: payment.amountAgorot,
-    currency: payment.currency,
-    occurredAt,
-  };
+  return { ...recorded, provider, providerPaymentId: payment.providerPaymentId, amountAgorot: payment.amountAgorot, currency: payment.currency };
 }
 
 function toUpsert(provider: PaymentProviderName, snapshot: ProviderSubscription, userId: string | null): UpsertSubscriptionInput {
@@ -937,6 +1014,7 @@ function toSubscriptionView(subscription: Subscription): SubscriptionView {
   return {
     provider: subscription.provider,
     planCode: subscription.planCode,
+    scheduledPlanCode: subscription.scheduledPlanCode,
     status: subscription.status,
     cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
     currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
@@ -952,6 +1030,7 @@ function subscriptionIdOf(event: ProviderEvent): string | null {
     case "payment.failed":
     case "payment.refunded":
     case "subscription.canceled":
+    case "subscription.prorated":
       return event.providerSubscriptionId;
     case "checkout.failed":
     case "ignored":

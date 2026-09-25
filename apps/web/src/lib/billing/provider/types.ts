@@ -1,5 +1,5 @@
 import type { PaymentProviderName, SubscriptionStatus } from "../domain";
-import type { BillingInterval } from "../pricing";
+import type { BillingInterval, PlanCode } from "../pricing";
 
 export interface ProviderCapabilities {
   cancel: boolean;
@@ -8,6 +8,7 @@ export interface ProviderCapabilities {
   updatePaymentMethod: boolean;
   // False when a past-due order can be neither ended nor changed until its charge is paid (Paddle).
   cancelWhilePastDue: boolean;
+  changePlan: boolean;
 }
 
 export type CheckoutMode = "subscription" | "one_time";
@@ -51,6 +52,22 @@ export interface ProviderPayment {
   currency: string;
 }
 
+export type PlanChangeBilling = "prorate_now" | "at_renewal";
+
+// A plan added (+1) or credited back (-1) for `rate` of its billing period.
+export interface ProrationLine {
+  planCode: PlanCode;
+  quantity: number;
+  rate: number;
+}
+
+export interface ProviderPlanChangePreview {
+  chargeNowAgorot: number | null;
+  lines: ProrationLine[];
+  nextChargeAgorot: number | null;
+  nextChargeAt: Date | null;
+}
+
 // The only correlation the service trusts: our own checkout session id, echoed back by the provider.
 export interface WebhookReference {
   checkoutSessionId: string | null;
@@ -76,6 +93,14 @@ export type ProviderEvent =
       planCode: string | null;
       payment: ProviderPayment;
       // Providers that schedule the next charge report it; null = derive from the plan interval.
+      periodEnd: Date | null;
+      reference: WebhookReference;
+    })
+  | (EventBase & {
+      kind: "subscription.prorated";
+      providerSubscriptionId: string;
+      payment: ProviderPayment;
+      lines: ProrationLine[];
       periodEnd: Date | null;
       reference: WebhookReference;
     })
@@ -123,6 +148,9 @@ export interface PaymentProvider {
   // Null = the provider acknowledged but reports no state; the service derives the new state itself.
   cancelSubscription(providerSubscriptionId: string): Promise<ProviderSubscription | null>;
   resumeSubscription(providerSubscriptionId: string): Promise<ProviderSubscription | null>;
+  previewPlanChange(providerSubscriptionId: string, planCode: string, billing: PlanChangeBilling): Promise<ProviderPlanChangePreview>;
+  // A declined `prorate_now` charge changes nothing (PaymentDeclinedError).
+  changePlan(providerSubscriptionId: string, planCode: string, billing: PlanChangeBilling): Promise<ProviderSubscription>;
   getCustomerPortalUrl(providerSubscriptionId: string): Promise<string | null>;
   getUpdatePaymentMethodUrl(providerSubscriptionId: string, returnUrl: string): Promise<string | null>;
 }

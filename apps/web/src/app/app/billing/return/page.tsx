@@ -4,7 +4,7 @@ import { requireSession } from "@/lib/auth/session";
 import { getBillingService } from "@/lib/billing";
 import type { CheckoutSession } from "@/lib/billing/domain";
 import { formatAgorot, formatCredits, formatDate, planLabel } from "@/lib/billing/format";
-import { monthlyCredits, resolvePlan } from "@/lib/billing/pricing";
+import { monthlyCredits, planAmountAgorot, resolvePlan } from "@/lib/billing/pricing";
 import { CheckoutSessionQuerySchema } from "@/lib/billing/schemas";
 import type { BillingStatus } from "@/lib/billing/service";
 import { SETTINGS_PATH, settingsSectionHref } from "@/lib/billing/urls";
@@ -56,7 +56,7 @@ function receiptFor(checkout: CheckoutSession, status: BillingStatus): PaymentRe
   }
   const plan = resolvePlan(checkout.productCode);
   const current = status.subscription;
-  const nextCharge = current?.planCode === plan.code && !current.cancelAtPeriodEnd ? formatDate(current.currentPeriodEnd) : null;
+  const nextChargeAt = current?.planCode === plan.code && !current.cancelAtPeriodEnd ? formatDate(current.currentPeriodEnd) : null;
   return {
     title: "התשלום התקבל",
     lead: `תודה! תוכנית ${planLabel(plan)} פעילה והקרדיטים כבר בחשבון.`,
@@ -64,7 +64,7 @@ function receiptFor(checkout: CheckoutSession, status: BillingStatus): PaymentRe
       { label: "תוכנית", value: planLabel(plan) },
       paid,
       { label: "קרדיטים", value: `${formatCredits(monthlyCredits(plan))} בחודש` },
-      ...(nextCharge ? [{ label: "החיוב הבא", value: nextCharge }] : []),
+      ...(nextChargeAt ? [{ label: "החיוב הבא", value: `${formatAgorot(planAmountAgorot(plan))} ב־${nextChargeAt}` }] : []),
     ],
   };
 }

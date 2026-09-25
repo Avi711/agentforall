@@ -186,3 +186,16 @@ export function StatusLabel({ tone, children }: { tone: Tone; children: ReactNod
     </span>
   );
 }
+
+export function SummaryRows({ rows }: { rows: readonly { label: string; value: string }[] }) {
+  return (
+    <dl className="w-full divide-y divide-sand-light/70 rounded-2xl bg-cream px-5 text-start">
+      {rows.map((row) => (
+        <div key={row.label} className="flex items-center justify-between gap-4 py-3.5">
+          <dt className="text-sm text-espresso-light">{row.label}</dt>
+          <dd className="text-[15px] font-semibold text-espresso tabular-nums">{row.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}

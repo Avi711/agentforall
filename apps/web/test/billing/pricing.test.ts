@@ -25,7 +25,7 @@ import {
   usdCentsFromCredits,
   yearlySavingsIls,
 } from "../../src/lib/billing/pricing";
-import { formatRatio } from "../../src/lib/billing/format";
+import { formatAgorot, formatRatio } from "../../src/lib/billing/format";
 
 test("plans compare per month: a yearly plan's monthly credits, its savings in shekels, and its size against Basic", () => {
   assert.equal(monthlyCredits(PLANS.standard_yearly), monthlyCredits(PLANS.standard));
@@ -87,4 +87,8 @@ test("a yearly plan is twelve months of the monthly plan, discounted, with the w
   }
   assert.deepEqual([PLANS.basic_yearly.priceIls, PLANS.standard_yearly.priceIls, PLANS.pro_yearly.priceIls], [1080, 2160, 4320]);
   for (const [code, plan] of Object.entries(PLANS)) assert.equal(plan.code, code);
+});
+
+test("a charge shows to the agora, a whole amount stays short", () => {
+  assert.deepEqual([formatAgorot(29991), formatAgorot(40000), formatAgorot(5)], ["₪299.91", "₪400", "₪0.05"]);
 });

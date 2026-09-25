@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq, gt, gte, inArray, isNotNull, lt, not, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, lt, lte, not, or, sql } from "drizzle-orm";
 import { union } from "drizzle-orm/pg-core";
 import {
   billingCheckoutSessions,
@@ -108,6 +108,18 @@ export class DrizzleSubscriptionRepository implements SubscriptionRepository {
     const row = rows[0];
     if (!row) throw new Error(`subscription ${id} not found`);
     return toSubscription(row);
+  }
+
+  async updatePlanIfNewer(id: string, plan: { planCode: string; scheduledPlanCode: string | null }, providerUpdatedAt: Date): Promise<Subscription> {
+    const updated = await this.db
+      .update(billingSubscriptions)
+      .set({ ...plan, providerUpdatedAt, updatedAt: new Date() })
+      .where(and(eq(billingSubscriptions.id, id), lte(billingSubscriptions.providerUpdatedAt, providerUpdatedAt)))
+      .returning();
+    if (updated[0]) return toSubscription(updated[0]);
+    const stored = await this.db.select().from(billingSubscriptions).where(eq(billingSubscriptions.id, id)).limit(1);
+    if (!stored[0]) throw new Error(`subscription ${id} not found`);
+    return toSubscription(stored[0]);
   }
 }
 
@@ -223,11 +235,17 @@ export class DrizzlePaymentRepository implements PaymentRepository {
     return rows[0] ?? null;
   }
 
-  async lastSucceededAmountAgorot(subscriptionId: string): Promise<number | null> {
+  async lastSucceededAmountAgorot(subscriptionId: string, planCode: string): Promise<number | null> {
     const rows = await this.db
       .select({ amountAgorot: billingPayments.amountAgorot })
       .from(billingPayments)
-      .where(and(eq(billingPayments.subscriptionId, subscriptionId), eq(billingPayments.status, "succeeded")))
+      .where(
+        and(
+          eq(billingPayments.subscriptionId, subscriptionId),
+          eq(billingPayments.planCode, planCode),
+          eq(billingPayments.status, "succeeded"),
+        ),
+      )
       .orderBy(desc(billingPayments.occurredAt))
       .limit(1);
     return rows[0]?.amountAgorot ?? null;
@@ -508,6 +526,8 @@ async function findByProviderRef(
   return rows[0] ? toSubscription(rows[0]) : null;
 }
 
+const keepsPaidPlan = sql`${billingSubscriptions.scheduledPlanCode} = excluded.plan_code and ${billingSubscriptions.currentPeriodEnd} is not distinct from excluded.current_period_end`;
+
 async function upsertIfNewer(db: Executor, input: UpsertSubscriptionInput): Promise<UpsertSubscriptionResult> {
   const now = new Date();
   const updated = await db
@@ -518,7 +538,8 @@ async function upsertIfNewer(db: Executor, input: UpsertSubscriptionInput): Prom
       set: {
         userId: sql`coalesce(${billingSubscriptions.userId}, excluded.user_id)`,
         providerCustomerId: sql`coalesce(excluded.provider_customer_id, ${billingSubscriptions.providerCustomerId})`,
-        planCode: sql`excluded.plan_code`,
+        planCode: sql`case when ${keepsPaidPlan} then ${billingSubscriptions.planCode} else excluded.plan_code end`,
+        scheduledPlanCode: sql`case when ${keepsPaidPlan} then ${billingSubscriptions.scheduledPlanCode} end`,
         status: sql`excluded.status`,
         cancelAtPeriodEnd: sql`excluded.cancel_at_period_end`,
         currentPeriodEnd: sql`excluded.current_period_end`,
@@ -554,6 +575,7 @@ function toSubscription(row: SubscriptionRow): Subscription {
     providerSubscriptionId: row.providerSubscriptionId,
     providerCustomerId: row.providerCustomerId,
     planCode: row.planCode,
+    scheduledPlanCode: row.scheduledPlanCode,
     status: row.status,
     cancelAtPeriodEnd: row.cancelAtPeriodEnd,
     currentPeriodEnd: row.currentPeriodEnd,

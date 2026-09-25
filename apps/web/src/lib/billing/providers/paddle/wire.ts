@@ -16,8 +16,20 @@ const Period = z.object({ starts_at: Timestamp, ends_at: Timestamp });
 
 const CustomData = z.record(z.string(), z.unknown()).nullable().optional();
 
-const Item = z.object({ price: z.object({ id: z.string().min(1), custom_data: CustomData }).nullable().optional() });
+export const PaddlePriceSchema = z.object({ id: z.string().min(1), custom_data: CustomData });
+
+const Item = z.object({ price: PaddlePriceSchema.nullable().optional() });
 export type PaddleItem = z.infer<typeof Item>;
+export type PaddlePrice = z.infer<typeof PaddlePriceSchema>;
+
+const Amount = z.string().regex(/^\d+$/);
+
+const LineItem = z.object({
+  price_id: z.string().min(1),
+  quantity: z.number().int(),
+  proration: z.object({ rate: z.string().regex(/^\d+(\.\d+)?$/) }).nullable().optional(),
+});
+export type PaddleLineItem = z.infer<typeof LineItem>;
 
 export const PaddleTransactionSchema = z.object({
   id: z.string().min(1),
@@ -30,7 +42,7 @@ export const PaddleTransactionSchema = z.object({
   billing_period: Period.nullable().optional(),
   items: z.array(Item),
   // `total` is the value after discount and tax; `grand_total` would also subtract the customer's Paddle credit balance.
-  details: z.object({ totals: z.object({ total: z.string().regex(/^\d+$/) }) }).nullable().optional(),
+  details: z.object({ totals: z.object({ total: Amount }), line_items: z.array(LineItem).optional() }).nullable().optional(),
   checkout: z.object({ url: z.string().url().nullable() }).nullable().optional(),
 });
 export type PaddleTransaction = z.infer<typeof PaddleTransactionSchema>;
@@ -51,6 +63,17 @@ export const PaddleSubscriptionSchema = z.object({
   updated_at: Timestamp,
 });
 export type PaddleSubscription = z.infer<typeof PaddleSubscriptionSchema>;
+
+export const PaddleSubscriptionPreviewSchema = z.object({
+  next_billed_at: Timestamp.nullable().optional(),
+  // `grand_total` is what the saved payment method is charged after any Paddle credit balance.
+  immediate_transaction: z
+    .object({ details: z.object({ totals: z.object({ grand_total: Amount }), line_items: z.array(LineItem) }) })
+    .nullable()
+    .optional(),
+  next_transaction: z.object({ details: z.object({ totals: z.object({ total: Amount }) }) }).nullable().optional(),
+});
+export type PaddleSubscriptionPreview = z.infer<typeof PaddleSubscriptionPreviewSchema>;
 
 export const PaddleAdjustmentSchema = z.object({
   id: z.string().min(1),

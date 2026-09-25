@@ -6,10 +6,14 @@ import {
   CHECKOUT_SESSION_KEY,
   PaddleErrorSchema,
   PaddlePortalSessionSchema,
+  PaddlePriceSchema,
+  PaddleSubscriptionPreviewSchema,
   PaddleSubscriptionSchema,
   PaddleTransactionSchema,
   SINGLE_UNIT,
+  type PaddlePrice,
   type PaddleSubscription,
+  type PaddleSubscriptionPreview,
   type PaddleTransaction,
 } from "./wire";
 
@@ -19,6 +23,8 @@ const API_BASE: Record<PaddleEnvironment, string> = {
 };
 
 const TIMEOUT_MS = 10_000;
+// An immediate proration charges the card inside the request.
+const CHARGING_TIMEOUT_MS = 30_000;
 const BACKOFF_MS = 300;
 const IDEMPOTENT_ATTEMPTS = 3;
 
@@ -38,7 +44,7 @@ export async function paddleRequest<T>(
   method: Method,
   path: string,
   schema: z.ZodType<T>,
-  options: { body?: unknown; idempotent: boolean },
+  options: { body?: unknown; idempotent: boolean; timeoutMs?: number },
 ): Promise<T> {
   const operation = `${method} ${path.split("?")[0]}`;
   let res: Response;
@@ -54,7 +60,12 @@ export async function paddleRequest<T>(
         },
         body: options.body === undefined ? undefined : JSON.stringify(options.body),
       },
-      { attempts: options.idempotent ? IDEMPOTENT_ATTEMPTS : 1, timeoutMs: TIMEOUT_MS, backoffMs: BACKOFF_MS, fetch: connection.fetch },
+      {
+        attempts: options.idempotent ? IDEMPOTENT_ATTEMPTS : 1,
+        timeoutMs: options.timeoutMs ?? TIMEOUT_MS,
+        backoffMs: BACKOFF_MS,
+        fetch: connection.fetch,
+      },
     );
   } catch (err) {
     throw new PaymentProviderError("paddle", `${operation}: ${err instanceof Error ? err.name : "network error"}`, null, true);
@@ -63,14 +74,17 @@ export async function paddleRequest<T>(
   const json: unknown = await res.json().catch(() => null);
   if (!res.ok) {
     const error = PaddleErrorSchema.safeParse(json);
-    const code = error.success ? error.data.error.code : `HTTP ${res.status}`;
-    throw new PaymentProviderError("paddle", `${operation}: ${code}`, res.status, res.status === 429 || res.status >= 500);
+    const providerCode = error.success ? error.data.error.code : null;
+    const retryable = res.status === 429 || res.status >= 500;
+    throw new PaymentProviderError("paddle", `${operation}: ${providerCode ?? `HTTP ${res.status}`}`, res.status, retryable, providerCode);
   }
   const envelope = ResponseEnvelopeSchema.safeParse(json);
   const parsed = envelope.success ? schema.safeParse(envelope.data.data) : null;
   if (!parsed?.success) throw new PaymentProviderError("paddle", `${operation}: unexpected response shape`, res.status, false);
   return parsed.data;
 }
+
+export type PaddleProrationMode = "prorated_immediately" | "do_not_bill";
 
 export type PaddleTransactionItem =
   | { price_id: string; quantity: 1 }
@@ -100,6 +114,10 @@ export class PaddleApi {
     });
   }
 
+  getPrice(id: string): Promise<PaddlePrice> {
+    return paddleRequest(this.connection, "GET", `/prices/${encodeURIComponent(id)}`, PaddlePriceSchema, { idempotent: true });
+  }
+
   getSubscription(id: string): Promise<PaddleSubscription> {
     return paddleRequest(this.connection, "GET", `/subscriptions/${encodeURIComponent(id)}`, PaddleSubscriptionSchema, { idempotent: true });
   }
@@ -115,6 +133,22 @@ export class PaddleApi {
     return paddleRequest(this.connection, "PATCH", `/subscriptions/${encodeURIComponent(id)}`, PaddleSubscriptionSchema, {
       idempotent: true,
       body: { scheduled_change: null },
+    });
+  }
+
+  previewPriceChange(id: string, priceId: string, mode: PaddleProrationMode): Promise<PaddleSubscriptionPreview> {
+    return paddleRequest(this.connection, "PATCH", `/subscriptions/${encodeURIComponent(id)}/preview`, PaddleSubscriptionPreviewSchema, {
+      idempotent: true,
+      body: priceChangeBody(priceId, mode),
+    });
+  }
+
+  changePrice(id: string, priceId: string, mode: PaddleProrationMode): Promise<PaddleSubscription> {
+    const charges = mode === "prorated_immediately";
+    return paddleRequest(this.connection, "PATCH", `/subscriptions/${encodeURIComponent(id)}`, PaddleSubscriptionSchema, {
+      idempotent: !charges,
+      timeoutMs: charges ? CHARGING_TIMEOUT_MS : undefined,
+      body: priceChangeBody(priceId, mode),
     });
   }
 
@@ -138,4 +172,9 @@ export class PaddleApi {
       { idempotent: true },
     );
   }
+}
+
+// A declined charge must leave the subscription untouched, so a failed payment never grants the new plan.
+function priceChangeBody(priceId: string, mode: PaddleProrationMode) {
+  return { items: [{ price_id: priceId, quantity: 1 }], proration_billing_mode: mode, on_payment_failure: "prevent_change" };
 }

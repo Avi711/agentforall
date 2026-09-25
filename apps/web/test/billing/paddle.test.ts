@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import {
   BillingUnavailableError,
   MalformedWebhookError,
+  PaymentDeclinedError,
   PaymentOverdueError,
   PaymentProviderError,
+  RenewalImminentError,
   WebhookVerificationError,
 } from "../../src/lib/billing/errors";
 import { signBody } from "../../src/lib/billing/provider/hmac";
@@ -351,4 +353,140 @@ test("portal and payment-method links come from Paddle", async () => {
   assert.equal(await adapter.getUpdatePaymentMethodUrl("sub_1", "unused"), "https://app.example/pay?_ptxn=txn_9");
   assert.deepEqual(calls[1]!.body, { subscription_ids: ["sub_1"] });
   assert.equal(calls[2]!.url, "https://sandbox-api.paddle.com/subscriptions/sub_1/update-payment-method-transaction");
+});
+
+const UPGRADE_LINES = [
+  { price_id: PRICE_IDS.get("pro"), quantity: 1, proration: { rate: "0.5" } },
+  { price_id: PRICE_IDS.get("standard"), quantity: -1, proration: { rate: "0.5" } },
+];
+
+test("a plan change charge becomes a proration with its lines; a full new period counts as rate 1", async () => {
+  const { adapter } = provider();
+  const upgrade = await adapter.parseWebhook(
+    signed(event("transaction.completed", transaction({ origin: "subscription_update", custom_data: null, details: { totals: { total: "10000" }, line_items: UPGRADE_LINES } }))),
+  );
+  assert.deepEqual(upgrade.kind === "subscription.prorated" && { ...upgrade, payload: undefined, eventType: undefined, providerEventId: undefined, occurredAt: undefined }, {
+    kind: "subscription.prorated",
+    payload: undefined,
+    eventType: undefined,
+    providerEventId: undefined,
+    occurredAt: undefined,
+    reference: { checkoutSessionId: null },
+    providerSubscriptionId: "sub_1",
+    payment: { providerPaymentId: "txn_1", amountAgorot: 10000, currency: "ILS" },
+    lines: [
+      { planCode: "pro", quantity: 1, rate: 0.5 },
+      { planCode: "standard", quantity: -1, rate: 0.5 },
+    ],
+    periodEnd: new Date("2026-10-25T10:00:00.000Z"),
+  });
+  const toYearly = await adapter.parseWebhook(
+    signed(
+      event(
+        "transaction.completed",
+        transaction({ origin: "subscription_update", details: { totals: { total: "98003" }, line_items: [{ price_id: PRICE_IDS.get("standard_yearly"), quantity: 1, proration: null }] } }),
+      ),
+    ),
+  );
+  assert.deepEqual(toYearly.kind === "subscription.prorated" && toYearly.lines, [{ planCode: "standard_yearly", quantity: 1, rate: 1 }]);
+});
+
+test("a retired price resolves through Paddle's own plan tag; a price outside our plans is rejected", async () => {
+  const retired = { price_id: "pri_retired", quantity: -1, proration: { rate: "0.5" } };
+  const { adapter, calls } = provider([
+    { status: 200, body: { data: { id: "pri_retired", custom_data: { [PRICE_PLAN_KEY]: "standard" } } } },
+    { status: 200, body: { data: { id: "pri_retired", custom_data: null } } },
+  ]);
+  const charge = (lines: unknown[]) =>
+    signed(event("transaction.completed", transaction({ origin: "subscription_update", details: { totals: { total: "10000" }, line_items: lines } })));
+  const resolved = await adapter.parseWebhook(charge([UPGRADE_LINES[0], retired]));
+  assert.deepEqual(resolved.kind === "subscription.prorated" && resolved.lines[1], { planCode: "standard", quantity: -1, rate: 0.5 });
+  await assert.rejects(adapter.parseWebhook(charge([retired])), MalformedWebhookError);
+  assert.equal(calls[0]!.url, "https://sandbox-api.paddle.com/prices/pri_retired");
+});
+
+test("a failed price lookup is retried by redelivery; a plan change charge without its subscription is malformed", async () => {
+  const { adapter } = provider([{ status: 503, body: {} }, { status: 503, body: {} }, { status: 503, body: {} }]);
+  const retired = [{ price_id: "pri_retired", quantity: -1, proration: { rate: "0.5" } }];
+  await assert.rejects(
+    adapter.parseWebhook(signed(event("transaction.completed", transaction({ origin: "subscription_update", details: { totals: { total: "10000" }, line_items: retired } })))),
+    (err: unknown) => err instanceof PaymentProviderError && err.retryable,
+  );
+  await assert.rejects(
+    adapter.parseWebhook(signed(event("transaction.completed", transaction({ origin: "subscription_update", subscription_id: null, details: { totals: { total: "1" }, line_items: [] } })))),
+    MalformedWebhookError,
+  );
+});
+
+test("a plan change charges the saved card only through prorated_immediately and refuses on decline; a downgrade bills nothing", async () => {
+  const { adapter, calls } = provider([
+    { status: 200, body: { data: subscriptionData({ items: [{ price: { id: PRICE_IDS.get("pro") } }] }) } },
+    { status: 200, body: { data: subscriptionData({ items: [{ price: { id: PRICE_IDS.get("basic") } }] }) } },
+  ]);
+  assert.equal((await adapter.changePlan("sub_1", "pro", "prorate_now")).planCode, "pro");
+  assert.equal((await adapter.changePlan("sub_1", "basic", "at_renewal")).planCode, "basic");
+  assert.deepEqual(
+    calls.map((c) => [c.method, c.url, c.body]),
+    [
+      [
+        "PATCH",
+        "https://sandbox-api.paddle.com/subscriptions/sub_1",
+        { items: [{ price_id: PRICE_IDS.get("pro"), quantity: 1 }], proration_billing_mode: "prorated_immediately", on_payment_failure: "prevent_change" },
+      ],
+      [
+        "PATCH",
+        "https://sandbox-api.paddle.com/subscriptions/sub_1",
+        { items: [{ price_id: PRICE_IDS.get("basic"), quantity: 1 }], proration_billing_mode: "do_not_bill", on_payment_failure: "prevent_change" },
+      ],
+    ],
+  );
+});
+
+test("Paddle's plan change refusals map to billing errors; a charging request is never retried", async () => {
+  const refusal = (code: string, status = 400) => ({ status, body: { error: { code } } });
+  const { adapter, calls } = provider([
+    refusal("subscription_payment_declined"),
+    refusal("subscription_locked_renewal", 409),
+    refusal("subscription_update_transaction_balance_less_than_charge_limit"),
+    refusal("subscription_update_when_past_due"),
+    refusal("subscription_payment_provider_unavailable", 500),
+  ]);
+  await assert.rejects(adapter.changePlan("sub_1", "pro", "prorate_now"), PaymentDeclinedError);
+  await assert.rejects(adapter.changePlan("sub_1", "pro", "prorate_now"), RenewalImminentError);
+  await assert.rejects(adapter.changePlan("sub_1", "pro", "prorate_now"), RenewalImminentError);
+  await assert.rejects(adapter.changePlan("sub_1", "pro", "prorate_now"), PaymentOverdueError);
+  await assert.rejects(adapter.changePlan("sub_1", "pro", "prorate_now"), PaymentProviderError);
+  assert.equal(calls.length, 5);
+});
+
+test("the preview reports the charge after Paddle credit, the prorated lines and the next renewal", async () => {
+  const { adapter, calls } = provider([
+    {
+      status: 200,
+      body: {
+        data: {
+          next_billed_at: "2026-10-25T10:00:00Z",
+          immediate_transaction: { details: { totals: { grand_total: "9997" }, line_items: UPGRADE_LINES } },
+          next_transaction: { details: { totals: { total: "40000" } } },
+        },
+      },
+    },
+    { status: 200, body: { data: { next_billed_at: "2026-10-25T10:00:00Z", immediate_transaction: null, next_transaction: { details: { totals: { total: "10000" } } } } } },
+  ]);
+  assert.deepEqual(await adapter.previewPlanChange("sub_1", "pro", "prorate_now"), {
+    chargeNowAgorot: 9997,
+    lines: [
+      { planCode: "pro", quantity: 1, rate: 0.5 },
+      { planCode: "standard", quantity: -1, rate: 0.5 },
+    ],
+    nextChargeAgorot: 40000,
+    nextChargeAt: new Date("2026-10-25T10:00:00Z"),
+  });
+  assert.deepEqual(await adapter.previewPlanChange("sub_1", "basic", "at_renewal"), {
+    chargeNowAgorot: null,
+    lines: [],
+    nextChargeAgorot: 10000,
+    nextChargeAt: new Date("2026-10-25T10:00:00Z"),
+  });
+  assert.equal(calls[0]!.url, "https://sandbox-api.paddle.com/subscriptions/sub_1/preview");
 });

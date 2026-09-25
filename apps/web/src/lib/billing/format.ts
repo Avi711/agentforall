@@ -3,6 +3,7 @@ import { ilsFromAgorot, type BillingInterval, type Plan } from "./pricing";
 const credits = new Intl.NumberFormat("he-IL", { maximumFractionDigits: 0 });
 const ratio = new Intl.NumberFormat("he-IL", { maximumFractionDigits: 1 });
 const ils = new Intl.NumberFormat("he-IL", { maximumFractionDigits: 0 });
+const ilsWithAgorot = new Intl.NumberFormat("he-IL", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 // Fixed time zone so the server render and the client hydration agree.
 const day = new Intl.DateTimeFormat("he-IL", { day: "numeric", month: "long", timeZone: "Asia/Jerusalem" });
 const dayWithYear = new Intl.DateTimeFormat("he-IL", {
@@ -24,8 +25,9 @@ export function formatIls(amount: number): string {
   return `₪${ils.format(amount)}`;
 }
 
+// A charge is shown to the agora; whole shekels keep the short form.
 export function formatAgorot(agorot: number): string {
-  return formatIls(ilsFromAgorot(agorot));
+  return agorot % 100 === 0 ? formatIls(ilsFromAgorot(agorot)) : `₪${ilsWithAgorot.format(ilsFromAgorot(agorot))}`;
 }
 
 export function formatDay(iso: string): string {

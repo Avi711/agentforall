@@ -35,6 +35,7 @@ export interface Subscription {
   providerSubscriptionId: string;
   providerCustomerId: string | null;
   planCode: string;
+  scheduledPlanCode: string | null;
   status: SubscriptionStatus;
   cancelAtPeriodEnd: boolean;
   currentPeriodEnd: Date | null;

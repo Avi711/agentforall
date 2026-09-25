@@ -45,8 +45,10 @@ import type {
   CreateCheckoutInput,
   CreateCheckoutResult,
   PaymentProvider,
+  PlanChangeBilling,
   ProviderCapabilities,
   ProviderEvent,
+  ProviderPlanChangePreview,
   ProviderSubscription,
   WebhookRequest,
 } from "../../src/lib/billing/provider/types";
@@ -99,15 +101,19 @@ export class InMemorySubscriptions implements SubscriptionRepository {
     const existing = this.rows.find((r) => r.provider === input.provider && r.providerSubscriptionId === input.providerSubscriptionId);
     if (!existing) {
       const at = this.clock.next();
-      const row: Subscription = { ...input, id: randomUUID(), createdAt: at, updatedAt: at };
+      const row: Subscription = { ...input, scheduledPlanCode: null, id: randomUUID(), createdAt: at, updatedAt: at };
       this.rows.push(row);
       return { subscription: { ...row }, applied: true };
     }
     if (existing.providerUpdatedAt.getTime() > input.providerUpdatedAt.getTime()) {
       return { subscription: { ...existing }, applied: false };
     }
+    const keepsPaidPlan =
+      existing.scheduledPlanCode === input.planCode && existing.currentPeriodEnd?.getTime() === input.currentPeriodEnd?.getTime();
     Object.assign(existing, {
       ...input,
+      planCode: keepsPaidPlan ? existing.planCode : input.planCode,
+      scheduledPlanCode: keepsPaidPlan ? existing.scheduledPlanCode : null,
       userId: existing.userId ?? input.userId,
       providerCustomerId: input.providerCustomerId ?? existing.providerCustomerId,
       updatedAt: this.clock.next(),
@@ -119,6 +125,13 @@ export class InMemorySubscriptions implements SubscriptionRepository {
     const row = this.rows.find((r) => r.id === id);
     if (!row) throw new Error(`subscription ${id} not found`);
     Object.assign(row, patch, { updatedAt: this.clock.next() });
+    return { ...row };
+  }
+
+  async updatePlanIfNewer(id: string, plan: { planCode: string; scheduledPlanCode: string | null }, providerUpdatedAt: Date): Promise<Subscription> {
+    const row = this.rows.find((r) => r.id === id);
+    if (!row) throw new Error(`subscription ${id} not found`);
+    if (row.providerUpdatedAt.getTime() <= providerUpdatedAt.getTime()) Object.assign(row, plan, { providerUpdatedAt, updatedAt: this.clock.next() });
     return { ...row };
   }
 
@@ -210,9 +223,9 @@ export class InMemoryPayments implements PaymentRepository {
     return { userId: row.userId };
   }
 
-  async lastSucceededAmountAgorot(subscriptionId: string): Promise<number | null> {
+  async lastSucceededAmountAgorot(subscriptionId: string, planCode: string): Promise<number | null> {
     const mine = this.rows
-      .filter((r) => r.subscriptionId === subscriptionId && r.status === "succeeded")
+      .filter((r) => r.subscriptionId === subscriptionId && r.planCode === planCode && r.status === "succeeded")
       .sort((a, b) => b.occurredAt.getTime() - a.occurredAt.getTime());
     return mine[0]?.amountAgorot ?? null;
   }
@@ -459,12 +472,30 @@ type Call = { method: string; args: unknown[] };
 export class FakeProvider implements PaymentProvider {
   readonly name = "mock" as const;
   available = true;
-  capabilities: ProviderCapabilities = { cancel: true, resume: true, customerPortal: true, updatePaymentMethod: true, cancelWhilePastDue: false };
+  capabilities: ProviderCapabilities = {
+    cancel: true,
+    resume: true,
+    customerPortal: true,
+    updatePaymentMethod: true,
+    cancelWhilePastDue: false,
+    changePlan: true,
+  };
   calls: Call[] = [];
   checkoutInputs: CreateCheckoutInput[] = [];
   nextEvent: ProviderEvent | Error | null = null;
   cancelResult: ProviderSubscription | null = null;
   resumeResult: ProviderSubscription | null = null;
+  planChangePreview: ProviderPlanChangePreview = { chargeNowAgorot: null, lines: [], nextChargeAgorot: null, nextChargeAt: null };
+  planChangeError: Error | null = null;
+  planChangeResult: Omit<ProviderSubscription, "planCode"> = {
+    providerSubscriptionId: "sub_1",
+    providerCustomerId: "cus_1",
+    status: "active",
+    cancelAtPeriodEnd: false,
+    currentPeriodEnd: new Date("2026-09-26T10:00:00.000Z"),
+    trialEndsAt: null,
+    providerUpdatedAt: new Date("2026-08-26T11:00:00.000Z"),
+  };
   portalUrl: string | null = "https://portal.example/abc";
   updatePaymentMethodUrl: string | null = "https://update.example/abc";
 
@@ -493,6 +524,17 @@ export class FakeProvider implements PaymentProvider {
   async resumeSubscription(id: string): Promise<ProviderSubscription | null> {
     this.calls.push({ method: "resumeSubscription", args: [id] });
     return this.resumeResult;
+  }
+
+  async previewPlanChange(id: string, planCode: string, billing: PlanChangeBilling): Promise<ProviderPlanChangePreview> {
+    this.calls.push({ method: "previewPlanChange", args: [id, planCode, billing] });
+    return this.planChangePreview;
+  }
+
+  async changePlan(id: string, planCode: string, billing: PlanChangeBilling): Promise<ProviderSubscription> {
+    this.calls.push({ method: "changePlan", args: [id, planCode, billing] });
+    if (this.planChangeError) throw this.planChangeError;
+    return { ...this.planChangeResult, providerSubscriptionId: id, planCode };
   }
 
   async getCustomerPortalUrl(id: string): Promise<string | null> {
@@ -594,6 +636,7 @@ export function subscription(overrides: Partial<Subscription> = {}): Subscriptio
     providerSubscriptionId: "sub_1",
     providerCustomerId: "cus_1",
     planCode: "standard",
+    scheduledPlanCode: null,
     status: "active",
     cancelAtPeriodEnd: false,
     currentPeriodEnd: new Date("2026-09-26T10:00:00.000Z"),

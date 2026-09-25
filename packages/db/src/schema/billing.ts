@@ -72,6 +72,8 @@ export const billingSubscriptions = pgTable(
     providerSubscriptionId: varchar("provider_subscription_id", { length: 128 }).notNull(),
     providerCustomerId: varchar("provider_customer_id", { length: 128 }),
     planCode: varchar("plan_code", { length: 32 }).notNull(),
+    // The cheaper plan the provider bills from the next renewal; plan_code keeps what was paid for until then.
+    scheduledPlanCode: varchar("scheduled_plan_code", { length: 32 }),
     status: varchar("status", { length: 16, enum: SUBSCRIPTION_STATUSES }).notNull(),
     cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
     currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
@@ -95,6 +97,8 @@ export const billingPayments = pgTable(
     provider: varchar("provider", { length: 32, enum: PAYMENT_PROVIDERS }).notNull(),
     providerPaymentId: varchar("provider_payment_id", { length: 128 }).notNull(),
     status: varchar("status", { length: 16, enum: PAYMENT_STATUSES }).notNull(),
+    // Set on a subscription's full charges only: a renewal is checked against the last full charge of the same plan.
+    planCode: varchar("plan_code", { length: 32 }),
     amountAgorot: integer("amount_agorot").notNull(),
     currency: varchar("currency", { length: 3 }).notNull(),
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),

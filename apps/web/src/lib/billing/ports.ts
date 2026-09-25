@@ -34,6 +34,7 @@ export interface UpsertSubscriptionResult {
 export interface SubscriptionStatePatch {
   status?: SubscriptionStatus;
   planCode?: string;
+  scheduledPlanCode?: string | null;
   cancelAtPeriodEnd?: boolean;
   currentPeriodEnd?: Date | null;
   providerCustomerId?: string | null;
@@ -44,8 +45,11 @@ export interface SubscriptionRepository {
   findCurrentByUserId(userId: string): Promise<Subscription | null>;
   listLiveByUserId(userId: string): Promise<Subscription[]>;
   findByProviderRef(provider: PaymentProviderName, providerSubscriptionId: string): Promise<Subscription | null>;
+  // A snapshot of the same period that reports the scheduled plan keeps the paid plan; anything else replaces both.
   upsertIfNewer(input: UpsertSubscriptionInput): Promise<UpsertSubscriptionResult>;
   updateState(id: string, patch: SubscriptionStatePatch): Promise<Subscription>;
+  // Skipped, returning the stored row, when provider state newer than `providerUpdatedAt` is already stored.
+  updatePlanIfNewer(id: string, plan: { planCode: string; scheduledPlanCode: string | null }, providerUpdatedAt: Date): Promise<Subscription>;
 }
 
 export interface NewCheckoutSession {
@@ -78,6 +82,7 @@ export interface NewPayment {
   provider: PaymentProviderName;
   providerPaymentId: string;
   status: PaymentStatus;
+  planCode: string | null;
   amountAgorot: number;
   currency: string;
   occurredAt: Date;
@@ -103,8 +108,8 @@ export interface RenewalInput {
 export interface PaymentRepository {
   // False = this provider payment id was already recorded (redelivery).
   record(input: NewPayment): Promise<boolean>;
-  // What this standing order last charged; renewals are validated against it, not today's catalogue.
-  lastSucceededAmountAgorot(subscriptionId: string): Promise<number | null>;
+  // What this standing order last charged in full for this plan; renewals are validated against it, not today's catalogue.
+  lastSucceededAmountAgorot(subscriptionId: string, planCode: string): Promise<number | null>;
   // Payment row + subscription write in one transaction, so a crash can never leave money without state.
   recordFirstPayment(input: FirstPaymentInput): Promise<PaymentApplication>;
   recordRenewal(input: RenewalInput): Promise<PaymentApplication>;

@@ -1,7 +1,7 @@
 import type { BillingErrorCode } from "@/lib/billing/errors";
 import type { PlanCode } from "@/lib/billing/pricing";
 import type { CheckoutSessionStatus } from "@/lib/billing/domain";
-import type { BillingStatus } from "@/lib/billing/service";
+import type { BillingStatus, PlanChangePreview } from "@/lib/billing/service";
 import type { MockCheckoutOutcome } from "@/lib/billing/schemas";
 import { CHECKOUT_PENDING_HE, PAYMENT_OVERDUE_HE, UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 
@@ -25,6 +25,9 @@ const ERROR_MESSAGES_HE: Record<ApiErrorCode, string> = {
   rate_limited: "יותר מדי ניסיונות. נסו שוב בעוד שעה.",
   payment_required: "כדי להמשיך צריך מנוי פעיל.",
   checkout_pending: CHECKOUT_PENDING_HE,
+  payment_declined: "הכרטיס סורב ולא חויבתם. עדכנו אמצעי תשלום ונסו שוב.",
+  subscription_ending: "המנוי מסתיים. חדשו אותו קודם, ואז אפשר לשנות תוכנית.",
+  plan_change_scheduled: "כבר מתוכנן מעבר לתוכנית אחרת. השאירו את התוכנית הנוכחית, ואז אפשר לשדרג.",
   invalid_body: UNEXPECTED_ERROR_HE,
   invalid_json: UNEXPECTED_ERROR_HE,
   unauthorized: "צריך להתחבר מחדש.",
@@ -51,6 +54,10 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+export function fetchBillingStatus(): Promise<BillingStatus> {
+  return call<BillingStatus>("/api/billing/status", { cache: "no-store" });
+}
+
 export async function fetchCheckoutSessionStatus(sessionId: string): Promise<CheckoutSessionStatus> {
   const { status } = await call<{ status: CheckoutSessionStatus }>(`/api/billing/checkout/${sessionId}`, { cache: "no-store" });
   return status;
@@ -61,9 +68,12 @@ export async function startCheckout(plan: PlanCode): Promise<string> {
   return url;
 }
 
-export async function changePlan(plan: PlanCode): Promise<string> {
-  const { url } = await call<{ url: string }>("/api/billing/change-plan", { method: "POST", body: JSON.stringify({ plan }) });
-  return url;
+export function previewPlanChange(plan: PlanCode): Promise<PlanChangePreview> {
+  return call<PlanChangePreview>("/api/billing/change-plan/preview", { method: "POST", body: JSON.stringify({ plan }) });
+}
+
+export function changePlan(plan: PlanCode): Promise<BillingStatus> {
+  return call<BillingStatus>("/api/billing/change-plan", { method: "POST", body: JSON.stringify({ plan }) });
 }
 
 export async function startTopup(amountIls: number): Promise<string> {

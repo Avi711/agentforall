@@ -6,6 +6,7 @@ import type {
   PaymentProvider,
   ProviderCapabilities,
   ProviderEvent,
+  ProviderPlanChangePreview,
   ProviderSubscription,
   WebhookRequest,
 } from "../provider/types";
@@ -18,6 +19,7 @@ export class DisabledPaymentProvider implements PaymentProvider {
     customerPortal: false,
     updatePaymentMethod: false,
     cancelWhilePastDue: true,
+    changePlan: false,
   };
 
   constructor(
@@ -42,6 +44,14 @@ export class DisabledPaymentProvider implements PaymentProvider {
   }
 
   resumeSubscription(_id: string): Promise<ProviderSubscription | null> {
+    return this.reject();
+  }
+
+  previewPlanChange(): Promise<ProviderPlanChangePreview> {
+    return this.reject();
+  }
+
+  changePlan(): Promise<ProviderSubscription> {
     return this.reject();
   }
 

@@ -1,5 +1,13 @@
 import type { z } from "zod";
-import { MalformedWebhookError, PaymentOverdueError, PaymentProviderError, WebhookVerificationError } from "../../errors";
+import {
+  MalformedWebhookError,
+  PaymentDeclinedError,
+  PaymentOverdueError,
+  PaymentProviderError,
+  RenewalImminentError,
+  WebhookVerificationError,
+  type BillingError,
+} from "../../errors";
 import { verifyBodySignature } from "../../provider/hmac";
 import { isPlanCode, type PlanCode } from "../../pricing";
 import type {
@@ -7,13 +15,16 @@ import type {
   CreateCheckoutResult,
   EventBase,
   PaymentProvider,
+  PlanChangeBilling,
+  ProrationLine,
   ProviderCapabilities,
   ProviderDeps,
   ProviderEvent,
+  ProviderPlanChangePreview,
   ProviderSubscription,
   WebhookRequest,
 } from "../../provider/types";
-import { PaddleApi, type PaddleTransactionItem } from "./client";
+import { PaddleApi, type PaddleProrationMode, type PaddleTransactionItem } from "./client";
 import type { PaddleConfig } from "./config";
 import {
   PADDLE_SIGNATURE_HEADER,
@@ -25,6 +36,8 @@ import {
   PaddleTransactionSchema,
   customDataSessionId,
   type PaddleItem,
+  type PaddleLineItem,
+  type PaddlePrice,
   type PaddleSubscription,
   type PaddleTransaction,
 } from "./wire";
@@ -38,6 +51,20 @@ const SIGNATURE_TOLERANCE_MS = 5 * 60 * 1000;
 // We create every checkout through the API; a browser-built (`web`) one would carry client-written custom_data.
 const CHECKOUT_ORIGIN = "api";
 const RENEWAL_ORIGIN = "subscription_recurring";
+const PLAN_CHANGE_ORIGIN = "subscription_update";
+
+const PRORATION_MODE: Record<PlanChangeBilling, PaddleProrationMode> = {
+  prorate_now: "prorated_immediately",
+  at_renewal: "do_not_bill",
+};
+
+// Paddle refuses a charge under its minimum only in the last hours of a period.
+const PLAN_CHANGE_ERRORS: Readonly<Record<string, new () => BillingError>> = {
+  subscription_payment_declined: PaymentDeclinedError,
+  subscription_update_when_past_due: PaymentOverdueError,
+  subscription_locked_renewal: RenewalImminentError,
+  subscription_update_transaction_balance_less_than_charge_limit: RenewalImminentError,
+};
 
 const SUBSCRIPTION_EVENTS: ReadonlySet<string> = new Set([
   "subscription.created",
@@ -68,6 +95,7 @@ export class PaddlePaymentProvider implements PaymentProvider {
     customerPortal: true,
     updatePaymentMethod: true,
     cancelWhilePastDue: false,
+    changePlan: true,
   };
 
   private readonly api: PaddleApi;
@@ -101,7 +129,7 @@ export class PaddlePaymentProvider implements PaymentProvider {
   async parseWebhook(request: WebhookRequest): Promise<ProviderEvent> {
     this.verify(request);
     const { base, data } = parseEnvelope(request.rawBody);
-    return this.toProviderEvent(base, data) ?? { ...base, kind: "ignored" };
+    return (await this.toProviderEvent(base, data)) ?? { ...base, kind: "ignored" };
   }
 
   async cancelSubscription(id: string): Promise<ProviderSubscription> {
@@ -112,6 +140,23 @@ export class PaddlePaymentProvider implements PaymentProvider {
 
   async resumeSubscription(id: string): Promise<ProviderSubscription> {
     return this.fromApi(await this.api.removeScheduledChange(id));
+  }
+
+  async previewPlanChange(id: string, planCode: string, billing: PlanChangeBilling): Promise<ProviderPlanChangePreview> {
+    const preview = await planChangeCall(() => this.api.previewPriceChange(id, this.priceIdFor(planCode), PRORATION_MODE[billing]));
+    const immediate = preview.immediate_transaction?.details;
+    const lines = immediate ? await this.prorationLines(immediate.line_items, []) : [];
+    if (!lines) throw new PaymentProviderError("paddle", `plan change on subscription ${id} prices a plan we do not sell`, null, false);
+    return {
+      chargeNowAgorot: immediate ? Number(immediate.totals.grand_total) : null,
+      lines,
+      nextChargeAgorot: preview.next_transaction ? Number(preview.next_transaction.details.totals.total) : null,
+      nextChargeAt: preview.next_billed_at ? new Date(preview.next_billed_at) : null,
+    };
+  }
+
+  async changePlan(id: string, planCode: string, billing: PlanChangeBilling): Promise<ProviderSubscription> {
+    return this.fromApi(await planChangeCall(() => this.api.changePrice(id, this.priceIdFor(planCode), PRORATION_MODE[billing])));
   }
 
   async getCustomerPortalUrl(id: string): Promise<string> {
@@ -145,13 +190,30 @@ export class PaddlePaymentProvider implements PaymentProvider {
     return priceId;
   }
 
-  // The price's own tag first, so subscribers on a retired price keep resolving; the env map covers untagged prices.
   private planOf(items: readonly PaddleItem[]): PlanCode | null {
-    const price = items[0]?.price;
-    if (!price) return null;
-    const tagged = price.custom_data?.[PRICE_PLAN_KEY];
-    if (typeof tagged === "string" && isPlanCode(tagged)) return tagged;
-    return this.planByPriceId.get(price.id) ?? null;
+    const priceId = items[0]?.price?.id;
+    return priceId ? this.planOfPrice(priceId, items) : null;
+  }
+
+  // The price's own tag first, so subscribers on a retired price keep resolving; the env map covers untagged prices.
+  private planOfPrice(priceId: string, items: readonly PaddleItem[]): PlanCode | null {
+    return planTagOf(items.find((item) => item.price?.id === priceId)?.price) ?? this.planByPriceId.get(priceId) ?? null;
+  }
+
+  // A replaced price may be retired and absent from both; Paddle still holds its plan tag.
+  private async resolvePlanOfPrice(priceId: string, items: readonly PaddleItem[]): Promise<PlanCode | null> {
+    return this.planOfPrice(priceId, items) ?? planTagOf(await this.api.getPrice(priceId));
+  }
+
+  // A line without proration is a full new period (an interval change).
+  private async prorationLines(lineItems: readonly PaddleLineItem[], items: readonly PaddleItem[]): Promise<ProrationLine[] | null> {
+    const lines: ProrationLine[] = [];
+    for (const line of lineItems) {
+      const planCode = await this.resolvePlanOfPrice(line.price_id, items);
+      if (!planCode) return null;
+      lines.push({ planCode, quantity: line.quantity, rate: line.proration ? Number(line.proration.rate) : 1 });
+    }
+    return lines;
   }
 
   // Paddle-Signature: ts=<unix>;h1=<hex>[;h1=<hex>] — several h1 while the secret rotates.
@@ -171,7 +233,7 @@ export class PaddlePaymentProvider implements PaymentProvider {
     }
   }
 
-  private toProviderEvent(base: EventBase, data: unknown): ProviderEvent | null {
+  private async toProviderEvent(base: EventBase, data: unknown): Promise<ProviderEvent | null> {
     if (base.eventType === "transaction.completed") return this.toPayment(base, parseData(PaddleTransactionSchema, data));
     if (SUBSCRIPTION_EVENTS.has(base.eventType)) {
       const subscription = parseData(PaddleSubscriptionSchema, data);
@@ -200,7 +262,8 @@ export class PaddlePaymentProvider implements PaymentProvider {
   }
 
   // Only the checkout charge carries our session; renewals copy it from the subscription and resolve through it instead.
-  private toPayment(base: EventBase, transaction: PaddleTransaction): ProviderEvent | null {
+  private async toPayment(base: EventBase, transaction: PaddleTransaction): Promise<ProviderEvent | null> {
+    if (transaction.origin === PLAN_CHANGE_ORIGIN) return this.toProration(base, transaction);
     const fromCheckout = transaction.origin === CHECKOUT_ORIGIN;
     if (!fromCheckout && transaction.origin !== RENEWAL_ORIGIN) return null;
     const total = transaction.details?.totals.total;
@@ -214,6 +277,22 @@ export class PaddlePaymentProvider implements PaymentProvider {
       payment: { providerPaymentId: transaction.id, amountAgorot: Number(total), currency: transaction.currency_code },
       periodEnd: transaction.billing_period ? new Date(transaction.billing_period.ends_at) : null,
       reference: { checkoutSessionId: fromCheckout ? customDataSessionId(transaction.custom_data) : null },
+    };
+  }
+
+  private async toProration(base: EventBase, transaction: PaddleTransaction): Promise<ProviderEvent> {
+    const details = transaction.details;
+    if (!transaction.subscription_id || !details) throw new MalformedWebhookError("plan change charge without subscription or totals");
+    const lines = await this.prorationLines(details.line_items ?? [], transaction.items);
+    if (!lines) throw new MalformedWebhookError(`plan change charge ${transaction.id} prices a plan we do not sell`);
+    return {
+      ...base,
+      kind: "subscription.prorated",
+      reference: { checkoutSessionId: null },
+      providerSubscriptionId: transaction.subscription_id,
+      payment: { providerPaymentId: transaction.id, amountAgorot: Number(details.totals.total), currency: transaction.currency_code },
+      lines,
+      periodEnd: transaction.billing_period ? new Date(transaction.billing_period.ends_at) : null,
     };
   }
 
@@ -239,6 +318,20 @@ export class PaddlePaymentProvider implements PaymentProvider {
     const snapshot = this.toSubscription(subscription);
     if (!snapshot) throw new PaymentProviderError("paddle", `subscription ${subscription.id} is on a price with no plan`, null, false);
     return snapshot;
+  }
+}
+
+function planTagOf(price: PaddlePrice | null | undefined): PlanCode | null {
+  const tag = price?.custom_data?.[PRICE_PLAN_KEY];
+  return typeof tag === "string" && isPlanCode(tag) ? tag : null;
+}
+
+async function planChangeCall<T>(call: () => Promise<T>): Promise<T> {
+  try {
+    return await call();
+  } catch (err) {
+    const Known = err instanceof PaymentProviderError && err.providerCode ? PLAN_CHANGE_ERRORS[err.providerCode] : undefined;
+    throw Known ? new Known() : err;
   }
 }
 

@@ -71,6 +71,32 @@ describe("billing repositories (postgres)", { skip: url ? false : "BILLING_TEST_
     assert.deepEqual({ applied: older.applied, status: older.subscription.status, userId: older.subscription.userId }, { applied: false, status: "canceled", userId });
   });
 
+  test("a same-period snapshot reporting the scheduled plan keeps the paid plan; a new period or another plan replaces both", async () => {
+    const snapshot = {
+      provider: "mock" as const,
+      providerSubscriptionId: `${userId}:scheduled`,
+      userId,
+      providerCustomerId: null,
+      planCode: "standard",
+      status: "active" as const,
+      cancelAtPeriodEnd: false,
+      currentPeriodEnd: null,
+      trialEndsAt: null,
+      providerUpdatedAt: NOW,
+    };
+    const { subscription } = await subscriptions.upsertIfNewer(snapshot);
+    await subscriptions.updateState(subscription.id, { scheduledPlanCode: "basic", providerUpdatedAt: NOW });
+    const kept = (await subscriptions.upsertIfNewer({ ...snapshot, planCode: "basic" })).subscription;
+    assert.deepEqual({ plan: kept.planCode, scheduled: kept.scheduledPlanCode }, { plan: "standard", scheduled: "basic" });
+    const olderWrite = await subscriptions.updatePlanIfNewer(subscription.id, { planCode: "pro", scheduledPlanCode: null }, new Date(NOW.getTime() - 1));
+    assert.deepEqual({ plan: olderWrite.planCode, scheduled: olderWrite.scheduledPlanCode }, { plan: "standard", scheduled: "basic" });
+    const renewed = (await subscriptions.upsertIfNewer({ ...snapshot, planCode: "basic", currentPeriodEnd: NOW })).subscription;
+    assert.deepEqual({ plan: renewed.planCode, scheduled: renewed.scheduledPlanCode }, { plan: "basic", scheduled: null });
+    await subscriptions.updateState(subscription.id, { planCode: "standard", scheduledPlanCode: "basic", providerUpdatedAt: NOW });
+    const replaced = (await subscriptions.upsertIfNewer({ ...snapshot, planCode: "pro", currentPeriodEnd: NOW })).subscription;
+    assert.deepEqual({ plan: replaced.planCode, scheduled: replaced.scheduledPlanCode }, { plan: "pro", scheduled: null });
+  });
+
   test("recordRenewal is atomic: duplicate payments and period races write nothing", async () => {
     const created = await subscriptions.upsertIfNewer({
       provider: "mock",
@@ -84,7 +110,7 @@ describe("billing repositories (postgres)", { skip: url ? false : "BILLING_TEST_
       trialEndsAt: null,
       providerUpdatedAt: NOW,
     });
-    const payment = { userId, provider: "mock" as const, providerPaymentId: `${userId}:pay`, status: "succeeded" as const, amountAgorot: 20000, currency: "ILS", occurredAt: NOW };
+    const payment = { userId, provider: "mock" as const, providerPaymentId: `${userId}:pay`, status: "succeeded" as const, planCode: "standard", amountAgorot: 20000, currency: "ILS", occurredAt: NOW };
     const later = new Date(NOW.getTime() + 1000);
     const raced = await payments.recordRenewal({ payment, subscriptionId: created.subscription.id, expectedPeriodEnd: later, patch: { currentPeriodEnd: later, providerUpdatedAt: NOW } });
     assert.equal(raced.outcome, "conflict");
@@ -208,7 +234,7 @@ describe("billing repositories (postgres)", { skip: url ? false : "BILLING_TEST_
 
   test("recordFirstPayment links payment and subscription atomically and is idempotent per payment id", async () => {
     const subscription = { provider: "mock" as const, providerSubscriptionId: `${userId}:first`, userId, providerCustomerId: null, planCode: "standard", status: "active" as const, cancelAtPeriodEnd: false, currentPeriodEnd: NOW, trialEndsAt: null, providerUpdatedAt: NOW };
-    const payment = { userId, provider: "mock" as const, providerPaymentId: `${userId}:first-pay`, status: "succeeded" as const, amountAgorot: 20000, currency: "ILS", occurredAt: NOW };
+    const payment = { userId, provider: "mock" as const, providerPaymentId: `${userId}:first-pay`, status: "succeeded" as const, planCode: "standard", amountAgorot: 20000, currency: "ILS", occurredAt: NOW };
     const first = await payments.recordFirstPayment({ payment, subscription });
     assert.equal(first.outcome, "applied");
     if (first.outcome !== "applied") return;
@@ -217,8 +243,9 @@ describe("billing repositories (postgres)", { skip: url ? false : "BILLING_TEST_
 
     const again = await payments.recordFirstPayment({ payment, subscription });
     assert.equal(again.outcome, "duplicate");
-    assert.equal(await payments.lastSucceededAmountAgorot(first.subscription.id), 20000);
-    assert.equal(await payments.lastSucceededAmountAgorot(randomUUID()), null);
+    assert.equal(await payments.lastSucceededAmountAgorot(first.subscription.id, "standard"), 20000);
+    assert.equal(await payments.lastSucceededAmountAgorot(first.subscription.id, "pro"), null);
+    assert.equal(await payments.lastSucceededAmountAgorot(randomUUID(), "standard"), null);
     const current = await subscriptions.findCurrentByUserId(userId);
     assert.equal(current?.id, first.subscription.id);
 
@@ -240,7 +267,7 @@ describe("billing repositories (postgres)", { skip: url ? false : "BILLING_TEST_
 
   test("a refund marks the payment and shrinks only that charge's grants to what was spent", async () => {
     const paymentId = `${userId}:refund-pay`;
-    await payments.record({ userId, subscriptionId: null, provider: "paddle", providerPaymentId: paymentId, status: "succeeded", amountAgorot: 5000, currency: "ILS", occurredAt: NOW });
+    await payments.record({ userId, subscriptionId: null, provider: "paddle", providerPaymentId: paymentId, status: "succeeded", planCode: null, amountAgorot: 5000, currency: "ILS", occurredAt: NOW });
     const refunded = await grants.insertIfAbsent({ userId, kind: "topup", credits: 2000, sourceRef: `topup:paddle:${paymentId}`, expiresAt: null });
     const untouched = await grants.insertIfAbsent({ userId, kind: "topup", credits: 700, sourceRef: `${userId}:other-topup`, expiresAt: null });
     assert.ok(refunded && untouched);

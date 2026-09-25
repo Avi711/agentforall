@@ -6,7 +6,7 @@ import { CheckIcon } from "@/components/pricing/CheckIcon";
 import { PRIMARY_ACTION, SECONDARY_ACTION } from "@/components/pricing/styles";
 import { WhatsAppChatLink } from "@/components/WhatsAppChatLink";
 import { SETTINGS_PATH } from "@/lib/billing/urls";
-import { Spinner, SurfaceCard, type Tone } from "../../Marks";
+import { Spinner, SummaryRows, SurfaceCard, type Tone } from "../../Marks";
 import { useCheckoutSettlement } from "./useCheckoutSettlement";
 
 const HOME_PATH = "/app";
@@ -24,7 +24,7 @@ export function CheckoutResult({ sessionId, outcome, retryHref }: { sessionId: s
 
   if (outcome.status === "completed") return <Receipt receipt={outcome.receipt} />;
   if (outcome.status === "failed" || settlement === "failed") return <NotCompleted retryHref={retryHref} />;
-  if (settlement === "slow") return <StillConfirming />;
+  if (settlement === "slow" || settlement === "stopped") return <StillConfirming stopped={settlement === "stopped"} />;
   return <Confirming />;
 }
 
@@ -39,12 +39,16 @@ export function Confirming() {
   );
 }
 
-function StillConfirming() {
+function StillConfirming({ stopped }: { stopped: boolean }) {
   return (
     <ResultCard
-      badge={<Badge tone="muted"><Spinner className="h-7 w-7" /></Badge>}
+      badge={<Badge tone="muted">{stopped ? <AlertIcon /> : <Spinner className="h-7 w-7" />}</Badge>}
       title="התשלום עדיין בבדיקה"
-      lead="זה לוקח יותר מהרגיל. אם חויבתם, התוכנית תיפתח אוטומטית והדף יתעדכן לבד."
+      lead={
+        stopped
+          ? "זה לוקח יותר מהרגיל. אם חויבתם, התוכנית תיפתח אוטומטית תוך כמה דקות, ואפשר לרענן את הדף מאוחר יותר."
+          : "זה לוקח יותר מהרגיל. אם חויבתם, התוכנית תיפתח אוטומטית והדף יתעדכן לבד."
+      }
       live
       actions={
         <>
@@ -86,6 +90,7 @@ function Receipt({ receipt }: { receipt: PaymentReceipt }) {
       badge={<Badge tone="good"><CheckIcon className="h-8 w-8" /></Badge>}
       title={receipt.title}
       lead={receipt.lead}
+      live
       actions={
         <>
           <Link href={SETTINGS_PATH} className={SECONDARY_ACTION}>
@@ -97,14 +102,7 @@ function Receipt({ receipt }: { receipt: PaymentReceipt }) {
         </>
       }
     >
-      <dl className="w-full divide-y divide-sand-light/70 rounded-2xl bg-cream px-5 text-start">
-        {receipt.rows.map((row) => (
-          <div key={row.label} className="flex items-center justify-between gap-4 py-3.5">
-            <dt className="text-sm text-espresso-light">{row.label}</dt>
-            <dd className="text-[15px] font-semibold text-espresso tabular-nums">{row.value}</dd>
-          </div>
-        ))}
-      </dl>
+      <SummaryRows rows={receipt.rows} />
     </ResultCard>
   );
 }

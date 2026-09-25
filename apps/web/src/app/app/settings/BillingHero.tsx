@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { PRIMARY_ACTION } from "@/components/pricing/styles";
 import type { EntitlementReason } from "@/lib/billing/entitlement";
 import { formatIls, intervalAdjective, planLabel } from "@/lib/billing/format";
+import { findPlan } from "@/lib/billing/pricing";
 import type { BillingStatus } from "@/lib/billing/service";
 import { SETTINGS_SECTION } from "@/lib/billing/urls";
 import { CreditsMeter } from "../CreditsMeter";
@@ -94,6 +95,12 @@ export function SubscriptionHero({
   actions: ReactNode;
 }) {
   const label = subscriptionLabel(status);
+  const scheduled = findPlan(status.subscription?.scheduledPlanCode ?? null);
+  const billingLine = ending
+    ? `פעיל עד ${periodEnd}`
+    : scheduled
+      ? `עוברים לתוכנית ${planLabel(scheduled)} ב־${periodEnd} · החיוב הבא ${formatIls(scheduled.priceIls)}`
+      : `חיוב ${intervalAdjective(status.plan.interval)} · החיוב הבא ${formatIls(status.plan.priceIls)} ב־${periodEnd}`;
 
   return (
     <SurfaceCard className="flex flex-col gap-6 p-6 sm:p-8">
@@ -103,13 +110,7 @@ export function SubscriptionHero({
             <h2 className="font-display text-3xl leading-tight text-espresso">{planLabel(status.plan)}</h2>
             <StatusLabel tone={label.tone}>{label.text}</StatusLabel>
           </div>
-          {periodEnd ? (
-            <p className="text-sm text-espresso-light">
-              {ending
-                ? `פעיל עד ${periodEnd}`
-                : `חיוב ${intervalAdjective(status.plan.interval)} · החיוב הבא ${formatIls(status.plan.priceIls)} ב־${periodEnd}`}
-            </p>
-          ) : null}
+          {periodEnd ? <p className="text-sm text-espresso-light">{billingLine}</p> : null}
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">{actions}</div>
       </div>

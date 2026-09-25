@@ -1,38 +1,65 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ErrorAlert } from "@/components/ErrorAlert";
 import { BusinessOffer } from "@/components/pricing/BusinessOffer";
 import { PRIMARY_ACTION, SECONDARY_ACTION } from "@/components/pricing/styles";
 import { TrustPoints } from "@/components/pricing/TrustPoints";
 import { WhatsAppChatLink } from "@/components/WhatsAppChatLink";
 import { CREDITS_EXPLAINER } from "@/content/plans.he";
-import { formatDate } from "@/lib/billing/format";
-import { isPlanCode, type PlanCode } from "@/lib/billing/pricing";
+import { formatDate, planLabel } from "@/lib/billing/format";
+import { findPlan, isPlanCode, type PlanCode } from "@/lib/billing/pricing";
 import type { BillingStatus } from "@/lib/billing/service";
 import { SETTINGS_SECTION } from "@/lib/billing/urls";
 import {
   cancelSubscription,
   changePlan,
+  fetchBillingStatus,
   fetchPortalUrl,
   fetchUpdatePaymentMethodUrl,
   resumeSubscription,
   startCheckout,
 } from "../billing/client";
 import { PlanCheckout } from "../billing/PlanCheckout";
-import { BusyLabel, SurfaceCard } from "../Marks";
+import { BusyLabel, Spinner, SurfaceCard } from "../Marks";
 import { useActionRunner } from "../useActionRunner";
+import { usePolling } from "../usePolling";
 import { ChoosePlanHero, SubscriptionHero } from "./BillingHero";
 import { CancelConfirm, ManageBilling, type ManageOption } from "./ManageBilling";
+import { PlanChangePanel, type PlanChangeNotice } from "./PlanChangePanel";
 import { TopupCard } from "./TopupCard";
 
-type PendingAction = "cancel" | "resume" | "portal" | "paymentMethod" | PlanCode;
+type PendingAction = "cancel" | "resume" | "keep" | "portal" | "paymentMethod" | PlanCode;
 type Panel = "none" | "cancel" | "changePlan";
+
+interface Notice extends PlanChangeNotice {
+  id: number;
+  creditsBefore: number;
+}
 
 export function BillingSection({ initial }: { initial: BillingStatus }) {
   const [status, setStatus] = useState(initial);
   const [panel, setPanel] = useState<Panel>("none");
-  const { pending, error, run, redirect } = useActionRunner<PendingAction>();
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const noticeRef = useRef<HTMLDivElement>(null);
+  const runner = useActionRunner<PendingAction>();
+  const { pending, error, redirect } = runner;
+  // The added credits land with the provider's webhook, seconds after the plan itself changes.
+  const credits = usePolling(async () => {
+    const next = await fetchBillingStatus();
+    if (next.credits.allowance <= (notice?.creditsBefore ?? 0)) return false;
+    setStatus(next);
+    return true;
+  }, notice?.awaitsCredits ? notice.id : null);
+
+  useEffect(() => {
+    if (notice) noticeRef.current?.focus();
+  }, [notice]);
+
+  const announce = (next: BillingStatus, change: PlanChangeNotice) => {
+    setNotice({ ...change, id: Date.now(), creditsBefore: status.credits.allowance });
+    setStatus(next);
+  };
 
   const sub = status.subscription;
   const busy = pending !== null;
@@ -41,8 +68,18 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
   const managesBilling = status.paid || overdue;
   const ending = Boolean(sub?.cancelAtPeriodEnd || sub?.status === "canceled");
   const periodEnd = formatDate(sub?.currentPeriodEnd ?? null);
-  const canChangePlan = status.paid && !overdue && status.available && status.plan.interval === "month";
+  const scheduledPlan = findPlan(sub?.scheduledPlanCode ?? null);
+  const changesPlans = status.paid && !overdue && !ending && status.available && status.capabilities.changePlan;
+  const canChangePlan = changesPlans && !scheduledPlan && status.plan.interval === "month";
 
+  const run = (key: PendingAction, work: () => Promise<void>) => {
+    setNotice(null);
+    return runner.run(key, work);
+  };
+  const togglePanel = (next: Panel) => {
+    setNotice(null);
+    setPanel(panel === next ? "none" : next);
+  };
   const updatePaymentMethod = () => redirect("paymentMethod", fetchUpdatePaymentMethodUrl);
 
   const heroActions: ReactNode[] = [];
@@ -66,6 +103,28 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
       </button>,
     );
   }
+  if (changesPlans && scheduledPlan) {
+    heroActions.push(
+      <button
+        key="keep"
+        type="button"
+        disabled={busy}
+        onClick={() =>
+          run("keep", async () =>
+            announce(await changePlan(status.plan.code), {
+              message: `המעבר לתוכנית ${planLabel(scheduledPlan)} בוטל. ממשיכים בתוכנית ${planLabel(status.plan)}.`,
+              awaitsCredits: false,
+            }),
+          )
+        }
+        className={SECONDARY_ACTION}
+      >
+        <BusyLabel busy={pending === "keep"} busyText="מעדכנים…">
+          ביטול המעבר ל{planLabel(scheduledPlan)}
+        </BusyLabel>
+      </button>,
+    );
+  }
   if (canChangePlan) {
     heroActions.push(
       <button
@@ -73,7 +132,7 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
         type="button"
         disabled={busy}
         aria-expanded={panel === "changePlan"}
-        onClick={() => setPanel(panel === "changePlan" ? "none" : "changePlan")}
+        onClick={() => togglePanel("changePlan")}
         className={SECONDARY_ACTION}
       >
         שינוי תוכנית
@@ -113,7 +172,7 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
       title: "ביטול המנוי",
       detail: `הסוכן ימשיך לעבוד עד ${periodEnd ?? "סוף תקופת החיוב"}`,
       pending: false,
-      onSelect: () => setPanel("cancel"),
+      onSelect: () => togglePanel("cancel"),
     });
   }
 
@@ -121,6 +180,14 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
 
   return (
     <div className="flex flex-col gap-6 sm:gap-8">
+      <div ref={noticeRef} tabIndex={-1} role="status" className="scroll-mt-24 empty:hidden focus:outline-none">
+        {notice ? (
+          <div className={NOTICE_CLASS.info}>
+            {notice.message} {notice.awaitsCredits ? <CreditsArrival state={credits} /> : null}
+          </div>
+        ) : null}
+      </div>
+
       {overdue ? (
         <Notice tone="warn">
           החיוב האחרון נכשל. עדכנו אמצעי תשלום כדי שהסוכן ימשיך לעבוד, או{" "}
@@ -135,23 +202,15 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
       )}
 
       {panel === "changePlan" && canChangePlan ? (
-        <section aria-labelledby="change-plan-title" className="flex flex-col gap-4">
-          <header className="flex flex-col gap-1.5">
-            <h2 id="change-plan-title" className="font-display text-2xl text-espresso">
-              מעבר לתוכנית אחרת
-            </h2>
-            <p className="text-sm leading-relaxed text-espresso-light">
-              התוכנית הנוכחית תסתיים בסוף התקופה ששולמה, והחדשה תתחיל מיד עם התשלום. הקרדיטים שנותרו נשמרים עד סוף התקופה.
-            </p>
-          </header>
-          <PlanCheckout
-            currentPlan={ending ? null : status.plan.code}
-            initialInterval={status.plan.interval}
-            pendingPlan={pendingPlan}
-            disabled={busy}
-            onChoose={(code) => redirect(code, () => changePlan(code))}
-          />
-        </section>
+        <PlanChangePanel
+          status={status}
+          onChanged={(next, change) => {
+            setPanel("none");
+            announce(next, change);
+          }}
+          onClose={() => setPanel("none")}
+          onUpdatePaymentMethod={updatePaymentMethod}
+        />
       ) : null}
 
       {canChoosePlan ? (
@@ -206,11 +265,26 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
   );
 }
 
-function Notice({ tone, children }: { tone: "info" | "warn"; children: ReactNode }) {
-  const color = tone === "warn" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-sand-light bg-cream-dark/60 text-espresso";
+const NOTICE_CLASS = {
+  info: "rounded-2xl border border-sand-light bg-cream-dark/60 p-4 text-sm leading-relaxed text-espresso",
+  warn: "rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-relaxed text-amber-900",
+} as const;
+
+function Notice({ tone, children }: { tone: keyof typeof NOTICE_CLASS; children: ReactNode }) {
   return (
-    <div role="status" className={`rounded-2xl border p-4 text-sm leading-relaxed ${color}`}>
+    <div role="status" className={NOTICE_CLASS[tone]}>
       {children}
     </div>
+  );
+}
+
+function CreditsArrival({ state }: { state: ReturnType<typeof usePolling> }) {
+  if (state === "done") return <>הקרדיטים הנוספים כבר בחשבון.</>;
+  if (state === "stopped") return <>הקרדיטים הנוספים יתווספו לחשבון תוך כמה דקות.</>;
+  return (
+    <span className="inline-flex items-center gap-2 text-espresso-light">
+      <Spinner />
+      מוסיפים את הקרדיטים הנוספים…
+    </span>
   );
 }

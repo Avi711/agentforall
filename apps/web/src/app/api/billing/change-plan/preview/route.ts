@@ -5,5 +5,5 @@ import { ChangePlanBodySchema } from "@/lib/billing/schemas";
 import { toBillingUser } from "@/lib/billing/user";
 
 export const POST = authenticatedHandler({ bodySchema: ChangePlanBodySchema }, async ({ user, body }) => {
-  return NextResponse.json(await getBillingService().changePlan(toBillingUser(user), body.plan));
+  return NextResponse.json(await getBillingService().previewPlanChange(toBillingUser(user), body.plan));
 });

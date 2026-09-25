@@ -1,4 +1,4 @@
-import { MalformedWebhookError, WebhookVerificationError } from "../../errors";
+import { MalformedWebhookError, UnsupportedBillingOperationError, WebhookVerificationError } from "../../errors";
 import { signBody, verifyBodySignature } from "../../provider/hmac";
 import type {
   CreateCheckoutInput,
@@ -7,6 +7,7 @@ import type {
   ProviderCapabilities,
   ProviderEvent,
   ProviderPayment,
+  ProviderPlanChangePreview,
   ProviderSubscription,
   WebhookRequest,
 } from "../../provider/types";
@@ -24,6 +25,7 @@ export class MockPaymentProvider implements PaymentProvider {
     customerPortal: false,
     updatePaymentMethod: false,
     cancelWhilePastDue: true,
+    changePlan: false,
   };
 
   constructor(private readonly config: MockProviderConfig) {}
@@ -61,6 +63,14 @@ export class MockPaymentProvider implements PaymentProvider {
 
   resumeSubscription(_id: string): Promise<ProviderSubscription | null> {
     return Promise.resolve(null);
+  }
+
+  previewPlanChange(): Promise<ProviderPlanChangePreview> {
+    return Promise.reject(new UnsupportedBillingOperationError("changePlan", this.name));
+  }
+
+  changePlan(): Promise<ProviderSubscription> {
+    return Promise.reject(new UnsupportedBillingOperationError("changePlan", this.name));
   }
 
   getCustomerPortalUrl(_id: string): Promise<string | null> {
