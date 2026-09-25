@@ -48,12 +48,13 @@ export function PlanCard({
         ) : null}
       </div>
 
-      <p className="flex items-baseline gap-1.5">
-        <span className="text-lg font-bold text-espresso tabular-nums">{formatCredits(monthlyCredits(plan))}</span>
-        <span className="text-sm text-espresso-light">
-          קרדיטים בחודש{ratio > 1 ? ` · ${formatRatio(ratio)} מבסיסי` : ""}
-        </span>
-      </p>
+      <div className="flex flex-col gap-0.5">
+        <p className="flex items-baseline gap-1.5">
+          <span className="text-lg font-bold text-espresso tabular-nums">{formatCredits(monthlyCredits(plan))}</span>
+          <span className="text-sm text-espresso-light">קרדיטים בחודש</span>
+        </p>
+        <p className="h-5 text-[13px] text-espresso-light">{ratio > 1 ? `${formatRatio(ratio)} מבסיסי` : null}</p>
+      </div>
 
       {action}
 
