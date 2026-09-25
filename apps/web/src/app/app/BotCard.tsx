@@ -25,12 +25,14 @@ export function BotCard({
   bot: initialBot,
   credits,
   creditsAction,
+  planEndsAt,
   showCredits,
   apps,
 }: {
   bot: BotSnapshot;
   credits: CreditSummary;
   creditsAction: CreditsAction;
+  planEndsAt: string | null;
   showCredits: boolean;
   apps: readonly ShowcaseApp[];
 }) {
@@ -317,7 +319,7 @@ export function BotCard({
 
           <IntegrationsSection apps={apps} />
 
-          {showCredits ? <CreditsSection credits={credits} action={creditsAction} /> : null}
+          {showCredits ? <CreditsSection credits={credits} action={creditsAction} planEndsAt={planEndsAt} /> : null}
 
           {state.restart ? (
             <button

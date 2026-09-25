@@ -493,3 +493,42 @@ test("the preview reports the charge after Paddle credit, the prorated lines and
   });
   assert.equal(calls[0]!.url, "https://sandbox-api.paddle.com/subscriptions/sub_1/preview");
 });
+
+// Captured from the sandbox (2026-09-25): an upgrade credits the billed plan; after a `do_not_bill` downgrade there is no credit line.
+const REAL_PLAN_CHANGES = [
+  {
+    id: "txn_01m3ctmrttjp8q9jhqv57jpe6k",
+    items: [
+      { price: { id: "pri_01m3c3f80xe5w7kcfjefram02b", custom_data: { [PRICE_PLAN_KEY]: "standard" } } },
+      { price: { id: "pri_01m3c3f7cjjjf5zxnksdndnwjh", custom_data: { [PRICE_PLAN_KEY]: "basic" } } },
+    ],
+    details: {
+      totals: { total: "9963" },
+      line_items: [
+        { price_id: "pri_01m3c3f80xe5w7kcfjefram02b", quantity: 1, proration: { rate: "0.99623" } },
+        { price_id: "pri_01m3c3f7cjjjf5zxnksdndnwjh", quantity: -1, proration: { rate: "0.99623" } },
+      ],
+    },
+  },
+  {
+    id: "txn_01m3d064tg9de0jzgjfrwn4e7z",
+    items: [{ price: { id: "pri_01m3c3f8mq82bwzq0r43red0nk", custom_data: { [PRICE_PLAN_KEY]: "pro" } } }],
+    details: { totals: { total: "39759" }, line_items: [{ price_id: "pri_01m3c3f8mq82bwzq0r43red0nk", quantity: 1, proration: { rate: "0.99398" } }] },
+  },
+];
+
+test("real sandbox plan change charges resolve through their price tags into the lines credits are granted from", async () => {
+  const { adapter } = provider();
+  const lines = [];
+  for (const change of REAL_PLAN_CHANGES) {
+    const parsed = await adapter.parseWebhook(signed(event("transaction.completed", transaction({ ...change, origin: "subscription_update", custom_data: null }))));
+    lines.push(parsed.kind === "subscription.prorated" ? parsed.lines : null);
+  }
+  assert.deepEqual(lines, [
+    [
+      { planCode: "standard", quantity: 1, rate: 0.99623 },
+      { planCode: "basic", quantity: -1, rate: 0.99623 },
+    ],
+    [{ planCode: "pro", quantity: 1, rate: 0.99398 }],
+  ]);
+});

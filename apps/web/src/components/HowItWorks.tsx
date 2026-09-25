@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { prefersReducedMotion } from "./motion";
 
 const AGENT_NAME = "יובל";
 
@@ -21,8 +22,6 @@ const STAGE_TOP = 200;
 
 type Select = (sel: string) => HTMLElement[];
 
-const stillPreferred = () =>
-  window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.hasAttribute("data-reduced-motion");
 
 export function HowItWorks() {
   const root = useRef<HTMLElement>(null);
@@ -65,12 +64,12 @@ export function HowItWorks() {
     let cancelled = false;
 
     const bind = async () => {
-      if (stillPreferred() || unbind) return;
+      if (prefersReducedMotion() || unbind) return;
       el.dataset.motion = "on";
       try {
         // GSAP is only needed once the page is interactive, so it stays off the critical path.
         const [{ gsap }, { ScrollTrigger }] = await Promise.all([import("gsap"), import("gsap/ScrollTrigger")]);
-        if (cancelled || stillPreferred() || unbind) { if (!unbind) delete el.dataset.motion; return; }
+        if (cancelled || prefersReducedMotion() || unbind) { if (!unbind) delete el.dataset.motion; return; }
         gsap.registerPlugin(ScrollTrigger);
         const q = gsap.utils.selector(el);
         const within = (scope: string): Select => (sel) => q<HTMLElement>(`${scope} ${sel}`);
@@ -172,7 +171,7 @@ export function HowItWorks() {
 
     void bind();
     // The site's own accessibility toggle flips the attribute at runtime; follow it both ways.
-    const watcher = new MutationObserver(() => { if (stillPreferred()) unbind?.(); else void bind(); });
+    const watcher = new MutationObserver(() => { if (prefersReducedMotion()) unbind?.(); else void bind(); });
     watcher.observe(document.documentElement, { attributes: true, attributeFilter: ["data-reduced-motion"] });
 
     return () => {

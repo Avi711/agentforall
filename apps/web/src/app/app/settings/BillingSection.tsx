@@ -196,7 +196,7 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
       ) : null}
 
       {managesBilling ? (
-        <SubscriptionHero status={status} ending={ending} periodEnd={periodEnd} actions={heroActions} />
+        <SubscriptionHero status={status} ending={ending} periodEnd={periodEnd} scheduled={scheduledPlan} actions={heroActions} />
       ) : (
         <ChoosePlanHero status={status} canChoosePlan={canChoosePlan} />
       )}
@@ -204,6 +204,7 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
       {panel === "changePlan" && canChangePlan ? (
         <PlanChangePanel
           status={status}
+          scheduledPlan={scheduledPlan}
           onChanged={(next, change) => {
             setPanel("none");
             announce(next, change);

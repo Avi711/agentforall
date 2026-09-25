@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { prefersReducedMotion } from "./motion";
+import { countTo, prefersReducedMotion } from "./motion";
 
 const DURATION_MS = 1400;
 
@@ -14,25 +14,19 @@ export function CountUp({ label }: { label: string }) {
     const el = ref.current;
     const target = Number(label.replace(/[^\d]/g, ""));
     if (!el || !Number.isFinite(target) || prefersReducedMotion() || !("IntersectionObserver" in window)) return;
-    let cancelled = false;
+    let cancel = () => {};
     setText("0");
-    const observer = new IntersectionObserver((entries) => {
-      if (!entries[0]?.isIntersecting) return;
-      observer.disconnect();
-      const start = performance.now();
-      const tick = (now: number) => {
-        if (cancelled) return;
-        const p = Math.min(1, (now - start) / DURATION_MS);
-        const eased = 1 - Math.pow(1 - p, 3);
-        setText(Math.round(target * eased).toLocaleString("he-IL"));
-        if (p < 1) requestAnimationFrame(tick);
-        else setText(label);
-      };
-      requestAnimationFrame(tick);
-    }, { threshold: 0.6 });
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) return;
+        observer.disconnect();
+        cancel = countTo(0, target, DURATION_MS, (value) => setText(value === target ? label : value.toLocaleString("he-IL")));
+      },
+      { threshold: 0.6 },
+    );
     observer.observe(el);
     return () => {
-      cancelled = true;
+      cancel();
       observer.disconnect();
     };
   }, [label]);

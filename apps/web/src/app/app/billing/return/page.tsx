@@ -9,7 +9,6 @@ import { CheckoutSessionQuerySchema } from "@/lib/billing/schemas";
 import type { BillingStatus } from "@/lib/billing/service";
 import { SETTINGS_PATH, settingsSectionHref } from "@/lib/billing/urls";
 import { toBillingUser } from "@/lib/billing/user";
-import { AnimatedCredits } from "../../AnimatedCredits";
 import { CheckoutResult, type CheckoutOutcome, type PaymentReceipt } from "./CheckoutResult";
 
 export const metadata: Metadata = {
@@ -49,7 +48,7 @@ function receiptFor(checkout: CheckoutSession, status: BillingStatus): PaymentRe
       title: "הקרדיטים נטענו",
       lead: "תודה! הקרדיטים כבר בחשבון ולא פגים.",
       rows: [
-        { label: "נטענו", value: <><AnimatedCredits from={0} value={checkout.credits} /> קרדיטים</> },
+        { label: "נטענו", value: `${formatCredits(checkout.credits)} קרדיטים` },
         paid,
         { label: "יתרה עכשיו", value: `${formatCredits(status.credits.available)} קרדיטים` },
       ],
@@ -64,7 +63,7 @@ function receiptFor(checkout: CheckoutSession, status: BillingStatus): PaymentRe
     rows: [
       { label: "תוכנית", value: planLabel(plan) },
       paid,
-      { label: "קרדיטים", value: <><AnimatedCredits from={0} value={monthlyCredits(plan)} /> בחודש</> },
+      { label: "קרדיטים", value: `${formatCredits(monthlyCredits(plan))} בחודש` },
       ...(nextChargeAt ? [{ label: "החיוב הבא", value: `${formatAgorot(planAmountAgorot(plan))} ב־${nextChargeAt}` }] : []),
     ],
   };

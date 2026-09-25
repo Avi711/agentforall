@@ -1000,6 +1000,17 @@ describe("plan change", () => {
     assert.deepEqual({ plan: first(later.subscriptions.rows).planCode, scheduled: first(later.subscriptions.rows).scheduledPlanCode }, { plan: "pro", scheduled: null });
   });
 
+  test("credits match the real sandbox charges: 3,985 for Basic to Standard, 14,413 for Pro after a downgrade", async () => {
+    const h = harness();
+    h.subscriptions.seed(subscription());
+    await deliver(h, prorated([{ planCode: "standard", quantity: 1, rate: 0.99623 }, { planCode: "basic", quantity: -1, rate: 0.99623 }], "pay_real_up"));
+    await deliver(h, prorated([{ planCode: "pro", quantity: 1, rate: 0.99398 }], "pay_real_after_downgrade"));
+    assert.deepEqual(
+      h.grants.rows.map((g) => g.credits),
+      [3985, 14413],
+    );
+  });
+
   test("a prorated charge for an unknown order is retried; a deleted account's charge is recorded without credits", async () => {
     const h = harness();
     await deliverExpectingFailure(h, prorated(halfPeriodUpgrade), "unknown_subscription");

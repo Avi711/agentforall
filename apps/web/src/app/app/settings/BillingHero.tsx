@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { PRIMARY_ACTION } from "@/components/pricing/styles";
 import type { EntitlementReason } from "@/lib/billing/entitlement";
 import { formatIls, intervalAdjective, planLabel } from "@/lib/billing/format";
-import { findPlan } from "@/lib/billing/pricing";
+import type { Plan } from "@/lib/billing/pricing";
 import type { BillingStatus } from "@/lib/billing/service";
 import { SETTINGS_SECTION } from "@/lib/billing/urls";
 import { CreditsMeter } from "../CreditsMeter";
@@ -87,15 +87,16 @@ export function SubscriptionHero({
   status,
   ending,
   periodEnd,
+  scheduled,
   actions,
 }: {
   status: BillingStatus;
   ending: boolean;
   periodEnd: string | null;
+  scheduled: Plan | null;
   actions: ReactNode;
 }) {
   const label = subscriptionLabel(status);
-  const scheduled = findPlan(status.subscription?.scheduledPlanCode ?? null);
   const billingLine = ending
     ? `פעיל עד ${periodEnd}`
     : scheduled
@@ -114,7 +115,7 @@ export function SubscriptionHero({
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">{actions}</div>
       </div>
-      <CreditsMeter credits={status.credits} />
+      <CreditsMeter credits={status.credits} planEndsAt={status.subscription?.currentPeriodEnd ?? null} />
     </SurfaceCard>
   );
 }
