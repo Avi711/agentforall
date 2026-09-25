@@ -12,18 +12,21 @@ import { useActionRunner } from "../useActionRunner";
 
 const STEP_ILS = 10;
 
-const RANGE =
-  "h-2 w-full cursor-pointer appearance-none rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-4 disabled:cursor-not-allowed disabled:opacity-50 " +
-  "[&::-webkit-slider-thumb]:h-7 [&::-webkit-slider-thumb]:w-7 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-terra [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_2px_8px_rgba(44,24,16,0.25)] " +
-  "[&::-moz-range-thumb]:h-7 [&::-moz-range-thumb]:w-7 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-terra [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:shadow-[0_2px_8px_rgba(44,24,16,0.25)]";
+const TILE =
+  "flex min-h-20 flex-col items-center justify-center gap-1 rounded-2xl border px-3 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra disabled:opacity-50";
+const TILE_SELECTED = "border-terra bg-terra-pale ring-1 ring-terra";
+const TILE_IDLE = "border-sand-light bg-white hover:border-sand hover:bg-cream";
 
-const QUICK_PICK = "min-h-10 rounded-full border px-4 text-sm font-semibold tabular-nums transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra disabled:opacity-50";
+const RANGE =
+  "h-1.5 w-full cursor-pointer appearance-none rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-terra focus-visible:ring-offset-4 disabled:cursor-not-allowed disabled:opacity-50 " +
+  "[&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-terra [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_1px_4px_rgba(44,24,16,0.25)] " +
+  "[&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-terra [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:shadow-[0_1px_4px_rgba(44,24,16,0.25)]";
 
 export function TopupCard({ terms }: { terms: TopupTerms }) {
   const [amount, setAmount] = useState(DEFAULT_TOPUP_PRESET_ILS);
   const topup = useActionRunner<"topup">();
   const busy = topup.pending !== null;
-  const credits = creditsForTopupIls(amount);
+  const custom = !terms.presetsIls.includes(amount);
   // The page is RTL, so the smallest amount sits on the right and the fill grows leftwards.
   const fill = `${((amount - terms.minIls) / (terms.maxIls - terms.minIls)) * 100}%`;
 
@@ -36,48 +39,51 @@ export function TopupCard({ terms }: { terms: TopupTerms }) {
         </p>
       </header>
 
-      <div className="flex flex-col gap-4">
-        <p className="flex flex-wrap items-baseline gap-x-3" aria-live="polite">
-          <span className="text-4xl font-bold leading-none text-espresso tabular-nums">{formatIls(amount)}</span>
-          <span className="text-base text-espresso-light">{formatCredits(credits)} קרדיטים שלא פגים</span>
-        </p>
-        <div className="flex flex-col gap-2">
-          <input
-            type="range"
-            min={terms.minIls}
-            max={terms.maxIls}
-            step={STEP_ILS}
-            value={amount}
-            onChange={(event) => setAmount(Number(event.target.value))}
+      <div role="group" aria-label="סכום טעינה" className="grid grid-cols-3 gap-2.5 sm:gap-3">
+        {terms.presetsIls.map((preset) => (
+          <button
+            key={preset}
+            type="button"
+            aria-pressed={amount === preset}
             disabled={busy}
-            aria-label="סכום הטעינה"
-            aria-valuetext={`${formatIls(amount)}, ${formatCredits(credits)} קרדיטים`}
-            className={RANGE}
-            style={{ background: `linear-gradient(to left, var(--color-terra) ${fill}, var(--color-cream-dark) ${fill})` }}
-          />
-          <div className="flex justify-between text-xs text-espresso-light tabular-nums">
-            <span>{formatIls(terms.minIls)}</span>
-            <span>{formatIls(terms.maxIls)}</span>
-          </div>
+            onClick={() => setAmount(preset)}
+            className={`${TILE} ${amount === preset ? TILE_SELECTED : TILE_IDLE}`}
+          >
+            <span className="text-xl font-bold text-espresso tabular-nums">{formatIls(preset)}</span>
+            <span className="text-xs text-espresso-light tabular-nums">{formatCredits(creditsForTopupIls(preset))} קרדיטים</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-col gap-2.5">
+        <div className="flex items-baseline justify-between gap-3 text-sm">
+          <span className="text-espresso-light">או כל סכום אחר</span>
+          <span className={`font-semibold tabular-nums ${custom ? "text-terra-dark" : "text-espresso-light"}`}>{formatIls(amount)}</span>
         </div>
-        <div role="group" aria-label="סכומים נפוצים" className="flex flex-wrap gap-2">
-          {terms.presetsIls.map((preset) => (
-            <button
-              key={preset}
-              type="button"
-              aria-pressed={amount === preset}
-              disabled={busy}
-              onClick={() => setAmount(preset)}
-              className={`${QUICK_PICK} ${amount === preset ? "border-terra bg-terra-pale text-terra-dark" : "border-sand-light bg-white text-espresso hover:bg-cream-dark"}`}
-            >
-              {formatIls(preset)}
-            </button>
-          ))}
+        <input
+          type="range"
+          min={terms.minIls}
+          max={terms.maxIls}
+          step={STEP_ILS}
+          value={amount}
+          onChange={(event) => setAmount(Number(event.target.value))}
+          disabled={busy}
+          aria-label="סכום טעינה אחר"
+          aria-valuetext={`${formatIls(amount)}, ${formatCredits(creditsForTopupIls(amount))} קרדיטים`}
+          className={RANGE}
+          style={{ background: `linear-gradient(to left, var(--color-terra) ${fill}, var(--color-cream-dark) ${fill})` }}
+        />
+        <div className="flex justify-between text-xs text-espresso-light tabular-nums">
+          <span>{formatIls(terms.minIls)}</span>
+          <span>{formatIls(terms.maxIls)}</span>
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 rounded-2xl bg-cream p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-        <p className="text-[13px] text-espresso-light">חיוב חד־פעמי, כולל מע״מ</p>
+      <div className="flex flex-col gap-4 rounded-2xl bg-cream p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+        <div className="flex flex-col gap-0.5" aria-live="polite">
+          <p className="text-base font-semibold text-espresso tabular-nums">{formatCredits(creditsForTopupIls(amount))} קרדיטים שלא פגים</p>
+          <p className="text-[13px] text-espresso-light">חיוב חד־פעמי, כולל מע״מ</p>
+        </div>
         <button
           type="button"
           onClick={() => void topup.redirect("topup", () => startTopup(amount))}
