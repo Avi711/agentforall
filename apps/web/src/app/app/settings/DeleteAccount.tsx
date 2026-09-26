@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { authClient, useGoogleSignIn } from "@/lib/auth/client";
 import { authErrorMessage, type AuthFailure } from "@/lib/auth/error-messages";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
@@ -33,6 +33,7 @@ export function DeleteAccount({ subscribed, credits, topupCredits }: { subscribe
   const [methods, setMethods] = useState<ReauthMethods>(GOOGLE_ONLY);
   const [error, setError] = useState<string | null>(null);
   const google = useGoogleSignIn();
+  const rowRef = useRef<HTMLButtonElement>(null);
 
   const locked = busy || google.redirecting;
   const canDelete = phrase.trim() === CONFIRM_PHRASE;
@@ -69,6 +70,7 @@ export function DeleteAccount({ subscribed, credits, topupCredits }: { subscribe
     setPhrase("");
     setPassword("");
     setError(null);
+    rowRef.current?.focus();
   }
 
   const cancelButton = (
@@ -136,6 +138,7 @@ export function DeleteAccount({ subscribed, credits, topupCredits }: { subscribe
   return (
     <div className="mt-4">
       <OptionRow
+        rowRef={rowRef}
         title="מחיקת החשבון"
         detail="מוחק לצמיתות את הסוכן, הנתונים והקרדיטים"
         danger

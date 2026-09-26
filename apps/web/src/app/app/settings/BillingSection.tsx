@@ -44,6 +44,8 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
   const [panel, setPanel] = useState<Panel>("none");
   const [notice, setNotice] = useState<Notice | null>(null);
   const noticeRef = useRef<HTMLDivElement>(null);
+  const changePlanRef = useRef<HTMLButtonElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
   const runner = useActionRunner<PendingAction>();
   const { pending, error, redirect } = runner;
   // The added credits land with the provider's webhook, seconds after the plan itself changes.
@@ -69,7 +71,7 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
   const overdue = sub?.status === "past_due" && !status.capabilities.cancelWhilePastDue;
   const managesBilling = status.paid || overdue;
   const ending = Boolean(sub?.cancelAtPeriodEnd || sub?.status === "canceled");
-  const periodEnd = formatDate(sub?.currentPeriodEnd ?? null);
+  const periodEnd = sub?.currentPeriodEnd && sub.currentPeriodEnd > status.credits.asOf ? formatDate(sub.currentPeriodEnd) : null;
   const scheduledPlan = findPlan(sub?.scheduledPlanCode ?? null);
   const changesPlans = status.paid && !overdue && !ending && status.available && status.capabilities.changePlan;
   const canChangePlan = changesPlans && status.plan.interval === "month";
@@ -131,10 +133,11 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
     heroActions.push(
       <button
         key="changePlan"
+        ref={changePlanRef}
         type="button"
         disabled={busy}
         aria-expanded={panel === "changePlan"}
-        aria-controls="change-plan"
+        aria-controls={panel === "changePlan" ? "change-plan" : undefined}
         onClick={() => togglePanel("changePlan")}
         className={ROW_ACTION_CLASS.quiet}
       >
@@ -174,6 +177,7 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
       ? {
           title: "ביטול המנוי",
           detail: `הסוכן ימשיך לעבוד עד ${periodEnd ?? "סוף תקופת החיוב"}`,
+          rowRef: cancelRef,
           expanded: panel === "cancel",
           onSelect: () => togglePanel("cancel"),
         }
@@ -213,7 +217,10 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
                 setPanel("none");
                 announce(next, change);
               }}
-              onClose={() => setPanel("none")}
+              onClose={() => {
+                setPanel("none");
+                changePlanRef.current?.focus();
+              }}
               onUpdatePaymentMethod={updatePaymentMethod}
             />
           ) : null}
@@ -261,7 +268,10 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
                   setPanel("none");
                 })
               }
-              onClose={() => setPanel("none")}
+              onClose={() => {
+                setPanel("none");
+                cancelRef.current?.focus();
+              }}
             />
           ) : null}
         </ManageBilling>

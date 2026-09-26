@@ -5,21 +5,17 @@ import { periodEndOf } from "./period";
 
 const MIN_PACE_DAYS = 1;
 
-export type CreditPace = { kind: "unknown" } | { kind: "lasts"; until: string } | { kind: "short"; days: number };
-
-const UNKNOWN: CreditPace = { kind: "unknown" };
-
-// Top-ups are spent last, so the live trial or plan grant sets the pace.
-export function creditPace(grants: readonly CreditGrant[], available: number, now: Date): CreditPace {
-  if (available <= 0) return UNKNOWN;
+// Paced on the newest live trial or plan grant: it is spent only after older ones, so the rate can read low, never high.
+export function runwayDays(grants: readonly CreditGrant[], available: number, now: Date): number | null {
+  if (available <= 0) return null;
   const current = grants
     .filter((grant) => grant.kind !== "topup" && isGrantLive(grant, now))
     .reduce<CreditGrant | null>((latest, grant) => (latest && latest.grantedAt >= grant.grantedAt ? latest : grant), null);
-  if (!current || current.usedCredits === 0) return UNKNOWN;
-  const elapsedDays = (now.getTime() - current.grantedAt.getTime()) / DAY_MS;
-  if (elapsedDays < MIN_PACE_DAYS) return UNKNOWN;
-  const days = Math.floor(available / (current.usedCredits / elapsedDays));
+  if (!current || current.usedCredits === 0) return null;
   const end = periodEndOf(current);
-  if (end === null) return UNKNOWN;
-  return days < (end.getTime() - now.getTime()) / DAY_MS ? { kind: "short", days } : { kind: "lasts", until: end.toISOString() };
+  if (!end || end.getTime() <= now.getTime()) return null;
+  const elapsedDays = (now.getTime() - current.grantedAt.getTime()) / DAY_MS;
+  if (elapsedDays < MIN_PACE_DAYS) return null;
+  const days = Math.floor(available / (current.usedCredits / elapsedDays));
+  return days < (end.getTime() - now.getTime()) / DAY_MS ? days : null;
 }

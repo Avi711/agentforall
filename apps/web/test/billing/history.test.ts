@@ -37,6 +37,17 @@ test("past periods add up a period's renewal and upgrade, newest first, then the
   );
 });
 
+test("the last period is history as soon as it ends, even while its leftover is in the renewal grace", () => {
+  const history = pastPeriods([
+    view({ id: "aug", credits: 2500, usedCredits: 1200, grantedAt: "2026-08-25T10:00:00.000Z", periodEnd: "2026-09-25T10:00:00.000Z", inCurrentPeriod: false }),
+    view({ id: "sep", credits: 2500 }),
+  ]);
+  assert.deepEqual(
+    history.map(({ key, used, credits }) => ({ key, used, credits })),
+    [{ key: "2026-09-25", used: 1200, credits: 2500 }],
+  );
+});
+
 test("a live trial is not history yet", () => {
   assert.deepEqual(pastPeriods([view({ kind: "trial", periodEnd: "2026-10-02T10:00:00.000Z" })]), []);
 });

@@ -40,6 +40,7 @@ export function CardSection({
 }
 
 export interface OptionRowProps {
+  rowRef?: Ref<HTMLButtonElement>;
   title: string;
   detail: string;
   pending?: boolean;
@@ -50,9 +51,10 @@ export interface OptionRowProps {
   onSelect: () => void;
 }
 
-export function OptionRow({ title, detail, pending = false, external = false, danger = false, expanded, disabled, onSelect }: OptionRowProps) {
+export function OptionRow({ rowRef, title, detail, pending = false, external = false, danger = false, expanded, disabled, onSelect }: OptionRowProps) {
   return (
     <button
+      ref={rowRef}
       type="button"
       disabled={disabled}
       aria-busy={pending}

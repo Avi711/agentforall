@@ -44,7 +44,7 @@ export function PlanChangePanel({
   const periodEnd = formatDate(status.subscription?.currentPeriodEnd ?? null);
   const target = preview ? PLANS[preview.plan] : null;
   const chargesNow = preview?.billing === "prorate_now" && preview.chargeNowAgorot !== null;
-  const renewalDay = status.subscription?.currentPeriodEnd ? formatDay(status.subscription.currentPeriodEnd) : null;
+  const renewalDay = status.subscription?.currentPeriodEnd ? formatDay(status.subscription.currentPeriodEnd, status.credits.asOf) : null;
 
   useEffect(() => {
     headingRef.current?.focus({ preventScroll: true });

@@ -3,7 +3,7 @@ import { balancePools } from "@/lib/billing/credits/pools";
 import type { CreditSummary } from "@/lib/billing/credits/service";
 import { formatCredits, formatDay } from "@/lib/billing/format";
 import { AnimatedCredits } from "./AnimatedCredits";
-import { BALANCE_NOTE, OUT_OF_CREDITS_LABEL, POOL_SOURCE, poolSwatch, runwayLabel } from "./credits-copy";
+import { BALANCE_NOTE, OUT_OF_CREDITS_LABEL, poolSource, poolSwatch, runwayLabel } from "./credits-copy";
 
 const AMOUNT_SIZE = { lg: "text-5xl", sm: "text-2xl" } as const;
 
@@ -20,7 +20,7 @@ export function CreditsMeter({
   size?: keyof typeof AMOUNT_SIZE;
   action?: ReactNode;
 }) {
-  const { balance, available, allowance, pace, stale } = credits;
+  const { balance, available, allowance, runwayDays, stale, asOf } = credits;
   if (balance.kind === "none") return null;
   const alert = balance.kind === "low" || balance.kind === "out";
   const pools = balancePools(credits.grants).filter((pool) => pool.available > 0);
@@ -37,7 +37,7 @@ export function CreditsMeter({
           <span className="text-base text-espresso-light">קרדיטים זמינים</span>
         </p>
       )}
-      {pace.kind === "short" ? <p className="text-sm text-espresso-light">{runwayLabel(pace.days)}</p> : null}
+      {runwayDays !== null ? <p className="text-sm text-espresso-light">{runwayLabel(runwayDays)}</p> : null}
       {allowance > 0 ? (
         <div
           role="meter"
@@ -49,20 +49,20 @@ export function CreditsMeter({
           className="flex h-2 gap-0.5 overflow-hidden rounded-full bg-cream-dark"
         >
           {pools.map((pool) => (
-            <div key={pool.kind} className={`h-full rounded-full ${poolSwatch(pool, alert)}`} style={{ width: percentOf(pool.available, allowance) }} />
+            <div key={pool.key} className={`h-full rounded-full ${poolSwatch(pool, alert)}`} style={{ width: percentOf(pool.available, allowance) }} />
           ))}
         </div>
       ) : null}
       {pools.length > 0 ? (
         <ul className="flex flex-wrap gap-x-8 gap-y-2 text-[13px] text-espresso-light">
           {pools.map((pool) => (
-            <li key={pool.kind} className="flex items-start gap-2">
+            <li key={pool.key} className="flex items-start gap-2">
               <span aria-hidden className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-sm ${poolSwatch(pool, alert)}`} />
               <span className="flex flex-col">
                 <span>
-                  <span className="font-semibold text-espresso tabular-nums">{formatCredits(pool.available)}</span> {POOL_SOURCE[pool.kind]}
+                  <span className="font-semibold text-espresso tabular-nums">{formatCredits(pool.available)}</span> {poolSource(pool)}
                 </span>
-                <span>{pool.validUntil ? `בתוקף עד ${formatDay(pool.validUntil)}` : "לא פגים"}</span>
+                <span>{pool.validUntil ? `בתוקף עד ${formatDay(pool.validUntil, asOf)}` : "לא פגים"}</span>
               </span>
             </li>
           ))}

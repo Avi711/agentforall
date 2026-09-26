@@ -9,8 +9,8 @@ import { UsageRow } from "./UsageRow";
 
 const RECENT_PERIODS = 3;
 
-function PeriodRow({ period }: { period: PastPeriod }) {
-  const range = `${formatDay(period.startsAt)} – ${formatDay(period.endsAt)}`;
+function PeriodRow({ period, asOf }: { period: PastPeriod; asOf: string }) {
+  const range = `${formatDay(period.startsAt, asOf)} – ${formatDay(period.endsAt, asOf)}`;
   const trial = period.kind === "trial";
   return (
     <UsageRow
@@ -33,7 +33,7 @@ export function CreditHistory({ credits }: { credits: CreditSummary }) {
     <PageSection id="usage" title="תקופות קודמות">
       <ul className="divide-y divide-sand-light/70">
         {periods.slice(0, periods.length - hidden).map((period) => (
-          <PeriodRow key={period.key} period={period} />
+          <PeriodRow key={period.key} period={period} asOf={credits.asOf} />
         ))}
       </ul>
       {hidden > 0 ? (

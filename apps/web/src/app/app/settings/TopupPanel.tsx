@@ -7,7 +7,7 @@ import { DEFAULT_TOPUP_PRESET_ILS, creditsForTopupIls, type TopupTerms } from "@
 import { SETTINGS_SECTION } from "@/lib/billing/urls";
 import { ROW_ACTION_CLASS } from "../action-buttons";
 import { startTopup } from "../billing/client";
-import { BusyLabel, CloseButton } from "../Marks";
+import { BusyLabel, CLOSE_BUTTON_CLASS, CloseIcon } from "../Marks";
 import { useActionRunner } from "../useActionRunner";
 import { useHashTarget } from "../useHashTarget";
 import { useRevealWhenOpened } from "../useRevealWhenOpened";
@@ -46,19 +46,16 @@ export function TopupPanel({ terms, urgent }: { terms: TopupTerms; urgent: boole
           </h3>
           <p className="text-[13px] text-espresso-light">לחודש עמוס במיוחד: ₪1 = {terms.creditsPerIls} קרדיטים, והם לא פגים.</p>
         </div>
-        {open ? (
-          <CloseButton onClick={() => setToggled(false)} />
-        ) : (
-          <button
-            type="button"
-            aria-expanded={false}
-            aria-controls="topup-options"
-            onClick={() => setToggled(true)}
-            className={`${ROW_ACTION_CLASS.quiet} shrink-0`}
-          >
-            טעינה
-          </button>
-        )}
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={open ? "topup-options" : undefined}
+          aria-label={open ? "סגירת הטעינה" : undefined}
+          onClick={() => setToggled(!open)}
+          className={open ? CLOSE_BUTTON_CLASS : `${ROW_ACTION_CLASS.quiet} shrink-0`}
+        >
+          {open ? <CloseIcon /> : "טעינה"}
+        </button>
       </div>
 
       {open ? (

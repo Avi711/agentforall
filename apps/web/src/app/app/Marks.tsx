@@ -39,17 +39,21 @@ export function ChevronEnd() {
   );
 }
 
+export const CLOSE_BUTTON_CLASS =
+  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-espresso-light transition hover:bg-espresso/5 hover:text-espresso focus:outline-none focus-visible:ring-2 focus-visible:ring-terra";
+
+export function CloseIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M5 5l10 10M15 5L5 15" />
+    </svg>
+  );
+}
+
 export function CloseButton({ onClick, className = "" }: { onClick: () => void; className?: string }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label="סגירה"
-      className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-espresso-light transition hover:bg-espresso/5 hover:text-espresso focus:outline-none focus-visible:ring-2 focus-visible:ring-terra ${className}`}
-    >
-      <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-        <path d="M5 5l10 10M15 5L5 15" />
-      </svg>
+    <button type="button" onClick={onClick} aria-label="סגירה" className={`${CLOSE_BUTTON_CLASS} ${className}`}>
+      <CloseIcon />
     </button>
   );
 }

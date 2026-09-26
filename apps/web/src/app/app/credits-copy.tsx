@@ -17,11 +17,16 @@ export const BALANCE_NOTE = {
   out: "הסוכן לא עונה עד שיהיו קרדיטים.",
 } as const;
 
-export const POOL_SOURCE: Record<CreditGrantKind, string> = { plan: "מהתוכנית", trial: "מהניסיון", topup: "מטעינות" };
+const POOL_SOURCE: Record<CreditGrantKind, string> = { plan: "מהתוכנית", trial: "מהניסיון", topup: "מטעינות" };
+
+export function poolSource(pool: CreditPool): string {
+  return pool.earlier ? "מתקופה קודמת" : POOL_SOURCE[pool.kind];
+}
 const POOL_SWATCH: Record<CreditGrantKind, string> = { plan: "bg-sage", trial: "bg-sage-light", topup: "bg-honey" };
 
 export function poolSwatch(pool: CreditPool, alert: boolean): string {
-  return alert && pool.validUntil !== null ? "bg-terra" : POOL_SWATCH[pool.kind];
+  if (alert && pool.validUntil !== null) return "bg-terra";
+  return pool.earlier ? "bg-sage/50" : POOL_SWATCH[pool.kind];
 }
 
 const ACTION_LABEL: Record<CreditsAction, string> = {

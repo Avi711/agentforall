@@ -5,7 +5,7 @@ import type { BotSpend, CreditGrantRepository, CreditUsageRepository, LlmBudgetP
 import { LOW_BALANCE_RATIO, TRIAL_CREDITS, TRIAL_DAYS, creditsFromUsdCents, usdCentsFromCredits } from "../pricing";
 import { attributeConsumption, availableCredits, currentAllowance, isGrantLive, remainingCredits } from "./allocation";
 import { isInCurrentPeriod, periodEndOf } from "./period";
-import { creditPace, type CreditPace } from "./runway";
+import { runwayDays } from "./runway";
 
 const MAX_ADVANCE_ATTEMPTS = 3;
 const SYNC_ALL_CONCURRENCY = 4;
@@ -46,7 +46,8 @@ export interface CreditSummary {
   balance: BalanceState;
   trial: TrialState;
   grants: CreditGrantView[];
-  pace: CreditPace;
+  runwayDays: number | null;
+  asOf: string;
   syncedAt: string | null;
   stale: boolean;
 }
@@ -262,7 +263,8 @@ export class CreditService {
         live: isGrantLive(g, now),
         inCurrentPeriod: isInCurrentPeriod(g, now),
       })),
-      pace: creditPace(grants, available, now),
+      runwayDays: runwayDays(grants, available, now),
+      asOf: now.toISOString(),
       syncedAt: syncedAt?.toISOString() ?? null,
       stale,
     };

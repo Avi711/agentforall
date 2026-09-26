@@ -88,8 +88,8 @@ function subscriptionLabel(status: BillingStatus): { tone: Tone; text: string } 
 function billingLine(status: BillingStatus, ending: boolean, scheduled: Plan | null): string {
   const price = `${formatIls(status.plan.priceIls)} ${PER_INTERVAL[status.plan.interval]}`;
   const end = status.subscription?.currentPeriodEnd;
-  if (!end || status.subscription?.status === "past_due") return price;
-  const day = formatDay(end);
+  if (!end || end <= status.credits.asOf || status.subscription?.status === "past_due") return price;
+  const day = formatDay(end, status.credits.asOf);
   if (ending) return `פעיל עד ${day}, בלי חיובים נוספים`;
   if (scheduled) return `עוברים ל${planLabel(scheduled)} ב־${day}, ואז ${formatIls(scheduled.priceIls)} ${PER_INTERVAL[scheduled.interval]}`;
   return `${price}, החיוב הבא ב־${day}`;
@@ -107,7 +107,8 @@ export function SubscriptionHero({
   actions: ReactNode;
 }) {
   const label = subscriptionLabel(status);
-  const renews = status.paid && !ending && Boolean(status.subscription?.currentPeriodEnd) && status.subscription?.status !== "past_due";
+  const end = status.subscription?.currentPeriodEnd;
+  const renews = status.paid && !ending && end !== undefined && end !== null && end > status.credits.asOf && status.subscription?.status !== "past_due";
   const nextPlan = scheduled ?? status.plan;
 
   return (

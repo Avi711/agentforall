@@ -30,8 +30,12 @@ export function formatAgorot(agorot: number): string {
   return agorot % 100 === 0 ? formatIls(ilsFromAgorot(agorot)) : `₪${ilsWithAgorot.format(ilsFromAgorot(agorot))}`;
 }
 
-export function formatDay(iso: string): string {
-  return day.format(new Date(iso));
+const year = new Intl.DateTimeFormat("he-IL", { year: "numeric", timeZone: "Asia/Jerusalem" });
+
+// `asOf` is the server's clock from the same response, so the server render and the client hydration agree on the year.
+export function formatDay(iso: string, asOf: string): string {
+  const date = new Date(iso);
+  return year.format(date) === year.format(new Date(asOf)) ? day.format(date) : dayWithYear.format(date);
 }
 
 export function formatDate(iso: string | null): string | null {
