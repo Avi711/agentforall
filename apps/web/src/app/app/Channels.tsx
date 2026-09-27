@@ -495,7 +495,7 @@ function ChannelPanel({ entry }: { entry: ChannelEntry }) {
       ) : status.tone !== "ok" ? (
         <p className={`px-1 text-sm font-medium sm:hidden ${STATUS_COLOR[status.tone]}`}>{status.label}</p>
       ) : null}
-      {entry.facts.length > 0 ? (
+      {entry.facts.length > 1 ? (
         <ul className={`grid gap-2 ${entry.facts.length > 2 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
           {entry.facts.map((fact) => (
             <li key={fact.label}>
@@ -503,9 +503,11 @@ function ChannelPanel({ entry }: { entry: ChannelEntry }) {
             </li>
           ))}
         </ul>
+      ) : entry.facts.length === 1 ? (
+        <FactLine fact={entry.facts[0]} />
       ) : null}
       {entry.actions.length > 0 ? (
-        <div className={`flex flex-wrap items-center justify-between gap-2 ${entry.facts.length > 0 || entry.note ? "border-t border-sand-light/70 pt-3" : ""}`}>
+        <div className={`flex flex-wrap items-center justify-between gap-2 ${entry.facts.length > 1 || entry.note ? "border-t border-sand-light/70 pt-3" : ""}`}>
           <div className="flex flex-wrap items-center gap-2">
             {main.map((action) => (
               <PanelAction key={action.label} action={action} />
@@ -527,21 +529,26 @@ function ChannelPanel({ entry }: { entry: ChannelEntry }) {
 const FACT_TILE =
   "flex h-full min-h-[4.25rem] w-full flex-col justify-center gap-1 rounded-xl bg-cream px-3.5 py-2.5 text-start";
 
+function useCopy(text: string | undefined): { copied: boolean; copy: (() => Promise<void>) | null } {
+  const [copied, setCopied] = useState(false);
+  if (!text) return { copied, copy: null };
+  return {
+    copied,
+    copy: async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1800);
+      } catch {
+        // Clipboard blocked (insecure context); the value stays visible to copy by hand.
+      }
+    },
+  };
+}
+
 // The whole tile is the action, so copying or changing a value never means hunting for a link at the far edge.
 function FactTile({ fact }: { fact: Fact }) {
-  const [copied, setCopied] = useState(false);
-  const text = fact.copy;
-  const copy = text
-    ? async () => {
-        try {
-          await navigator.clipboard.writeText(text);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1800);
-        } catch {
-          // Clipboard blocked (insecure context); the value stays visible to copy by hand.
-        }
-      }
-    : null;
+  const { copied, copy } = useCopy(fact.copy);
   const run = copy ?? fact.onEdit;
   const body = (
     <>
@@ -572,6 +579,28 @@ function FactTile({ fact }: { fact: Fact }) {
         {copied ? "הועתק" : ""}
       </span>
     </button>
+  );
+}
+
+// A lone detail reads as a quiet line above the actions; a grid of one tile would leave half the row empty.
+function FactLine({ fact }: { fact: Fact }) {
+  const { copied, copy } = useCopy(fact.copy);
+  const run = copy ?? fact.onEdit;
+  return (
+    <p className="flex min-w-0 items-center gap-1 px-1 text-sm text-espresso-light">
+      <span className="sr-only">{fact.label}: </span>
+      <span className="truncate">{fact.ltr ? <bdi dir="ltr">{fact.value}</bdi> : fact.value}</span>
+      {run ? (
+        <button
+          type="button"
+          onClick={run}
+          aria-label={copy ? (copied ? "הועתק" : `העתקת ${fact.label}`) : `שינוי ${fact.label}`}
+          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition hover:bg-cream-dark hover:text-espresso focus:outline-none focus-visible:ring-2 focus-visible:ring-terra ${copied ? "text-sage-dark" : ""}`}
+        >
+          {copied ? <CheckIcon /> : copy ? <CopyIcon /> : <PencilIcon />}
+        </button>
+      ) : null}
+    </p>
   );
 }
 
