@@ -15,10 +15,12 @@ export function CreditsMeter({
   credits,
   size = "lg",
   action,
+  aside,
 }: {
   credits: CreditSummary;
   size?: keyof typeof AMOUNT_SIZE;
   action?: ReactNode;
+  aside?: ReactNode;
 }) {
   const { balance, available, allowance, runwayDays, stale, asOf } = credits;
   if (balance.kind === "none") return null;
@@ -27,16 +29,19 @@ export function CreditsMeter({
 
   return (
     <div className="flex flex-col gap-3">
-      {balance.kind === "out" ? (
-        <p className="text-2xl font-semibold text-terra-dark">{OUT_OF_CREDITS_LABEL[balance.reason]}</p>
-      ) : (
-        <p className="flex flex-wrap items-baseline gap-x-2.5">
-          <span className={`${AMOUNT_SIZE[size]} font-bold leading-none tracking-tight text-espresso tabular-nums`}>
-            <AnimatedCredits value={available} />
-          </span>
-          <span className="text-base text-espresso-light">קרדיטים זמינים</span>
-        </p>
-      )}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+        {balance.kind === "out" ? (
+          <p className="text-2xl font-semibold text-terra-dark">{OUT_OF_CREDITS_LABEL[balance.reason]}</p>
+        ) : (
+          <p className="flex flex-wrap items-baseline gap-x-2.5">
+            <span className={`${AMOUNT_SIZE[size]} font-bold leading-none tracking-tight text-espresso tabular-nums`}>
+              <AnimatedCredits value={available} />
+            </span>
+            <span className="text-base text-espresso-light">קרדיטים זמינים</span>
+          </p>
+        )}
+        {aside}
+      </div>
       {runwayDays !== null ? <p className="text-sm text-espresso-light">{runwayLabel(runwayDays)}</p> : null}
       {allowance > 0 ? (
         <div

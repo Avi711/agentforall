@@ -1,16 +1,29 @@
 import type { CreditSummary } from "@/lib/billing/credits/service";
 import type { CreditsAction } from "@/lib/billing/service";
+import { SETTINGS_PATH } from "@/lib/billing/urls";
+import { ROW_ACTION_CLASS } from "./action-buttons";
 import { CreditsActionLink } from "./credits-copy";
 import { CreditsMeter } from "./CreditsMeter";
-import { SECTION_LABEL } from "./Marks";
+import { PendingLink } from "./Pending";
 
 export function CreditsSection({ credits, action }: { credits: CreditSummary; action: CreditsAction }) {
   if (credits.balance.kind === "none") return null;
+  const urgent = credits.balance.kind === "low" || credits.balance.kind === "out";
 
   return (
-    <section className="mb-6 border-t border-sand-light/70 pt-6 sm:mb-7 sm:pt-7">
-      <p className={`${SECTION_LABEL} mb-3`}>יתרת קרדיטים</p>
-      <CreditsMeter credits={credits} size="sm" action={<CreditsActionLink action={action} className="font-medium underline" />} />
+    <section aria-label="קרדיטים" className="mb-6 sm:mb-7">
+      <CreditsMeter
+        credits={credits}
+        size="sm"
+        aside={
+          <div className="flex flex-wrap gap-2">
+            <PendingLink href={SETTINGS_PATH} className={ROW_ACTION_CLASS.quiet}>
+              פירוט
+            </PendingLink>
+            <CreditsActionLink action={action} className={urgent ? ROW_ACTION_CLASS.primary : ROW_ACTION_CLASS.quiet} />
+          </div>
+        }
+      />
     </section>
   );
 }

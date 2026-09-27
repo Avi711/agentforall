@@ -15,3 +15,8 @@ export const DIALOG_ACTION: Record<ActionEmphasis, string> = {
   quiet: `${ROW_ACTION_CLASS.quiet} min-w-28`,
   danger: `${ROW_ACTION_CLASS.danger} min-w-28`,
 };
+
+export const TILE_BASE =
+  "group flex h-full min-h-16 w-full items-center gap-3 rounded-2xl border px-4 py-3.5 text-start transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra";
+
+export const TILE_CLASS = `${TILE_BASE} border-sand-light bg-white hover:border-sand hover:bg-cream`;

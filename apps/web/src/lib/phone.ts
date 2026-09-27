@@ -27,3 +27,12 @@ export function normalizePhoneInput(raw: string): string | null {
   }
   return isValidIsraeliPhone(value) ? `+${normalizeIsraeliPhone(value)}` : null;
 }
+
+// Israeli numbers read best in their local form ("050-123-4567"); anything else keeps its international prefix.
+export function formatPhoneForDisplay(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (!/^972\d{8,9}$/.test(digits)) return `+${digits}`;
+  const local = `0${digits.slice(3)}`;
+  const area = local.length === 10 ? 3 : 2;
+  return `${local.slice(0, area)}-${local.slice(area, area + 3)}-${local.slice(area + 3)}`;
+}

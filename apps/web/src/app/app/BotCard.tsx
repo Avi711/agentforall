@@ -1,25 +1,23 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PendingLink, useNavigate, useRefresh } from "./Pending";
 import { DeleteBotDialog } from "./DeleteBotDialog";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { useBotStatus, type BotSnapshot } from "./useBotStatus";
-import { BotAvatar, BusyLabel, ChevronEnd, SECTION_LABEL, Spinner, SurfaceCard, TelegramGlyph, type AvatarTone } from "./Marks";
+import { BotAvatar, BusyLabel, ChevronEnd, Spinner, SurfaceCard, type AvatarTone } from "./Marks";
 import { CreatingPanel } from "./CreatingPanel";
 import { buildTimeline } from "@/lib/bots/creation-progress";
-import { WhatsAppAccessDialog, accessLabel } from "./WhatsAppAccessSection";
-import { OwnerIdentityDialog, IDENTITY_HINT } from "./OwnerIdentityDialog";
-import { InfoHint } from "./InfoHint";
+import { WhatsAppAccessDialog } from "./WhatsAppAccessSection";
+import { OwnerIdentityDialog } from "./OwnerIdentityDialog";
 import { CreditsSection } from "./CreditsSection";
-import { ROW_ACTION_CLASS } from "./action-buttons";
+import { ChannelsSection, telegramRow, whatsappCloudRow, whatsappRow, type Channel } from "./Channels";
+import { TILE_CLASS } from "./action-buttons";
 import type { ShowcaseApp } from "@/lib/integrations/catalog.he";
 import { WhatsappNumberConfirmDialog } from "./WhatsappNumberDialog";
 import type { CreditSummary } from "@/lib/billing/credits/service";
 import type { CreditsAction } from "@/lib/billing/service";
 import { CreditsActionLink, OUT_OF_CREDITS_LABEL } from "./credits-copy";
-
-type Channel = "whatsapp" | "telegram" | "whatsapp-cloud";
 
 export function BotCard({
   bot: initialBot,
@@ -203,7 +201,7 @@ export function BotCard({
           <span aria-hidden className="card-progress" />
         ) : null}
 
-        <div className="p-5 sm:p-10">
+        <div className="p-5 sm:p-10 [&>*:last-child]:mb-0">
           {/* Avatar, name and menu stay on one line at every width: wrapping left a hole beside the avatar. */}
           <div className="flex items-start gap-3 sm:gap-5 mb-6 sm:mb-7">
             <BotAvatar
@@ -213,15 +211,13 @@ export function BotCard({
               size="lg"
             />
 
-            <div className="min-w-0 flex-1 pt-0.5 sm:pt-1">
-              <p className={`${SECTION_LABEL} mb-1.5`}>
-                הסוכן שלי
-              </p>
+            <div className="min-w-0 flex-1 pt-1 sm:pt-2">
               <h2 className="font-display text-2xl sm:text-3xl text-espresso leading-tight text-balance break-words">
                 {bot.displayName}
               </h2>
-              <div className="mt-3">
+              <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                 <StatusBadge kind={state.kind} label={state.label} pulse={state.pulse} />
+                <ActivityLine bot={bot} />
               </div>
             </div>
 
@@ -270,8 +266,6 @@ export function BotCard({
             </div>
           </div>
 
-          <ActivityLine bot={bot} />
-
           <NextStep bot={bot} state={state} action={creditsAction} />
 
           {downloadPending ? (
@@ -315,7 +309,7 @@ export function BotCard({
             onConnectWhatsapp={() => setWhatsappConfirm(true)}
           />
 
-          <IntegrationsSection apps={apps} />
+          <IntegrationsLink apps={apps} />
 
           {showCredits ? <CreditsSection credits={credits} action={creditsAction} /> : null}
 
@@ -436,8 +430,8 @@ function ActivityLine({ bot }: { bot: BotSnapshot }) {
   const at = new Date(bot.lastSeenAt);
   if (Number.isNaN(at.getTime())) return null;
   return (
-    <p className="mb-5 sm:mb-6 text-xs text-espresso-light">
-      שיחה אחרונה:{" "}
+    <p className="text-xs text-espresso-light">
+      שיחה אחרונה{" "}
       <time dateTime={bot.lastSeenAt} dir="ltr" className="tabular-nums">
         {LAST_SEEN_FORMAT.format(at)}
       </time>
@@ -449,8 +443,7 @@ function ActivityLine({ bot }: { bot: BotSnapshot }) {
 function NextStep({ bot, state, action }: { bot: BotSnapshot; state: BotState; action: CreditsAction }) {
   if (state.cause === "credits") {
     return (
-      <div className="mb-6 sm:mb-7 rounded-2xl border border-terra/20 bg-terra-pale px-4 py-4 sm:px-5">
-        <p className={`${SECTION_LABEL} mb-1`}>הצעד הבא</p>
+      <div className="mb-6 sm:mb-7 rounded-2xl border border-terra/20 bg-terra-pale px-4 py-3.5 sm:px-5">
         <p className="text-sm text-terra-dark leading-relaxed">
           {outOfCreditsStep(bot.displayName, action)}{" "}
           <CreditsActionLink action={action} className="underline font-medium" />
@@ -461,8 +454,7 @@ function NextStep({ bot, state, action }: { bot: BotSnapshot; state: BotState; a
   const text = nextStep(bot, state);
   if (!text) return null;
   return (
-    <div className="mb-6 sm:mb-7 rounded-2xl border border-sand-light bg-cream/70 px-4 py-4 sm:px-5">
-      <p className={`${SECTION_LABEL} mb-1`}>הצעד הבא</p>
+    <div className="mb-6 sm:mb-7 rounded-2xl border border-sand-light bg-cream/70 px-4 py-3.5 sm:px-5">
       <p className="text-sm text-espresso leading-relaxed">{text}</p>
     </div>
   );
@@ -473,320 +465,45 @@ function outOfCreditsStep(name: string, action: CreditsAction): string {
   return `כדי ש${name} יוכל לענות, ${action === "topup" ? "טענו קרדיטים" : "הצטרפו למנוי"}.`;
 }
 
-// Text only: the matching button already sits in the channel row right below, so it is never duplicated.
+// Text only: choosing or resuming a channel already has its own controls right below.
 function nextStep(bot: BotSnapshot, state: BotState): string | null {
-  if (state.kind === "err" || bot.status === "degraded") return null;
-
-  const name = bot.displayName;
-  const telegram = telegramRow(bot, null);
-  const whatsapp = whatsappRow(bot, null);
-  const business = whatsappCloudRow(bot, null);
-
-  // Pending channels are not repeated here: their row already shows the state and the resume button.
-  if (!telegram.connected && !whatsapp.connected && !business.connected) {
-    if (telegram.pending || whatsapp.pending) return null;
-    return `כדי להתחיל, חברו את ${name} לטלגרם או לוואטסאפ. זה לוקח פחות מדקה.`;
-  }
-  if (bot.lastSeenAt === null) {
-    return `${name} מוכן ומחכה. שלחו הודעה ראשונה — למשל "מה יש לי היום ביומן?".`;
-  }
-  return null;
+  if (state.kind === "err" || bot.status === "degraded" || bot.lastSeenAt !== null) return null;
+  const connected = [telegramRow(bot, null), whatsappRow(bot, null), whatsappCloudRow(bot, null)].some((row) => row.connected);
+  return connected ? `${bot.displayName} מוכן ומחכה. שלחו הודעה ראשונה, למשל "מה יש לי היום ביומן?".` : null;
 }
 
-function ChannelsSection({
-  bot,
-  cancelPending,
-  busy,
-  onDisconnect,
-  onCancelPending,
-  onOpenAccess,
-  onEditOwner,
-  onConnectWhatsapp,
-}: {
-  bot: BotSnapshot;
-  cancelPending: Channel | null;
-  busy: boolean;
-  onDisconnect: (channel: Channel) => void;
-  onCancelPending: (channel: Channel) => void;
-  onOpenAccess: () => void;
-  onEditOwner: () => void;
-  onConnectWhatsapp: () => void;
-}) {
-  const titleId = useId();
-  const health = channelHealth(bot);
-  const whatsapp = whatsappRow(bot, health);
-  const telegram = telegramRow(bot, health);
-  const business = whatsappCloudRow(bot, health);
-  // Emphasis is earned: one filled button, and only while no channel can answer yet.
-  const needsChannel = !whatsapp.connected && !telegram.connected && !business.connected;
-  const fresh = !whatsapp.connected && !whatsapp.pending && !whatsapp.stale;
-  // Owner-number prompt only once WhatsApp actually works; a fresh connect passes the number warning first.
-  const whatsappPrimary = whatsapp.connected && ownerNumberMissing(bot)
-    ? ({ kind: "button", label: "הגדרת המספר שלי", emphasis: "quiet", onClick: onEditOwner } as RowAction)
-    : fresh && whatsapp.primary
-      ? lead({ kind: "button", label: whatsapp.primary.label, emphasis: "quiet", onClick: onConnectWhatsapp }, needsChannel)
-      : lead(whatsapp.primary, needsChannel);
-  const telegramPrimary = lead(telegram.primary, needsChannel && whatsappPrimary?.emphasis !== "primary");
-  const access = bot.whatsappAccess;
-  // Accounts on the official WhatsApp Business path get no QR linking unless a bot already has it.
-  const showWhatsappQr = !bot.whatsappCloudEnabled || bot.hasWhatsappChannel;
-
-  const whatsappMenu: MenuItem[] = [];
-  if (whatsapp.connected && access) {
-    whatsappMenu.push({ label: "מי כותב לבוט…", onClick: onOpenAccess });
-  }
-  if (whatsapp.pending) {
-    whatsappMenu.push({
-      label: cancelPending === "whatsapp" ? "מבטל…" : "ביטול ההתאמה",
-      disabled: cancelPending !== null || busy,
-      onClick: () => onCancelPending("whatsapp"),
-    });
-  } else if (whatsapp.connected || whatsapp.stale) {
-    whatsappMenu.push({ label: "ניתוק", danger: true, onClick: () => onDisconnect("whatsapp") });
-  }
-  if (bot.hasWhatsappChannel && bot.owner.whatsappNumber !== null) {
-    whatsappMenu.unshift({ label: "המספר שלי…", onClick: onEditOwner });
-  }
-
-  const telegramMenu: MenuItem[] = telegram.pending
-    ? [
-        {
-          label: cancelPending === "telegram" ? "מבטל…" : "ביטול החיבור",
-          disabled: cancelPending !== null || busy,
-          onClick: () => onCancelPending("telegram"),
-        },
-      ]
-    : telegram.connected
-      ? [{ label: "ניתוק", danger: true, onClick: () => onDisconnect("telegram") }]
-      : [];
-
+function IntegrationsLink({ apps }: { apps: readonly ShowcaseApp[] }) {
   return (
-    <section className="mb-6 sm:mb-7" aria-labelledby={titleId}>
-      <p id={titleId} className={`${SECTION_LABEL} mb-2`}>
-        איפה מדברים עם הסוכן
-      </p>
-      <ul className="border-y border-sand-light/70 divide-y divide-sand-light/70">
-        {showWhatsappQr ? (
-        <CardRow
-          glyph={<WhatsAppGlyph />}
-          name="WhatsApp"
-          status={whatsapp.status}
-          detail={
-            whatsapp.connected && bot.whatsappAccountId ? (
-              <PhoneDetail
-                accountId={bot.whatsappAccountId}
-                meta={access ? accessLabel(access.access, bot.owner.whatsappNumber) : null}
-              />
-            ) : null
-          }
-          primary={whatsappPrimary}
-          menu={whatsappMenu}
-          menuLabel="הגדרות WhatsApp"
-        />
-        ) : null}
-
-        <CardRow
-          glyph={<TelegramGlyph />}
-          name="Telegram"
-          status={telegram.status}
-          detail={
-            telegram.connected && bot.telegram?.botUsername ? (
-              <a
-                href={`https://t.me/${bot.telegram.botUsername}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                dir="ltr"
-                title={`@${bot.telegram.botUsername}`}
-                className="inline-block max-w-full truncate align-bottom font-mono text-sm text-espresso-light hover:text-terra transition"
-              >
-                @{bot.telegram.botUsername}
-              </a>
-            ) : null
-          }
-          primary={telegramPrimary}
-          menu={telegramMenu}
-          menuLabel="הגדרות Telegram"
-        />
-
-        {bot.whatsappCloudEnabled || bot.whatsappCloud ? (
-        <CardRow
-          glyph={<WhatsAppGlyph />}
-          name="WhatsApp Business"
-          status={business.status}
-          detail={
-            bot.whatsappCloud ? (
-              <span dir="ltr" className="font-mono text-sm text-espresso-light">
-                {bot.whatsappCloud.displayPhoneNumber ?? bot.whatsappCloud.phoneNumberId}
-                {bot.whatsappCloud.verifiedName ? ` · ${bot.whatsappCloud.verifiedName}` : ""}
-              </span>
-            ) : (
-              <span className="text-sm text-espresso-light">מספר עסקי ללקוחות שלכם, דרך Meta</span>
-            )
-          }
-          primary={business.primary}
-          menu={business.connected ? [{ label: "ניתוק", danger: true, onClick: () => onDisconnect("whatsapp-cloud") }] : []}
-          menuLabel="הגדרות WhatsApp Business"
-        />
-        ) : null}
-      </ul>
-
-      {(whatsapp.connected || telegram.connected || business.connected) && bot.lastSeenAt === null ? (
-        <p className="mt-3 text-xs text-espresso-light leading-relaxed max-w-md">
-          התשובה להודעה הראשונה עשויה לקחת כ-40 שניות — הסוכן עולה ברגעים אלו. אחר כך הוא
-          עונה מיד.
-        </p>
-      ) : null}
-    </section>
+    <PendingLink href="/app/bot/connections" className={`${TILE_CLASS} mb-6 sm:mb-7`}>
+      <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cream-dark text-espresso">
+        <PlugGlyph />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="text-[15px] font-medium text-espresso">חיבורים לאפליקציות</span>
+        <span className="text-[13px] text-espresso-light">כדי שהסוכן יקרא ויפעל בשמכם</span>
+        <AppLogos apps={apps} className="mt-2 flex sm:hidden" />
+      </span>
+      <AppLogos apps={apps} className="hidden sm:flex" />
+      <span className="text-espresso-light transition group-hover:text-espresso">
+        <ChevronEnd />
+      </span>
+    </PendingLink>
   );
 }
 
-interface MenuItem {
-  label: string;
-  onClick: () => void;
-  danger?: boolean;
-  disabled?: boolean;
-}
-
-interface RowStatus {
-  tone: "ok" | "warn" | "err" | "info";
-  label: string;
-  pulse?: boolean;
-}
-
-type RowAction = { label: string; icon?: ReactNode; emphasis: "primary" | "quiet" } & (
-  | { kind: "link"; href: string; external?: boolean }
-  | { kind: "button"; onClick: () => void }
-);
-
-interface RowModel {
-  status: RowStatus;
-  connected: boolean;
-  pending: boolean;
-  stale: boolean;
-  primary: RowAction | null;
-}
-
-function lead(action: RowAction | null, allowed: boolean): RowAction | null {
-  return action && allowed ? { ...action, emphasis: "primary" } : action;
-}
-
-// The agent answers the owner's own number, so WhatsApp without it is half-configured.
-function ownerNumberMissing(bot: BotSnapshot): boolean {
-  return bot.hasWhatsappChannel && bot.owner.whatsappNumber === null;
-}
-
-// Container-level health applies to every channel at once.
-function channelHealth(bot: BotSnapshot): RowStatus | null {
-  if (bot.status === "unhealthy") return { tone: "err", label: "לא מגיב" };
-  if (bot.status === "degraded") return { tone: "warn", label: "חיבור לא יציב", pulse: true };
-  return null;
-}
-
-function whatsappRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
-  const pairing = bot.pairingStatus;
-  if (pairing === "paired" && bot.hasWhatsappCreds) {
-    const status: RowStatus =
-      health ??
-      (bot.lastSeenAt === null
-        ? { tone: "info", label: "מתחבר…", pulse: true }
-        : { tone: "ok", label: "מחובר" });
-    return {
-      status,
-      connected: true,
-      pending: false,
-      stale: false,
-      primary: bot.whatsappAccountId
-        ? {
-            kind: "link",
-            label: "פתיחה ב-WhatsApp",
-            icon: <OpenIcon />,
-            href: `https://wa.me/${bot.whatsappAccountId}?text=${encodeURIComponent("שלום!")}`,
-            external: true,
-            emphasis: "quiet",
-          }
-        : null,
-    };
-  }
-  if (pairing === "awaiting_qr" || pairing === "awaiting_code") {
-    return {
-      status: { tone: "warn", label: "ממתין להתאמה", pulse: true },
-      connected: false,
-      pending: true,
-      stale: false,
-      primary: { kind: "link", label: "המשך התאמה", href: "/app/bot/pair", emphasis: "quiet" },
-    };
-  }
-  // A dropped live session (creds still stored) is worth a reconnect; a cancelled attempt is just "not connected".
-  if ((pairing === "expired" || pairing === "failed") && bot.hasWhatsappCreds) {
-    return {
-      status: { tone: "warn", label: "החיבור נותק" },
-      connected: false,
-      pending: false,
-      stale: true,
-      primary: { kind: "link", label: "חיבור מחדש", href: "/app/bot/pair", emphasis: "quiet" },
-    };
-  }
-  return {
-    status: { tone: "info", label: "לא מחובר" },
-    connected: false,
-    pending: false,
-    stale: false,
-    primary: { kind: "link", label: "חיבור", href: "/app/bot/pair", emphasis: "quiet" },
-  };
-}
-
-function IntegrationsSection({ apps }: { apps: readonly ShowcaseApp[] }) {
-  const titleId = useId();
+// Each mark tucks under the one before it, so the stack reads right-to-left like the text.
+function AppLogos({ apps, className }: { apps: readonly ShowcaseApp[]; className: string }) {
   return (
-    <section className="mb-6 sm:mb-7" aria-labelledby={titleId}>
-      <p id={titleId} className={`${SECTION_LABEL} mb-2`}>
-        אפליקציות מחוברות
-      </p>
-      <ul className="border-y border-sand-light/70 divide-y divide-sand-light/70">
-        <CardRow
-          glyph={<PlugGlyph />}
-          name="חיבורים לאפליקציות"
-          status={null}
-          detail={<IntegrationsDetail apps={apps} />}
-          primary={{ kind: "link", label: "ניהול", href: "/app/bot/connections", emphasis: "primary" }}
-          align="start"
-          menu={[]}
-          menuLabel="פעולות נוספות לחיבורים"
-        />
-      </ul>
-    </section>
-  );
-}
-
-// The sentence carries the why; the logos carry the which, so neither has to list app names.
-function IntegrationsDetail({ apps }: { apps: readonly ShowcaseApp[] }) {
-  return (
-    <div className="mt-1">
-      <p className="text-sm text-espresso-light leading-relaxed">
-        כדי שהסוכן יקרא ויפעל בשמכם.
-      </p>
-      {/* Each mark tucks under the one before it, so the stack reads right-to-left like the text. */}
-      <ul className="mt-2 flex items-center">
-        {apps.map((app, index) => (
-          <li
-            key={app.slug}
-            className={`relative flex ${index === 0 ? "" : "-ms-1.5"}`}
-            style={{ zIndex: apps.length - index }}
-          >
-            <span className="flex w-7 h-7 items-center justify-center rounded-full bg-white ring-1 ring-sand-light">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={app.logo} alt={app.name} className="w-[18px] h-[18px] object-contain" />
-            </span>
-          </li>
-        ))}
-        <li className="relative flex -ms-1.5" title="ועוד אלפי אפליקציות">
-          <span className="flex w-7 h-7 items-center justify-center rounded-full bg-cream-dark ring-1 ring-sand-light text-[11px] font-medium text-espresso-light">
-            +
+    <span aria-hidden className={`items-center ${className}`}>
+      {apps.map((app, index) => (
+        <span key={app.slug} className={`relative flex ${index === 0 ? "" : "-ms-1.5"}`} style={{ zIndex: apps.length - index }}>
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white ring-1 ring-sand-light">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={app.logo} alt="" className="h-[18px] w-[18px] object-contain" />
           </span>
-          <span className="sr-only">ועוד אלפי אפליקציות</span>
-        </li>
-      </ul>
-    </div>
+        </span>
+      ))}
+    </span>
   );
 }
 
@@ -795,299 +512,6 @@ function PlugGlyph() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M9 3v5M15 3v5M7 8h10v3a5 5 0 0 1-10 0V8zM12 16v5" />
     </svg>
-  );
-}
-
-// The business number is opt-in and never the "first channel": its button stays quiet.
-function whatsappCloudRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
-  if (bot.whatsappCloud?.health === "token_invalid") {
-    return {
-      status: { tone: "err", label: "החיבור פג" },
-      connected: false,
-      pending: false,
-      stale: true,
-      primary: { kind: "link", label: "חיבור מחדש", href: "/app/bot/whatsapp-business", emphasis: "quiet" },
-    };
-  }
-  if (bot.whatsappCloud) {
-    const digits = bot.whatsappCloud.displayPhoneNumber?.replace(/\D/g, "") ?? "";
-    return {
-      status: health ?? { tone: "ok", label: "מחובר" },
-      connected: true,
-      pending: false,
-      stale: false,
-      primary: digits
-        ? {
-            kind: "link",
-            label: "פתיחה ב-WhatsApp",
-            icon: <OpenIcon />,
-            href: `https://wa.me/${digits}`,
-            external: true,
-            emphasis: "quiet",
-          }
-        : null,
-    };
-  }
-  return {
-    status: { tone: "info", label: "לא מחובר" },
-    connected: false,
-    pending: false,
-    stale: false,
-    primary: { kind: "link", label: "חיבור", href: "/app/bot/whatsapp-business", emphasis: "quiet" },
-  };
-}
-
-function telegramRow(bot: BotSnapshot, health: RowStatus | null): RowModel {
-  if (bot.telegram?.linked && bot.telegram.botUsername) {
-    return {
-      status: health ?? { tone: "ok", label: "מחובר" },
-      connected: true,
-      pending: false,
-      stale: false,
-      primary: {
-        kind: "link",
-        label: "פתיחה בטלגרם",
-        icon: <OpenIcon />,
-        href: `https://t.me/${bot.telegram.botUsername}`,
-        external: true,
-        emphasis: "quiet",
-      },
-    };
-  }
-  if (bot.telegram && !bot.telegram.linked) {
-    return {
-      status: { tone: "warn", label: "ממתין לחיבור", pulse: true },
-      connected: false,
-      pending: true,
-      stale: false,
-      primary: { kind: "link", label: "המשך חיבור", href: "/app/bot/telegram", emphasis: "quiet" },
-    };
-  }
-  return {
-    status: { tone: "info", label: "לא מחובר" },
-    connected: false,
-    pending: false,
-    stale: false,
-    primary: { kind: "link", label: "חיבור", href: "/app/bot/telegram", emphasis: "quiet" },
-  };
-}
-
-function CardRow({
-  glyph,
-  name,
-  status,
-  detail,
-  primary,
-  menu,
-  menuLabel,
-  align = "center",
-}: {
-  glyph: ReactNode;
-  name: string;
-  status: RowStatus | null;
-  detail: ReactNode;
-  primary: RowAction | null;
-  menu: MenuItem[];
-  menuLabel: string;
-  // A row whose detail runs several lines centres its action against empty space.
-  align?: "center" | "start";
-}) {
-  return (
-    <li className="py-4 sm:py-5">
-      <div className={`flex gap-3 ${align === "start" ? "items-start" : "items-center"}`}>
-        <span
-          aria-hidden
-          className="shrink-0 w-9 h-9 rounded-full bg-cream-dark text-espresso flex items-center justify-center"
-        >
-          {glyph}
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="text-[15px] font-medium text-espresso">{name}</span>
-            {status ? <StatusDot {...status} /> : null}
-          </div>
-          {detail ? <div className="mt-0.5">{detail}</div> : null}
-        </div>
-        <div className="flex items-center gap-1 shrink-0">
-          {primary ? <RowActionControl action={primary} /> : null}
-          {menu.length > 0 ? <RowMenu label={menuLabel} items={menu} /> : null}
-        </div>
-      </div>
-    </li>
-  );
-}
-
-function RowMenu({ label, items }: { label: string; items: MenuItem[] }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointer = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onPointer);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  return (
-    <div className="relative shrink-0" ref={ref}>
-      <button
-        type="button"
-        aria-label={label}
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        className={ICON_ACTION_CLASS}
-      >
-        <IconBubble>
-          <MoreIcon />
-        </IconBubble>
-      </button>
-      {open ? (
-        <ul className="absolute top-full mt-2 end-0 w-52 origin-top-left animate-popover rounded-xl border border-sand-light bg-white shadow-[0_8px_24px_rgba(44,24,16,0.08)] overflow-hidden z-20">
-          {items.map((item) => (
-            <li key={item.label}>
-              <button
-                type="button"
-                disabled={item.disabled}
-                onClick={() => {
-                  setOpen(false);
-                  item.onClick();
-                }}
-                className={`w-full min-h-11 text-start px-4 py-3 text-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset disabled:opacity-60 ${
-                  item.danger
-                    ? "text-red-700 hover:bg-red-50 focus-visible:bg-red-50 focus-visible:ring-red-700"
-                    : "text-espresso hover:bg-cream-dark focus-visible:bg-cream-dark focus-visible:ring-terra"
-                }`}
-              >
-                {item.label}
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </div>
-  );
-}
-
-const ICON_ACTION_CLASS =
-  "group inline-flex w-11 h-11 items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-terra";
-
-function IconBubble({ children }: { children: ReactNode }) {
-  return (
-    <span className="flex w-9 h-9 items-center justify-center rounded-full border border-sand-light bg-white text-espresso-light transition group-hover:bg-cream-dark group-hover:text-espresso">
-      {children}
-    </span>
-  );
-}
-
-
-function RowActionControl({ action }: { action: RowAction }) {
-  const icon = action.icon ? <IconBubble>{action.icon}</IconBubble> : null;
-  const className = icon ? ICON_ACTION_CLASS : ROW_ACTION_CLASS[action.emphasis];
-  const label = action.icon ? action.label : undefined;
-
-  if (action.kind === "button") {
-    return (
-      <button type="button" onClick={action.onClick} aria-label={label} className={className}>
-        {icon ?? <span>{action.label}</span>}
-      </button>
-    );
-  }
-  if (action.external) {
-    return (
-      <a href={action.href} target="_blank" rel="noopener noreferrer" aria-label={label} className={className}>
-        {icon ?? (
-          <>
-            <span>{action.label}</span>
-            <ArrowOut />
-          </>
-        )}
-      </a>
-    );
-  }
-  return (
-    <PendingLink href={action.href} aria-label={label} className={className}>
-      {icon ?? (
-        <>
-          <span>{action.label}</span>
-          <ChevronEnd />
-        </>
-      )}
-    </PendingLink>
-  );
-}
-
-function OpenIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 20 20" className="w-[18px] h-[18px] rtl:-scale-x-100" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <path d="M7 13 13 7M8 7h5v5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function ArrowOut() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 20 20" className="w-3.5 h-3.5 rtl:-scale-x-100" fill="none" stroke="currentColor" strokeWidth="1.75">
-      <path d="M7 13 13 7M8 7h5v5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function StatusDot({ tone, label, pulse }: RowStatus) {
-  const color =
-    tone === "ok"
-      ? "text-sage-dark"
-      : tone === "warn"
-        ? "text-terra"
-        : tone === "err"
-          ? "text-red-700"
-          : "text-espresso-light";
-  return (
-    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${color}`}>
-      <span aria-hidden className="relative flex w-2 h-2">
-        {pulse ? (
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-60" />
-        ) : null}
-        <span className="relative inline-flex w-2 h-2 rounded-full bg-current" />
-      </span>
-      {label}
-    </span>
-  );
-}
-
-function PhoneDetail({ accountId, meta }: { accountId: string; meta: string | null }) {
-  const [copied, setCopied] = useState(false);
-  const display = `+${accountId}`;
-  const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(display);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch {
-      // Clipboard blocked (insecure context). Number remains visible.
-    }
-  };
-  return (
-    <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
-      <span dir="ltr" className="font-mono text-sm text-espresso-light break-all">{display}</span>
-      <button
-        type="button"
-        onClick={onCopy}
-        aria-label={copied ? "המספר הועתק" : "העתקת המספר"}
-        className="shrink-0 w-11 h-11 -my-3 inline-flex items-center justify-center rounded-full text-espresso-light hover:text-espresso hover:bg-cream-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-terra transition"
-      >
-        {copied ? <CheckIcon /> : <CopyIcon />}
-      </button>
-      {meta ? <span className="text-xs text-espresso-light/80">{meta}</span> : null}
-    </div>
   );
 }
 
@@ -1167,37 +591,7 @@ function DownloadIcon() {
     </svg>
   );
 }
-function CopyIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <rect x="6" y="6" width="10" height="10" rx="1.5" />
-      <path d="M4 14V5a1 1 0 0 1 1-1h9" strokeLinecap="round" />
-    </svg>
-  );
-}
-function CheckIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M4 10l4 4 8-8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-function PersonGlyph() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <circle cx="10" cy="7" r="3.25" />
-      <path d="M4 17c.6-3 3-4.75 6-4.75S15.4 14 16 17" strokeLinecap="round" />
-    </svg>
-  );
-}
 
-function WhatsAppGlyph() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
-      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.247-.694.247-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.999-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.886 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0 0 20.464 3.488"/>
-    </svg>
-  );
-}
 
 function StatusBadge({
   kind,
