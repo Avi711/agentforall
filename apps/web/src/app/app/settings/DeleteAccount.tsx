@@ -110,8 +110,8 @@ export function DeleteAccount({ subscribed, credits, topupCredits }: { subscribe
         <Field id="delete-password" label="סיסמה">
           <PasswordInput id="delete-password" value={password} onChange={setPassword} disabled={locked} isNew={false} />
           {methods.google ? (
-            <button type="button" onClick={() => google.start(SETTINGS_PATH)} disabled={locked} aria-busy={google.redirecting} className={`mt-2 text-xs ${AUTH_LINK}`}>
-              <BusyLabel busy={google.redirecting} busyText="עוברים לגוגל…">להתחבר מחדש עם גוגל במקום</BusyLabel>
+            <button type="button" onClick={() => google.start(SETTINGS_PATH)} disabled={locked} className={`mt-2 text-xs ${AUTH_LINK}`}>
+              להתחבר מחדש עם גוגל במקום
             </button>
           ) : null}
         </Field>
@@ -129,8 +129,8 @@ export function DeleteAccount({ subscribed, credits, topupCredits }: { subscribe
         </p>
         <Actions>
           {cancelButton}
-          <button type="button" onClick={() => google.start(SETTINGS_PATH)} disabled={locked} aria-busy={google.redirecting} className={DIALOG_ACTION.primary}>
-            <BusyLabel busy={google.redirecting} busyText="עוברים לגוגל…">התחברות מחדש עם גוגל</BusyLabel>
+          <button type="button" onClick={() => google.start(SETTINGS_PATH)} disabled={locked} className={DIALOG_ACTION.primary}>
+            התחברות מחדש עם גוגל
           </button>
         </Actions>
       </div>

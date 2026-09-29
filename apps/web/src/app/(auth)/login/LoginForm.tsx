@@ -7,7 +7,7 @@ import { loginPath } from "@/lib/http/safe-redirect";
 import { authErrorMessage, type AuthFailure } from "@/lib/auth/error-messages";
 import { useTurnstile } from "@/lib/auth/turnstile";
 import { MAX_NAME_LENGTH, MIN_PASSWORD_LENGTH } from "@/lib/auth/policy";
-import { BusyLabel } from "@/app/app/Marks";
+import { BusyLabel, Spinner } from "@/app/app/Marks";
 import { CaptchaSlot, Field, PasswordInput } from "@/components/auth/AuthFields";
 import { OpenInBrowserButton } from "@/components/auth/OpenInBrowserButton";
 import { ErrorAlert } from "@/components/ErrorAlert";
@@ -220,12 +220,8 @@ export function LoginForm({
       <ErrorAlert>{urlError}</ErrorAlert>
       <div className="space-y-3">
         <button type="button" onClick={() => google.start(redirectTo)} disabled={busy} aria-busy={google.redirecting} className={AUTH_WIDE_BUTTON}>
-          <BusyLabel busy={google.redirecting} busyText="עוברים לגוגל…">
-            <span className="inline-flex items-center gap-3">
-              <GoogleMark />
-              המשך עם Google
-            </span>
-          </BusyLabel>
+          {google.redirecting ? <Spinner className="h-5 w-5" /> : <GoogleMark />}
+          <span>המשך עם Google</span>
         </button>
         {openInBrowser ? <OpenInBrowserButton handoff={openInBrowser} /> : null}
       </div>
