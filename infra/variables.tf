@@ -74,9 +74,9 @@ variable "orchestrator_image" {
 }
 
 variable "pairing_image" {
-  description = "WhatsApp pairing sidecar image ref (GAR tag waversion-1043857760: Baileys WA version pin, remote version fetch disabled)."
+  description = "WhatsApp pairing sidecar image ref (GAR tag waversion-1043857760-003be91: Baileys WA version pin, remote version fetch disabled, device name Agent For All)."
   type        = string
-  default     = "europe-west4-docker.pkg.dev/agent-for-all/agent-forall/whatsapp-pairing@sha256:d09178dd106501f0968a9d8d589d1aaaff2851c5b7540ece03f403136e05e52f"
+  default     = "europe-west4-docker.pkg.dev/agent-for-all/agent-forall/whatsapp-pairing@sha256:b987b31435fe1b8ac639ce43ed309cc777401e3610f795c10f06949f2dc1fc97"
 }
 
 variable "agent_runtime_image" {
