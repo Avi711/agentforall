@@ -82,7 +82,7 @@ variable "pairing_image" {
 variable "agent_runtime_image" {
   description = "Pinned OpenClaw runtime image ref (openclaw-browser 2026.8.2). Update only after smoke-testing the exact digest."
   type        = string
-  default     = "europe-west4-docker.pkg.dev/agent-for-all/agent-forall/openclaw-browser@sha256:f0e4aec97e55e0a3afd852ef72994cfe4ed3157ff4a90554de0a66b3940c31ca"
+  default     = "europe-west4-docker.pkg.dev/agent-for-all/agent-forall/openclaw-browser@sha256:cc6ceabbdad38760a550c3ce37c29ed61a1d952f6276a636c576b0ea8f8ab2bc"
 }
 
 variable "hermes_runtime_image" {
