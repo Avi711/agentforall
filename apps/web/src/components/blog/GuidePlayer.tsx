@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject } from "react";
 import { Spinner } from "@/app/app/Marks";
 import { prefersReducedMotion } from "@/components/motion";
 import type { PlatformVideo } from "@/lib/blog";
@@ -20,6 +20,7 @@ import {
 } from "./PlayerControls";
 
 const PREVIEW_PASSES = 2;
+const DOUBLE_TAP_MS = 300;
 // Wider than this in device pixels, the 720p file starts to look soft.
 const HD_ABOVE_DEVICE_PX = 760;
 export const CONTROLS_HEIGHT = "h-20";
@@ -248,6 +249,13 @@ export function GuidePlayer({
       v.webkitEnterFullscreen?.();
     }
   };
+  const lastTapAt = useRef(0);
+  const onVideoPointerUp = (e: PointerEvent<HTMLVideoElement>) => {
+    if (e.button !== 0) return;
+    const isDoubleTap = e.timeStamp - lastTapAt.current < DOUBLE_TAP_MS;
+    lastTapAt.current = isDoubleTap ? 0 : e.timeStamp;
+    if (isDoubleTap) toggleFullscreen();
+  };
   const replay = () => {
     seek(0);
     play();
@@ -292,7 +300,8 @@ export function GuidePlayer({
           playsInline
           aria-label={title}
           onClick={togglePlay}
-          className="absolute inset-0 h-full w-full object-contain"
+          onPointerUp={onVideoPointerUp}
+          className="absolute inset-0 h-full w-full touch-manipulation object-contain"
         />
         {!engaged ? <StartOverlay duration={clip.durationSec} resumeAt={startAt} onStart={() => start()} /> : null}
         {engaged && state.ended ? <EndOverlay onReplay={replay} /> : null}
