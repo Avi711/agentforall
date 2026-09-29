@@ -12,6 +12,7 @@ const csp = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.paddle.com https://sandbox-cdn.paddle.com",
   "font-src 'self' data: https://fonts.gstatic.com",
   "img-src 'self' https: data:",
+  "media-src 'self' https://static.compledio.com",
   `connect-src 'self' ${orchestratorOrigin} https://storage.googleapis.com https://*.supabase.co https://www.facebook.com https://connect.facebook.net https://*.paddle.com`,
   `frame-src 'self' ${orchestratorOrigin} https://www.facebook.com https://staticxx.facebook.com https://challenges.cloudflare.com https://buy.paddle.com https://sandbox-buy.paddle.com https://cdn.paddle.com https://sandbox-cdn.paddle.com`,
   "frame-ancestors 'none'",

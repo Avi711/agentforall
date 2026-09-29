@@ -4,10 +4,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Footer } from "@/components/Footer";
 import { Navbar } from "@/components/Navbar";
+import { GuideVideo } from "@/components/blog/GuideVideo";
 import { PlatformGuide } from "@/components/blog/PlatformGuide";
 import { TalkToUs } from "@/components/TalkToUs";
-import { POST_SLUGS, isPostSlug, loadPost, type Post } from "@/lib/blog";
-import { SITE_NAME, SITE_URL } from "@/lib/site";
+import { POST_SLUGS, isPostSlug, loadPost, type DevicePlatform, type Post, type PostVideo } from "@/lib/blog";
+import { SITE_NAME, SITE_URL, mediaUrl } from "@/lib/site";
 
 export const dynamicParams = false;
 
@@ -63,18 +64,21 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           <p className="mt-4 text-sm text-espresso-light/80">
             <time dateTime={meta.publishedAt}>{formatHebrewDate(meta.publishedAt)}</time> · {meta.readingMinutes} דקות קריאה
           </p>
-          <Image
-            src={meta.cover.src}
-            alt={meta.cover.alt}
-            width={1600}
-            height={900}
-            priority
-            sizes="(max-width: 768px) 100vw, 768px"
-            className="mt-8 w-full rounded-[24px] border border-sand-light"
-          />
-
           <PlatformGuide>
-            <div className="mt-4">
+            {meta.video ? (
+              <GuideVideo video={meta.video} />
+            ) : (
+              <Image
+                src={meta.cover.src}
+                alt={meta.cover.alt}
+                width={1600}
+                height={900}
+                priority
+                sizes="(max-width: 768px) 100vw, 768px"
+                className="mt-8 w-full rounded-[24px] border border-sand-light"
+              />
+            )}
+            <div id="guide" className="mt-4 scroll-mt-28">
               <Content />
             </div>
           </PlatformGuide>
@@ -144,7 +148,35 @@ function structuredData(post: Post) {
       acceptedAnswer: { "@type": "Answer", text: item.a },
     })),
   };
-  return post.meta.faq.length > 0 ? [article, breadcrumb, faq] : [article, breadcrumb];
+  const videos = post.meta.video ? videoObjects(post.meta.video, url) : [];
+  return [article, breadcrumb, ...(post.meta.faq.length > 0 ? [faq] : []), ...videos];
+}
+
+const PLATFORM_NAMES: Record<DevicePlatform, string> = { ios: "אייפון", android: "אנדרואיד" };
+
+function videoObjects(video: PostVideo, pageUrl: string) {
+  return (Object.keys(video.byPlatform) as DevicePlatform[]).map((platform) => {
+    const clip = video.byPlatform[platform];
+    return {
+      "@context": "https://schema.org",
+      "@type": "VideoObject",
+      name: `${video.title} (${PLATFORM_NAMES[platform]})`,
+      description: video.description,
+      inLanguage: "he-IL",
+      uploadDate: video.uploadedAt,
+      duration: `PT${Math.floor(clip.durationSec / 60)}M${Math.round(clip.durationSec % 60)}S`,
+      thumbnailUrl: mediaUrl(clip.poster),
+      contentUrl: mediaUrl(clip.hd),
+      publisher: { "@type": "Organization", name: SITE_NAME, url: SITE_URL },
+      hasPart: clip.chapters.map((c, i) => ({
+        "@type": "Clip",
+        name: c.label,
+        startOffset: Math.floor(c.startSec),
+        endOffset: Math.floor(clip.chapters[i + 1]?.startSec ?? clip.durationSec),
+        url: `${pageUrl}?v=${platform}&t=${Math.floor(c.startSec)}`,
+      })),
+    };
+  });
 }
 
 const hebrewDate = new Intl.DateTimeFormat("he-IL", { day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Jerusalem" });

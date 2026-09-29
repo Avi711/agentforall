@@ -9,3 +9,5 @@ Regenerate when WhatsApp/iOS/One UI move a menu:
 
 Grid is the article-column image; col is the `<picture>` source for ≤640px. Android screens are traced from real August 2026 screenshots
 (One UI 8 Settings/חיבורים/מנהל SIM, WhatsApp Material 3 menu, Settings, חשבון, add-account sheet, number entry); iOS follows WhatsApp iOS 26 / iOS Cellular.
+
+Source screenshots live in `screens/<platform>/`, gitignored because they show a personal number and photo. The iPhone set (Sep 2026) uses a larger-than-default text size, so take layout from it, not font size; the Android set (Samsung, Sep 2026) is default size.

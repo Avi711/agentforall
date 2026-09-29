@@ -10,6 +10,30 @@ export interface PostFaq {
   a: string;
 }
 
+export type DevicePlatform = "ios" | "android";
+
+export interface VideoChapter {
+  label: string;
+  startSec: number;
+}
+
+// Paths are relative to MEDIA_CDN_URL.
+export interface PlatformVideo {
+  sd: string;
+  hd: string;
+  poster: string;
+  durationSec: number;
+  chapters: VideoChapter[];
+}
+
+export interface PostVideo {
+  title: string;
+  description: string;
+  // ISO date.
+  uploadedAt: string;
+  byPlatform: Record<DevicePlatform, PlatformVideo>;
+}
+
 export interface PostMeta {
   title: string;
   description: string;
@@ -19,6 +43,7 @@ export interface PostMeta {
   keywords: string[];
   cover: PostImage;
   faq: PostFaq[];
+  video?: PostVideo;
 }
 
 export interface Post {

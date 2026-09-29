@@ -28,3 +28,6 @@ infra/.terraform.lock.hcl
 # Local agent skills (installed via `npx skills add`)
 .agents/
 skills-lock.json
+
+# Real phone screenshots behind the dedicated-number guide; they show a personal number and photo
+docs/assets-src/dedicated-whatsapp-number/screens/

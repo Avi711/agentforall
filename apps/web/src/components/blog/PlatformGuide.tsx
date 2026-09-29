@@ -44,6 +44,10 @@ export function PlatformGuide({ children }: { children: ReactNode }) {
   );
 }
 
+export function usePlatformChoice() {
+  return useContext(PlatformContext);
+}
+
 export function Platform({ of, children }: { of: Platform; children: ReactNode }) {
   return <div data-only={of}>{children}</div>;
 }

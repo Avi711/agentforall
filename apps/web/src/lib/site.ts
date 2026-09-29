@@ -6,6 +6,11 @@ export const SITE_PHONE = "+972-55-250-6938";
 export const SITE_WHATSAPP_URL = "https://wa.me/972552506938";
 export const SITE_EMAIL = "avi@agentforall.co.il";
 export const SITE_LOCATION = "רמת גן, ישראל";
+export const MEDIA_CDN_URL = "https://static.compledio.com/afa";
+
+export function mediaUrl(path: string): string {
+  return `${MEDIA_CDN_URL}/${path}`;
+}
 
 export function whatsappChatUrl(text: string): string {
   return `${SITE_WHATSAPP_URL}?text=${encodeURIComponent(text)}`;
