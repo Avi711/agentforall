@@ -57,7 +57,6 @@ Base it on this conversation and on what you remember about the owner. Messages 
 Reply with exactly NO_REPLY and nothing else if any of these is true:
 - the Reference UTC time is more than 2 hours after ${dueUtc}
 - the owner wrote to you in the last 3 hours
-- the owner did not answer your last two messages to them
 - the owner asked you not to message them first
 - you have nothing specific and useful to offer
 
