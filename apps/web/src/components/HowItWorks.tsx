@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { PendingLink } from "@/app/app/Pending";
 import { prefersReducedMotion } from "./motion";
 
 const AGENT_NAME = "יובל";
@@ -115,8 +116,8 @@ export function HowItWorks() {
           const span = (i: number) => share[i]! * 10;
           const swap = (from: number, to: number, start: number, len: number) =>
             gsap.timeline()
-              .fromTo(stage(`[data-panel='${from}']`), { opacity: 1, y: 0, scale: 1 }, { opacity: 0, y: -30, scale: 0.96, ease: "power2.in", ...quiet, duration: len * 0.15 }, start)
-              .fromTo(stage(`[data-panel='${to}']`), { opacity: 0, y: 30, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, ease: "power2.out", ...quiet, duration: len * 0.2 }, start + len * 0.08);
+              .fromTo(stage(`[data-panel='${from}']`), { autoAlpha: 1, y: 0, scale: 1 }, { autoAlpha: 0, y: -30, scale: 0.96, ease: "power2.in", ...quiet, duration: len * 0.15 }, start)
+              .fromTo(stage(`[data-panel='${to}']`), { autoAlpha: 0, y: 30, scale: 0.96 }, { autoAlpha: 1, y: 0, scale: 1, ease: "power2.out", ...quiet, duration: len * 0.2 }, start + len * 0.08);
           const tl = gsap.timeline({ paused: true })
             .add(typeName(stage, at(0), span(0)), 0)
             .add(swap(0, 1, at(1), span(1)), 0)
@@ -202,11 +203,12 @@ export function HowItWorks() {
         </div>
 
         <div className="hidden lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:block lg:self-start motion-on:lg:sticky motion-on:lg:top-0 motion-on:lg:pt-[calc(50vh_-_200px)]">
-          <div data-stage aria-hidden className={`pointer-events-none relative mx-auto flex w-[440px] select-none flex-col gap-4 motion-on:h-[400px] motion-on:block`}>
+          <div data-stage className={`pointer-events-none relative mx-auto flex w-[440px] select-none flex-col gap-4 motion-on:h-[400px] motion-on:block`}>
             {panels.map((panel, i) => (
               <div
                 key={i}
                 data-panel={i}
+                aria-hidden={i > 0}
                 className={`${CARD} motion-on:absolute motion-on:inset-0 ${i === 0 ? "" : `motion-on:opacity-0 motion-on:translate-y-8 motion-on:scale-[0.96]`}`}
               >
                 {panel}
@@ -229,7 +231,7 @@ export function HowItWorks() {
               <span className="text-xs uppercase tracking-[0.18em] text-espresso-light">שלב {i + 1}</span>
               <h3 className="font-display text-2xl sm:text-[28px] text-espresso leading-snug mt-2">{step.title}</h3>
               <p className="mt-3 max-w-md text-base leading-relaxed text-espresso-light">{step.body}</p>
-              <div data-card={i} aria-hidden className="pointer-events-none mt-5 flex select-none flex-col gap-4 border-t border-sand-light/70 pt-5 lg:hidden">
+              <div data-card={i} aria-hidden={i > 0} className="pointer-events-none mt-5 flex select-none flex-col gap-4 border-t border-sand-light/70 pt-5 lg:hidden">
                 {panels[i]}
               </div>
             </li>
@@ -243,13 +245,21 @@ export function HowItWorks() {
 function SignInPanel() {
   return (
     <>
-      <span className={LABEL}>התחלה</span>
-      <p className="font-display text-xl sm:text-2xl text-espresso">בואו ניצור לכם סוכן</p>
-      <div className="flex items-center justify-center gap-2.5 rounded-xl border border-sand bg-white px-3 py-2.5 sm:py-3 text-[15px] font-medium">
+      <span aria-hidden className={LABEL}>התחלה</span>
+      <p aria-hidden className="font-display text-xl sm:text-2xl text-espresso">בואו ניצור לכם סוכן</p>
+      <div aria-hidden className="flex items-center gap-3 rounded-xl bg-cream-dark/60 px-3.5 py-2.5 sm:py-3">
         <GoogleMark />
-        כניסה עם Google
+        <div className="flex min-w-0 flex-col">
+          <span className="text-xs text-espresso-light">מחוברים עם Google</span>
+          <span className="truncate text-[15px] font-medium text-espresso"><bdi>dana@gmail.com</bdi></span>
+        </div>
+        <span className="ms-auto grid h-6 w-6 shrink-0 place-items-center rounded-full bg-sage-pale text-sage-dark">
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12.5l4.5 4.5L19 7.5" />
+          </svg>
+        </span>
       </div>
-      <div>
+      <div aria-hidden>
         <p className={`${LABEL} mb-2`}>איך הסוכן שלכם ייקרא?</p>
         <div className="flex min-h-11 sm:min-h-12 items-center rounded-xl border border-sand bg-white px-3.5 text-[15px] text-espresso">
           <span className={`motion-on:hidden`}>{AGENT_NAME}</span>
@@ -258,7 +268,12 @@ function SignInPanel() {
           <span data-hint className={`hidden text-espresso-light/60 motion-on:inline`}>&nbsp;לדוגמה: ג׳ארוויס, שלומי, אלפרד</span>
         </div>
       </div>
-      <div className="rounded-xl bg-terra px-4 py-2.5 sm:py-3 text-center text-[15px] font-medium text-white">יצירת סוכן</div>
+      <PendingLink
+        href="/app"
+        className="pointer-events-auto rounded-xl bg-terra px-4 py-2.5 sm:py-3 text-center text-[15px] font-medium text-white transition hover:bg-terra-dark"
+      >
+        יצירת סוכן
+      </PendingLink>
     </>
   );
 }
