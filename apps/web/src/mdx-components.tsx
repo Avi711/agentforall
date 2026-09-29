@@ -1,6 +1,7 @@
 import type { MDXComponents } from "mdx/types";
 import Link from "next/link";
 import { Figure } from "@/components/blog/Figure";
+import { KeyPoint, KeyPointItem, SectionTitle, Tip } from "@/components/blog/GuideBlocks";
 import { Platform, PlatformPicker } from "@/components/blog/PlatformGuide";
 
 export function useMDXComponents(components: MDXComponents): MDXComponents {
@@ -23,6 +24,10 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
       ),
     hr: () => <hr className="my-10 border-sand-light" />,
     Figure,
+    SectionTitle,
+    Tip,
+    KeyPoint,
+    KeyPointItem,
     Platform,
     PlatformPicker,
     ...components,

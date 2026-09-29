@@ -1,3 +1,4 @@
+import type { MDXComponents } from "mdx/types";
 import type { ComponentType } from "react";
 
 export interface PostImage {
@@ -19,6 +20,7 @@ export interface VideoChapter {
 
 // Paths are relative to MEDIA_CDN_URL.
 export interface PlatformVideo {
+  preview: string;
   sd: string;
   hd: string;
   poster: string;
@@ -34,6 +36,27 @@ export interface PostVideo {
   byPlatform: Record<DevicePlatform, PlatformVideo>;
 }
 
+export interface GuideStep {
+  id: string;
+  title: string;
+  summary: string;
+}
+
+export interface GuideSection {
+  id: string;
+  label: string;
+}
+
+export interface PostGuide {
+  eyebrow: string;
+  // A shorter intro than the meta description, which stays for search results.
+  lede: string;
+  duration: string;
+  needs: string[];
+  sections: GuideSection[];
+  steps: GuideStep[];
+}
+
 export interface PostMeta {
   title: string;
   description: string;
@@ -44,12 +67,15 @@ export interface PostMeta {
   cover: PostImage;
   faq: PostFaq[];
   video?: PostVideo;
+  guide?: PostGuide;
 }
+
+export type PostContent = ComponentType<{ components?: MDXComponents }>;
 
 export interface Post {
   slug: string;
   meta: PostMeta;
-  Content: ComponentType;
+  Content: PostContent;
 }
 
 // Newest first. Adding a post = one MDX file in src/content/blog plus its slug here.
@@ -73,7 +99,7 @@ export function isPostSlug(value: string): value is PostSlug {
 }
 
 export async function loadPost(slug: PostSlug): Promise<Post> {
-  const mod = (await import(`@/content/blog/${slug}.mdx`)) as { default: ComponentType; metadata: PostMeta };
+  const mod = (await import(`@/content/blog/${slug}.mdx`)) as { default: PostContent; metadata: PostMeta };
   return { slug, meta: mod.metadata, Content: mod.default };
 }
 

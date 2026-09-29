@@ -126,6 +126,9 @@ export function UserMenu({ user }: { user: MenuUser }) {
             >
               הגדרות
             </MenuLink>
+            <MenuLink href="/blog" icon={<IconGuides />}>
+              מדריכים
+            </MenuLink>
           </div>
           <div className="border-t border-sand-light py-1.5">
             <button
@@ -231,6 +234,22 @@ function IconSettings() {
     >
       <path d="M10 13.25a3.25 3.25 0 1 0 0-6.5 3.25 3.25 0 0 0 0 6.5z" />
       <path d="M16.4 11.66a1 1 0 0 0 .2 1.1l.07.07a1.4 1.4 0 1 1-1.98 1.98l-.07-.07a1 1 0 0 0-1.1-.2 1 1 0 0 0-.6.92V15.7a1.4 1.4 0 1 1-2.8 0v-.1a1 1 0 0 0-.65-.91 1 1 0 0 0-1.1.2l-.07.07a1.4 1.4 0 1 1-1.98-1.98l.07-.07a1 1 0 0 0 .2-1.1 1 1 0 0 0-.92-.6H5.5a1.4 1.4 0 1 1 0-2.8h.1a1 1 0 0 0 .91-.65 1 1 0 0 0-.2-1.1l-.07-.07a1.4 1.4 0 1 1 1.98-1.98l.07.07a1 1 0 0 0 1.1.2H9.5a1 1 0 0 0 .6-.92V4.3a1.4 1.4 0 1 1 2.8 0v.1a1 1 0 0 0 .6.92 1 1 0 0 0 1.1-.2l.07-.07a1.4 1.4 0 1 1 1.98 1.98l-.07.07a1 1 0 0 0-.2 1.1V8.5a1 1 0 0 0 .92.6H17.7a1.4 1.4 0 1 1 0 2.8h-.1a1 1 0 0 0-.92.6z" />
+    </svg>
+  );
+}
+function IconGuides() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 20 20"
+      className="w-[18px] h-[18px]"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M10 5.5C8.6 4.3 6.6 3.7 3.5 3.8v11.5c3.1-.1 5.1.5 6.5 1.7 1.4-1.2 3.4-1.8 6.5-1.7V3.8c-3.1-.1-5.1.5-6.5 1.7zM10 5.5V17" />
     </svg>
   );
 }

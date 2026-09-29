@@ -4,10 +4,23 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Footer } from "@/components/Footer";
 import { Navbar } from "@/components/Navbar";
-import { GuideVideo } from "@/components/blog/GuideVideo";
+import { GuideHero } from "@/components/blog/GuideHero";
+import { GuideOverview } from "@/components/blog/GuideOverview";
+import { Step } from "@/components/blog/GuideBlocks";
+import { GuideToc } from "@/components/blog/GuideToc";
 import { PlatformGuide } from "@/components/blog/PlatformGuide";
 import { TalkToUs } from "@/components/TalkToUs";
-import { POST_SLUGS, isPostSlug, loadPost, type DevicePlatform, type Post, type PostVideo } from "@/lib/blog";
+import {
+  POST_SLUGS,
+  isPostSlug,
+  loadPost,
+  type DevicePlatform,
+  type GuideSection,
+  type Post,
+  type PostGuide,
+  type PostMeta,
+  type PostVideo,
+} from "@/lib/blog";
 import { SITE_NAME, SITE_URL, mediaUrl } from "@/lib/site";
 
 export const dynamicParams = false;
@@ -46,75 +59,116 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   const post = await loadPost(slug);
   const { meta, Content } = post;
 
+  const dateLabel = formatHebrewDate(meta.publishedAt);
+  const guidePost = meta.guide && meta.video ? { guide: meta.guide, video: meta.video } : null;
+
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData(post)) }} />
       <Navbar />
-      <main id="main" className="px-5 pb-16 pt-28 sm:px-8 sm:pt-36">
-        <article className="mx-auto max-w-3xl">
-          <nav aria-label="פירורי לחם" className="text-sm text-espresso-light">
-            <Link href="/blog" className="font-medium text-terra hover:underline">
-              הבלוג
-            </Link>
-            <span className="mx-2 text-sand">/</span>
-            <span>{meta.title}</span>
-          </nav>
-          <h1 className="font-display mt-6 text-4xl leading-[1.15] text-espresso sm:text-5xl">{meta.title}</h1>
-          <p className="mt-5 text-lg leading-relaxed text-espresso-light">{meta.description}</p>
-          <p className="mt-4 text-sm text-espresso-light/80">
-            <time dateTime={meta.publishedAt}>{formatHebrewDate(meta.publishedAt)}</time> · {meta.readingMinutes} דקות קריאה
-          </p>
+      <main id="main" className={`px-5 pb-16 sm:px-8 ${guidePost ? "pt-24 sm:pt-32" : "pt-28 sm:pt-36"}`}>
+        {guidePost ? (
           <PlatformGuide>
-            {meta.video ? (
-              <GuideVideo video={meta.video} />
-            ) : (
-              <Image
-                src={meta.cover.src}
-                alt={meta.cover.alt}
-                width={1600}
-                height={900}
-                priority
-                sizes="(max-width: 768px) 100vw, 768px"
-                className="mt-8 w-full rounded-[24px] border border-sand-light"
+            <article className="mx-auto max-w-6xl">
+              <GuideHero
+                title={meta.title}
+                dateLabel={dateLabel}
+                dateTime={meta.publishedAt}
+                readingMinutes={meta.readingMinutes}
+                guide={guidePost.guide}
+                video={guidePost.video}
               />
-            )}
-            <div id="guide" className="mt-4 scroll-mt-28">
-              <Content />
-            </div>
-          </PlatformGuide>
-
-          {meta.faq.length > 0 ? (
-            <section aria-labelledby="post-faq" className="mt-14">
-              <h2 id="post-faq" className="font-display text-2xl text-espresso sm:text-3xl">
-                שאלות נפוצות
-              </h2>
-              <dl className="mt-6 divide-y divide-sand-light">
-                {meta.faq.map((item) => (
-                  <div key={item.q} className="py-5">
-                    <dt className="font-bold text-espresso">{item.q}</dt>
-                    <dd className="mt-2 leading-relaxed text-espresso-light">{item.a}</dd>
+              <div className="mt-16 lg:grid lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-16">
+                <aside className="hidden lg:block">
+                  <GuideToc items={tocItems(guidePost.guide, meta.faq.length > 0)} />
+                </aside>
+                <div className="max-w-3xl">
+                  <GuideOverview steps={guidePost.guide.steps} />
+                  <div id="guide" className="scroll-mt-28">
+                    <Content components={{ Step: ({ id }: { id: string }) => <Step id={id} steps={guidePost.guide.steps} /> }} />
                   </div>
-                ))}
-              </dl>
-            </section>
-          ) : null}
-
-          <div className="mt-14 rounded-[24px] bg-terra-pale/60 px-6 py-8 text-center sm:px-10">
-            <p className="font-display text-2xl text-espresso">רוצים סוכן כזה לעצמכם?</p>
-            <p className="mt-2 text-espresso-light">7 ימי ניסיון, בלי כרטיס אשראי.</p>
-            <Link
-              href="/app"
-              className="mt-5 inline-flex rounded-full bg-terra px-7 py-3 text-base font-bold text-white transition hover:bg-espresso"
-            >
-              רוצה סוכן
-            </Link>
-          </div>
-        </article>
+                  <PostEnd meta={meta} />
+                </div>
+              </div>
+            </article>
+          </PlatformGuide>
+        ) : (
+          <article className="mx-auto max-w-3xl">
+            <nav aria-label="פירורי לחם" className="text-sm text-espresso-light">
+              <Link href="/blog" className="font-medium text-terra hover:underline">
+                הבלוג
+              </Link>
+              <span className="mx-2 text-sand">/</span>
+              <span>{meta.title}</span>
+            </nav>
+            <h1 className="font-display mt-6 text-4xl leading-[1.15] text-espresso sm:text-5xl">{meta.title}</h1>
+            <p className="mt-5 text-lg leading-relaxed text-espresso-light">{meta.description}</p>
+            <p className="mt-4 text-sm text-espresso-light/80">
+              <time dateTime={meta.publishedAt}>{dateLabel}</time> · {meta.readingMinutes} דקות קריאה
+            </p>
+            <Image
+              src={meta.cover.src}
+              alt={meta.cover.alt}
+              width={1600}
+              height={900}
+              priority
+              sizes="(max-width: 768px) 100vw, 768px"
+              className="mt-8 w-full rounded-[24px] border border-sand-light"
+            />
+            <PlatformGuide>
+              <div className="mt-4">
+                <Content />
+              </div>
+            </PlatformGuide>
+            <PostEnd meta={meta} />
+          </article>
+        )}
       </main>
       <TalkToUs />
       <Footer />
     </>
   );
+}
+
+function PostEnd({ meta }: { meta: PostMeta }) {
+  return (
+    <>
+      {meta.faq.length > 0 ? (
+        <section aria-labelledby="post-faq" className="mt-14 scroll-mt-28">
+          <h2 id="post-faq" className="font-display text-2xl text-espresso sm:text-3xl">
+            שאלות נפוצות
+          </h2>
+          <dl className="mt-6 divide-y divide-sand-light">
+            {meta.faq.map((item) => (
+              <div key={item.q} className="py-5">
+                <dt className="font-bold text-espresso">{item.q}</dt>
+                <dd className="mt-2 leading-relaxed text-espresso-light">{item.a}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      ) : null}
+
+      <div className="mt-14 rounded-[24px] bg-terra-pale/60 px-6 py-8 text-center sm:px-10">
+        <p className="font-display text-2xl text-espresso">רוצים סוכן כזה לעצמכם?</p>
+        <p className="mt-2 text-espresso-light">7 ימי ניסיון, בלי כרטיס אשראי.</p>
+        <Link
+          href="/app"
+          className="mt-5 inline-flex rounded-full bg-terra px-7 py-3 text-base font-bold text-white transition hover:bg-espresso"
+        >
+          רוצה סוכן
+        </Link>
+      </div>
+    </>
+  );
+}
+
+function tocItems(guide: PostGuide, hasFaq: boolean): GuideSection[] {
+  return [
+    ...guide.sections,
+    ...guide.steps.map((step, i) => ({ id: step.id, label: `שלב ${i + 1} · ${step.title}` })),
+    ...(hasFaq ? [{ id: "post-faq", label: "שאלות נפוצות" }] : []),
+  ];
 }
 
 function structuredData(post: Post) {
@@ -148,7 +202,7 @@ function structuredData(post: Post) {
       acceptedAnswer: { "@type": "Answer", text: item.a },
     })),
   };
-  const videos = post.meta.video ? videoObjects(post.meta.video, url) : [];
+  const videos = post.meta.guide && post.meta.video ? videoObjects(post.meta.video, url) : [];
   return [article, breadcrumb, ...(post.meta.faq.length > 0 ? [faq] : []), ...videos];
 }
 
