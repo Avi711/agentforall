@@ -3,7 +3,7 @@ import type { BillingUser } from "../../domain";
 import { CheckoutAlreadySettledError, CheckoutSessionNotFoundError, UnknownProviderError } from "../../errors";
 import type { MockCheckoutOutcome } from "../../schemas";
 import type { BillingService, WebhookOutcome } from "../../service";
-import { MockPaymentProvider } from "./adapter";
+import { MockPaymentProvider, mockCheckoutId } from "./adapter";
 
 // Plays the gateway's part after the user clicks on the mock checkout page.
 export class MockCheckoutSimulator {
@@ -31,7 +31,7 @@ export class MockCheckoutSimulator {
             subscriptionId: session.kind === "subscription" ? `mock_sub_${session.id}` : null,
             customerId: `mock_cus_${user.id}`,
             productCode: session.productCode,
-            payment: { id: `mock_pay_${randomUUID()}`, amountAgorot: session.amountAgorot, currency: "ILS" },
+            payment: { id: mockCheckoutId(session.id), amountAgorot: session.amountAgorot, currency: "ILS" },
           })
         : provider.signedWebhook({
             type: "checkout.failed",

@@ -31,7 +31,7 @@ export class MockPaymentProvider implements PaymentProvider {
   constructor(private readonly config: MockProviderConfig) {}
 
   async createCheckout(input: CreateCheckoutInput): Promise<CreateCheckoutResult> {
-    return { url: await this.checkoutUrl(input.checkoutSessionId), providerCheckoutId: `mock_chk_${input.checkoutSessionId}` };
+    return { url: await this.checkoutUrl(input.checkoutSessionId), providerCheckoutId: mockCheckoutId(input.checkoutSessionId) };
   }
 
   checkoutUrl(checkoutSessionId: string): Promise<string> {
@@ -91,6 +91,10 @@ export class MockPaymentProvider implements PaymentProvider {
   }
 }
 
+export function mockCheckoutId(checkoutSessionId: string): string {
+  return `mock_chk_${checkoutSessionId}`;
+}
+
 function toProviderEvent(event: MockWebhookEvent, payload: unknown): ProviderEvent {
   const base = {
     providerEventId: event.id,
@@ -107,6 +111,7 @@ function toProviderEvent(event: MockWebhookEvent, payload: unknown): ProviderEve
         providerCustomerId: event.customerId,
         planCode: event.mode === "subscription" ? event.productCode : null,
         payment: toPayment(event.payment),
+        listAmountAgorot: event.payment.amountAgorot,
         periodEnd: null,
         reference: { checkoutSessionId: event.checkoutSessionId },
       };
@@ -120,6 +125,7 @@ function toProviderEvent(event: MockWebhookEvent, payload: unknown): ProviderEve
         providerCustomerId: null,
         planCode: null,
         payment: toPayment(event.payment),
+        listAmountAgorot: event.payment.amountAgorot,
         periodEnd: null,
         reference: NO_REFERENCE,
       };

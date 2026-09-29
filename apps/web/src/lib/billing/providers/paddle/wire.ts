@@ -16,13 +16,17 @@ const Period = z.object({ starts_at: Timestamp, ends_at: Timestamp });
 
 const CustomData = z.record(z.string(), z.unknown()).nullable().optional();
 
-export const PaddlePriceSchema = z.object({ id: z.string().min(1), custom_data: CustomData });
+const Amount = z.string().regex(/^\d+$/);
+
+export const PaddlePriceSchema = z.object({
+  id: z.string().min(1),
+  custom_data: CustomData,
+  unit_price: z.object({ amount: Amount }).nullable().optional(),
+});
 
 const Item = z.object({ price: PaddlePriceSchema.nullable().optional() });
 export type PaddleItem = z.infer<typeof Item>;
 export type PaddlePrice = z.infer<typeof PaddlePriceSchema>;
-
-const Amount = z.string().regex(/^\d+$/);
 
 const LineItem = z.object({
   price_id: z.string().min(1),

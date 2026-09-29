@@ -226,6 +226,15 @@ export class DrizzlePaymentRepository implements PaymentRepository {
     return insertPayment(this.db, input);
   }
 
+  async chargedAgorot(provider: PaymentProviderName, providerPaymentId: string): Promise<number | null> {
+    const rows = await this.db
+      .select({ amountAgorot: billingPayments.amountAgorot })
+      .from(billingPayments)
+      .where(and(eq(billingPayments.provider, provider), eq(billingPayments.providerPaymentId, providerPaymentId)))
+      .limit(1);
+    return rows[0]?.amountAgorot ?? null;
+  }
+
   async markRefunded(provider: PaymentProviderName, providerPaymentId: string): Promise<{ userId: string | null } | null> {
     const rows = await this.db
       .update(billingPayments)
@@ -233,22 +242,6 @@ export class DrizzlePaymentRepository implements PaymentRepository {
       .where(and(eq(billingPayments.provider, provider), eq(billingPayments.providerPaymentId, providerPaymentId)))
       .returning({ userId: billingPayments.userId });
     return rows[0] ?? null;
-  }
-
-  async lastSucceededAmountAgorot(subscriptionId: string, planCode: string): Promise<number | null> {
-    const rows = await this.db
-      .select({ amountAgorot: billingPayments.amountAgorot })
-      .from(billingPayments)
-      .where(
-        and(
-          eq(billingPayments.subscriptionId, subscriptionId),
-          eq(billingPayments.planCode, planCode),
-          eq(billingPayments.status, "succeeded"),
-        ),
-      )
-      .orderBy(desc(billingPayments.occurredAt))
-      .limit(1);
-    return rows[0]?.amountAgorot ?? null;
   }
 
   async recordFirstPayment(input: FirstPaymentInput): Promise<PaymentApplication> {

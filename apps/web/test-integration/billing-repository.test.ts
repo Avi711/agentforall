@@ -243,9 +243,6 @@ describe("billing repositories (postgres)", { skip: url ? false : "BILLING_TEST_
 
     const again = await payments.recordFirstPayment({ payment, subscription });
     assert.equal(again.outcome, "duplicate");
-    assert.equal(await payments.lastSucceededAmountAgorot(first.subscription.id, "standard"), 20000);
-    assert.equal(await payments.lastSucceededAmountAgorot(first.subscription.id, "pro"), null);
-    assert.equal(await payments.lastSucceededAmountAgorot(randomUUID(), "standard"), null);
     const current = await subscriptions.findCurrentByUserId(userId);
     assert.equal(current?.id, first.subscription.id);
 

@@ -223,11 +223,8 @@ export class InMemoryPayments implements PaymentRepository {
     return { userId: row.userId };
   }
 
-  async lastSucceededAmountAgorot(subscriptionId: string, planCode: string): Promise<number | null> {
-    const mine = this.rows
-      .filter((r) => r.subscriptionId === subscriptionId && r.planCode === planCode && r.status === "succeeded")
-      .sort((a, b) => b.occurredAt.getTime() - a.occurredAt.getTime());
-    return mine[0]?.amountAgorot ?? null;
+  async chargedAgorot(provider: PaymentProviderName, providerPaymentId: string): Promise<number | null> {
+    return this.rows.find((r) => r.provider === provider && r.providerPaymentId === providerPaymentId)?.amountAgorot ?? null;
   }
 
   async recordFirstPayment(input: FirstPaymentInput): Promise<PaymentApplication> {
@@ -687,6 +684,7 @@ export function paymentSucceeded(
     providerCustomerId: "cus_1",
     planCode: "standard",
     payment: { providerPaymentId: "pay_1", amountAgorot: 20000, currency: "ILS" },
+    listAmountAgorot: overrides.payment?.amountAgorot ?? 20000,
     periodEnd: null,
     reference: { checkoutSessionId: null },
     ...overrides,

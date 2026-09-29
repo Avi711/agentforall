@@ -93,6 +93,8 @@ export type ProviderEvent =
       providerCustomerId: string | null;
       planCode: string | null;
       payment: ProviderPayment;
+      // The price of what was bought, before any discount; null when the charge is not a single priced item.
+      listAmountAgorot: number | null;
       // Providers that schedule the next charge report it; null = derive from the plan interval.
       periodEnd: Date | null;
       reference: WebhookReference;

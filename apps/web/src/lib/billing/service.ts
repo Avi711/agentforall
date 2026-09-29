@@ -138,7 +138,7 @@ export type ProcessingNote =
   | "missing_subscription"
   | "unresolved_user"
   | "unknown_plan"
-  | "amount_mismatch"
+  | "item_mismatch"
   | "topup_with_subscription"
   | "unknown_payment"
   | "partial_refund"
@@ -287,6 +287,11 @@ export class BillingService {
 
   creditSummaries(userIds: readonly string[]): Promise<Map<string, CreditSummary>> {
     return this.credits.summaries(userIds);
+  }
+
+  // A checkout's charge carries its checkout id, so the receipt shows what was paid after any coupon.
+  async chargedFor(session: CheckoutSession): Promise<number | null> {
+    return session.providerCheckoutId ? this.payments.chargedAgorot(session.provider, session.providerCheckoutId) : null;
   }
 
   async findCheckoutSession(user: BillingUser, id: string): Promise<CheckoutSession | null> {
@@ -575,6 +580,17 @@ export class BillingService {
     }
   }
 
+  // Coupons are the expected cause; a burst of these is how a leaked code shows up.
+  private noteDiscount(event: PaymentSucceeded, userId: string): void {
+    if (event.listAmountAgorot === null || event.payment.amountAgorot >= event.listAmountAgorot) return;
+    this.log.warn("payment below list price", {
+      userId,
+      providerPaymentId: event.payment.providerPaymentId,
+      paidAgorot: event.payment.amountAgorot,
+      listAgorot: event.listAmountAgorot,
+    });
+  }
+
   private async applyCheckoutFailed(at: Date, session: CheckoutSession | null, note: ProcessingNote | null): Promise<Applied> {
     if (session) await this.checkouts.settle(session.id, "failed", at);
     return { userId: session?.userId ?? null, note };
@@ -583,7 +599,8 @@ export class BillingService {
   // Failure paths write nothing: a payment row recorded now would block the period extension on redelivery.
   private async applyTopup(provider: PaymentProviderName, event: PaymentSucceeded, session: CheckoutSession): Promise<Applied> {
     if (event.providerSubscriptionId !== null) throw new EventProcessingError("topup_with_subscription", session.userId);
-    if (!coversSession(event.payment, session)) throw new EventProcessingError("amount_mismatch", session.userId);
+    if (!matchesSession(event, session)) throw new EventProcessingError("item_mismatch", session.userId);
+    this.noteDiscount(event, session.userId);
     const recorded = await this.payments.record(
       toNewPayment(provider, event.payment, { status: "succeeded", occurredAt: event.occurredAt, userId: session.userId, subscriptionId: null, planCode: null }),
     );
@@ -606,10 +623,8 @@ export class BillingService {
     if (!userId) throw new EventProcessingError("unresolved_user", null);
     const plan = findPlan(planCodeFor(event, session, existing));
     if (!plan) throw new EventProcessingError("unknown_plan", userId);
-    const covered = session
-      ? coversSession(event.payment, session)
-      : coversPlan(event.payment, plan, existing ? await this.payments.lastSucceededAmountAgorot(existing.id, plan.code) : null);
-    if (!covered) throw new EventProcessingError("amount_mismatch", userId);
+    if (session && !matchesSession(event, session)) throw new EventProcessingError("item_mismatch", userId);
+    this.noteDiscount(event, userId);
 
     const application = existing
       ? await this.renew(provider, event, existing, plan, userId)
@@ -758,7 +773,6 @@ export class BillingService {
     return { userId, note: !userId ? "account_deleted" : result.applied ? null : "stale_event" };
   }
 
-  // Not a full charge of any plan, so it never becomes the floor a renewal is checked against.
   private async applyProration(provider: PaymentProviderName, event: SubscriptionProrated): Promise<Applied> {
     const subscription = await this.subscriptions.findByProviderRef(provider, event.providerSubscriptionId);
     if (!subscription) throw new EventProcessingError("unknown_subscription", null);
@@ -952,18 +966,16 @@ function isContinuing(subscription: Subscription, now: Date): boolean {
   );
 }
 
+// Credits follow what the checkout sold, never the amount paid: a coupon lowers the total, not the item's price.
+function matchesSession(event: PaymentSucceeded, session: CheckoutSession): boolean {
+  const plan = session.kind === "subscription" ? session.productCode : null;
+  return (
+    event.planCode === plan && event.payment.currency === "ILS" && event.listAmountAgorot !== null && event.listAmountAgorot >= session.amountAgorot
+  );
+}
+
 function isStale(occurredAt: Date, existing: Subscription): boolean {
   return occurredAt.getTime() < existing.providerUpdatedAt.getTime();
-}
-
-function coversSession(payment: ProviderPayment, session: CheckoutSession): boolean {
-  return payment.currency === "ILS" && payment.amountAgorot >= session.amountAgorot;
-}
-
-// A renewal may keep its signup price (last paid) or move to another plan's price, never below both.
-function coversPlan(payment: ProviderPayment, plan: Plan, lastPaidAgorot: number | null): boolean {
-  const floor = Math.min(lastPaidAgorot ?? Infinity, planAmountAgorot(plan));
-  return payment.currency === plan.currency && payment.amountAgorot >= floor;
 }
 
 // A checkout session names the plan the user just chose; a renewal is for the plan its charged price names, if the provider says.

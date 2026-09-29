@@ -32,7 +32,9 @@ export default async function CheckoutReturnPage({
   if (!checkout) redirect(SETTINGS_PATH);
 
   const outcome: CheckoutOutcome =
-    checkout.status === "completed" ? { status: "completed", receipt: receiptFor(checkout, await billing.refreshStatus(user)) } : { status: checkout.status };
+    checkout.status === "completed"
+      ? { status: "completed", receipt: receiptFor(checkout, await billing.refreshStatus(user), await billing.chargedFor(checkout)) }
+      : { status: checkout.status };
 
   return (
     <div className="mx-auto max-w-lg px-4 pb-28 pt-12 sm:px-6 sm:pt-20">
@@ -41,15 +43,16 @@ export default async function CheckoutReturnPage({
   );
 }
 
-function receiptFor(checkout: CheckoutSession, status: BillingStatus): PaymentReceipt {
-  const paid = { label: "שולם", value: formatAgorot(checkout.amountAgorot) };
+// The charge may still be on its way when the snapshot settled the checkout; the row waits for it rather than guess.
+function receiptFor(checkout: CheckoutSession, status: BillingStatus, chargedAgorot: number | null): PaymentReceipt {
+  const paid = chargedAgorot === null ? [] : [{ label: "שולם", value: formatAgorot(chargedAgorot) }];
   if (checkout.kind === "topup") {
     return {
       title: "הקרדיטים נטענו",
       lead: "תודה! הקרדיטים כבר בחשבון ולא פגים.",
       rows: [
         { label: "נטענו", value: `${formatCredits(checkout.credits)} קרדיטים` },
-        paid,
+        ...paid,
         { label: "יתרה עכשיו", value: `${formatCredits(status.credits.available)} קרדיטים` },
       ],
     };
@@ -62,7 +65,7 @@ function receiptFor(checkout: CheckoutSession, status: BillingStatus): PaymentRe
     lead: `תודה! תוכנית ${planLabel(plan)} פעילה והקרדיטים כבר בחשבון.`,
     rows: [
       { label: "תוכנית", value: planLabel(plan) },
-      paid,
+      ...paid,
       { label: "קרדיטים", value: `${formatCredits(monthlyCredits(plan))} בחודש` },
       ...(nextChargeAt ? [{ label: "החיוב הבא", value: `${formatAgorot(planAmountAgorot(plan))} ב־${nextChargeAt}` }] : []),
     ],

@@ -276,6 +276,7 @@ export class PaddlePaymentProvider implements PaymentProvider {
       providerCustomerId: transaction.customer_id,
       planCode: this.planOf(transaction.items),
       payment: { providerPaymentId: transaction.id, amountAgorot: Number(total), currency: transaction.currency_code },
+      listAmountAgorot: listAmountOf(transaction.items),
       periodEnd: transaction.billing_period ? new Date(transaction.billing_period.ends_at) : null,
       reference: { checkoutSessionId: fromCheckout ? customDataSessionId(transaction.custom_data) : null },
     };
@@ -325,6 +326,12 @@ export class PaddlePaymentProvider implements PaymentProvider {
 function planTagOf(price: PaddlePrice | null | undefined): PlanCode | null {
   const tag = price?.custom_data?.[PRICE_PLAN_KEY];
   return typeof tag === "string" && isPlanCode(tag) ? tag : null;
+}
+
+// Our checkouts carry exactly one item, its quantity pinned to one; a discount lowers the total, never this price.
+function listAmountOf(items: readonly PaddleItem[]): number | null {
+  const amount = items.length === 1 ? items[0].price?.unit_price?.amount : undefined;
+  return amount === undefined ? null : Number(amount);
 }
 
 async function planChangeCall<T>(call: () => Promise<T>): Promise<T> {

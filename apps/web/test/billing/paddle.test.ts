@@ -76,7 +76,7 @@ function transaction(overrides: Record<string, unknown> = {}) {
     currency_code: "ILS",
     origin: "api",
     billing_period: { starts_at: "2026-09-25T10:00:00.000000Z", ends_at: "2026-10-25T10:00:00.000000Z" },
-    items: [{ price: { id: PRICE_IDS.get("standard") } }],
+    items: [{ price: { id: PRICE_IDS.get("standard"), unit_price: { amount: "20000" } } }],
     details: { totals: { total: "20000" } },
     ...overrides,
   };
@@ -207,6 +207,7 @@ test("the checkout charge becomes a payment tied to our session, with Paddle's p
       sub: parsed.providerSubscriptionId,
       plan: parsed.planCode,
       payment: parsed.payment,
+      list: parsed.listAmountAgorot,
       end: parsed.periodEnd?.toISOString(),
       session: parsed.reference.checkoutSessionId,
     },
@@ -215,22 +216,40 @@ test("the checkout charge becomes a payment tied to our session, with Paddle's p
       sub: "sub_1",
       plan: "standard",
       payment: { providerPaymentId: "txn_1", amountAgorot: 20000, currency: "ILS" },
+      list: 20000,
       end: "2026-10-25T10:00:00.000Z",
       session: SESSION_ID,
     },
   );
 });
 
+test("a coupon lowers the charged total, while the item keeps its price", async () => {
+  const { adapter } = provider();
+  const parsed = await adapter.parseWebhook(signed(event("transaction.completed", transaction({ details: { totals: { total: "16000" } } }))));
+  assert.equal(parsed.kind, "payment.succeeded");
+  if (parsed.kind !== "payment.succeeded") return;
+  assert.deepEqual({ paid: parsed.payment.amountAgorot, list: parsed.listAmountAgorot }, { paid: 16000, list: 20000 });
+});
+
+test("a charge that is not a single priced item reports no item price", async () => {
+  const { adapter } = provider();
+  const standard = { price: { id: PRICE_IDS.get("standard"), unit_price: { amount: "20000" } } };
+  for (const items of [[standard, standard], [{ price: { id: PRICE_IDS.get("standard") } }]]) {
+    const parsed = await adapter.parseWebhook(signed(event("transaction.completed", transaction({ items }))));
+    assert.equal(parsed.kind === "payment.succeeded" ? parsed.listAmountAgorot : "not a payment", null);
+  }
+});
+
 test("a paid top-up is a one-time charge tied to its session", async () => {
   const { adapter } = provider();
   const parsed = await adapter.parseWebhook(
-    signed(event("transaction.completed", transaction({ subscription_id: null, items: [{ price: { id: "pri_adhoc", custom_data: null } }], details: { totals: { total: "5000", grand_total: "0" } } }))),
+    signed(event("transaction.completed", transaction({ subscription_id: null, items: [{ price: { id: "pri_adhoc", custom_data: null, unit_price: { amount: "5000" } } }], details: { totals: { total: "5000", grand_total: "0" } } }))),
   );
   assert.equal(parsed.kind, "payment.succeeded");
   if (parsed.kind !== "payment.succeeded") return;
   assert.deepEqual(
-    { sub: parsed.providerSubscriptionId, plan: parsed.planCode, amount: parsed.payment.amountAgorot, session: parsed.reference.checkoutSessionId },
-    { sub: null, plan: null, amount: 5000, session: SESSION_ID },
+    { sub: parsed.providerSubscriptionId, plan: parsed.planCode, amount: parsed.payment.amountAgorot, list: parsed.listAmountAgorot, session: parsed.reference.checkoutSessionId },
+    { sub: null, plan: null, amount: 5000, list: 5000, session: SESSION_ID },
   );
 });
 

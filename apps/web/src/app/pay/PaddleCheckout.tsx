@@ -41,9 +41,7 @@ export function PaddleCheckout({
           displayMode: "overlay",
           variant: "one-page",
           successUrl: new URL(successPath, window.location.origin).toString(),
-          // A discount or a tax number can lower the total below the amount check.
           allowLogout: false,
-          showAddDiscounts: false,
           showAddTaxId: false,
         },
       },

@@ -108,8 +108,7 @@ export interface RenewalInput {
 export interface PaymentRepository {
   // False = this provider payment id was already recorded (redelivery).
   record(input: NewPayment): Promise<boolean>;
-  // What this standing order last charged in full for this plan; renewals are validated against it, not today's catalogue.
-  lastSucceededAmountAgorot(subscriptionId: string, planCode: string): Promise<number | null>;
+  chargedAgorot(provider: PaymentProviderName, providerPaymentId: string): Promise<number | null>;
   // Payment row + subscription write in one transaction, so a crash can never leave money without state.
   recordFirstPayment(input: FirstPaymentInput): Promise<PaymentApplication>;
   recordRenewal(input: RenewalInput): Promise<PaymentApplication>;

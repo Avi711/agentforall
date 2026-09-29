@@ -97,7 +97,7 @@ export const billingPayments = pgTable(
     provider: varchar("provider", { length: 32, enum: PAYMENT_PROVIDERS }).notNull(),
     providerPaymentId: varchar("provider_payment_id", { length: 128 }).notNull(),
     status: varchar("status", { length: 16, enum: PAYMENT_STATUSES }).notNull(),
-    // Set on a subscription's full charges only: a renewal is checked against the last full charge of the same plan.
+    // Set on a subscription's full charges only.
     planCode: varchar("plan_code", { length: 32 }),
     amountAgorot: integer("amount_agorot").notNull(),
     currency: varchar("currency", { length: 3 }).notNull(),
