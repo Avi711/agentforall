@@ -1,5 +1,6 @@
 import type { Readable } from "node:stream";
 import type { AgentRuntimeKind, FleetInstance, Instance } from "../../domain/types.js";
+import type { OwnerRoute } from "../../domain/owner.js";
 import type { ContainerCreateOptions, ArchiveStreamResult } from "../container-runtime.js";
 
 export type { AgentRuntimeKind };
@@ -45,6 +46,16 @@ export interface WhatsappLogoutResult {
   cleared: boolean;
 }
 
+export interface OwnerTurn {
+  // Scheduling a key again replaces that turn while it is still pending; a turn that already ran is gone.
+  key: string;
+  name: string;
+  at: Date;
+  message: string;
+}
+
+export type OwnerTurnsOutcome = "scheduled" | "unsupported";
+
 // One named invariant of a running bot; detail says what is wrong, null when it holds.
 export interface RuntimeCheck {
   name: string;
@@ -73,6 +84,8 @@ export interface AgentRuntimeAdapter {
   startWhatsappChannel(containerId: string): Promise<ChannelStartOutcome>;
   // Best-effort delivery through the linked channel; false when the runtime refused or cannot send.
   sendWhatsappMessage(containerId: string, to: string, text: string): Promise<boolean>;
+  // Throws ValidationError when the runtime refused a turn, UpstreamUnavailableError when it could not be asked.
+  scheduleOwnerTurns(containerId: string, route: OwnerRoute, turns: readonly OwnerTurn[]): Promise<OwnerTurnsOutcome>;
   exportState(containerId: string): Promise<ArchiveStreamResult>;
   restoreState(containerId: string, sourceTarGzip: Readable): Promise<void>;
   // The whole state tree as-is (session included), for a host-to-host move; the container may be stopped.

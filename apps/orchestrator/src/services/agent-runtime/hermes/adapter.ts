@@ -6,6 +6,7 @@ import type {
   AgentRuntimeAdapter,
   BrowserTabsClosed,
   ConfigApplyOutcome,
+  OwnerTurnsOutcome,
   RuntimeCheck,
   RuntimeConfigFiles,
   GatewayLiveness,
@@ -173,6 +174,10 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
 
   async sendWhatsappMessage(): Promise<boolean> {
     return false;
+  }
+
+  async scheduleOwnerTurns(): Promise<OwnerTurnsOutcome> {
+    return "unsupported";
   }
 
   // Hermes has no DM pairing store; owner claim is manual-entry only.

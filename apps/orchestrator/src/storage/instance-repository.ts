@@ -1,6 +1,6 @@
-import { eq, ne, inArray, isNotNull, isNull, lt, or, sql, asc, and } from "drizzle-orm";
+import { eq, ne, gte, inArray, isNotNull, isNull, lt, notExists, or, sql, asc, and } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { instances, instanceSettings } from "@agent-forall/db";
+import { instanceEvents, instances, instanceSettings } from "@agent-forall/db";
 import {
   encrypt,
   decrypt,
@@ -214,6 +214,25 @@ export class InstanceRepository {
   async findAllActive(): Promise<Instance[]> {
     const rows = await this.selectJoined()
       .where(and(this.ownedByHost(), this.isActive()))
+      .orderBy(asc(instances.createdAt), asc(instances.id));
+    return this.toDomainSafe(rows);
+  }
+
+  // Full rows for the few bots created since `since` that never recorded `eventType`; fleet-wide loops use findByStatuses.
+  async findCreatedSinceWithoutEvent(since: Date, statuses: InstanceStatus[], eventType: string): Promise<Instance[]> {
+    const recorded = this.db
+      .select({ id: instanceEvents.id })
+      .from(instanceEvents)
+      .where(and(eq(instanceEvents.instanceId, instances.id), eq(instanceEvents.eventType, eventType)));
+    const rows = await this.selectJoined()
+      .where(
+        and(
+          this.ownedByHost(),
+          inArray(instances.status, statuses),
+          gte(instances.createdAt, since),
+          notExists(recorded),
+        ),
+      )
       .orderBy(asc(instances.createdAt), asc(instances.id));
     return this.toDomainSafe(rows);
   }

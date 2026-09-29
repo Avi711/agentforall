@@ -218,6 +218,7 @@ const openclawAdapter: AgentRuntimeAdapter = {
   listWhatsappPairingRequests: async () => [],
   startWhatsappChannel: async () => ({ status: "started" as const }),
   sendWhatsappMessage: async () => true,
+  scheduleOwnerTurns: async () => "scheduled" as const,
   readOwnerIds: async () => [],
   closeBrowserTabs: async () => ({ closed: 0, failed: 0 }),
 };

@@ -1,10 +1,8 @@
 import type { FleetInstance } from "../../../domain/types.js";
 import type { ContainerRuntime } from "../../container-runtime.js";
 import type { GatewayLiveness, WhatsappLinkState } from "../types.js";
-import {
-  buildGatewayProbeCommand,
-  parseGatewayProbeOutput,
-} from "./gateway-probe.js";
+import { callOpenclawGateway } from "./gateway-call.js";
+import { CHANNELS_STATUS_CALL, whatsappLinkStateOf } from "./gateway-probe.js";
 import {
   OPENCLAW_HEALTH_PATH,
   OPENCLAW_STARTUP_PATH,
@@ -35,17 +33,8 @@ export async function probeOpenclawWhatsapp(
   const containerId = await resolveRunningContainerId(runtime, instance);
   if (!containerId) return "probe_failed";
 
-  try {
-    const result = await runtime.execCommandWithOutput(
-      containerId,
-      buildGatewayProbeCommand(OPENCLAW_WHATSAPP_CHANNEL, timeoutMs),
-      timeoutMs,
-    );
-    if (result.exitCode !== 0) return "probe_failed";
-    return parseGatewayProbeOutput(result.stdout);
-  } catch {
-    return "probe_failed";
-  }
+  const result = await callOpenclawGateway(runtime, containerId, CHANNELS_STATUS_CALL, timeoutMs);
+  return whatsappLinkStateOf(result, OPENCLAW_WHATSAPP_CHANNEL);
 }
 
 async function isOk(url: string, timeoutMs: number): Promise<boolean> {

@@ -5,7 +5,8 @@ import { Pool } from "pg";
 import { eq, inArray, sql } from "drizzle-orm";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { hosts, instances, user } from "@agent-forall/db";
+import { hosts, instanceEvents, instances, user } from "@agent-forall/db";
+import { EventRepository } from "../src/storage/event-repository.js";
 import { InstanceRepository } from "../src/storage/instance-repository.js";
 import { isUniqueViolation } from "../src/storage/pg-errors.js";
 
@@ -209,6 +210,31 @@ test("findMovedSourcesDue honors the cutoff; markMoveImported stamps the row; co
   assert.equal(cleared?.movedAt, null);
   assert.equal(cleared?.moveImportedAt, null);
   assert.deepEqual(await repo.findMovedSourcesDue(-60_000), []);
+});
+
+test("findCreatedSinceWithoutEvent returns new bots in the given statuses until they record the event; firstAt reads the earliest of several events", { skip }, async () => {
+  const repo = new InstanceRepository(db, KEY, new Set(["ir-a", "ir-b"]));
+  const events = new EventRepository(db);
+  const since = new Date(Date.now() - 60 * 60 * 1000);
+  const settled = "onboarding.checkins_settled";
+  const ids = async () => (await repo.findCreatedSinceWithoutEvent(since, ["running"], settled)).map((i) => i.id).sort();
+
+  assert.deepEqual(await ids(), [ON_A, ON_B]);
+  assert.deepEqual(await repo.findCreatedSinceWithoutEvent(new Date(Date.now() + 60_000), ["running"], settled), []);
+  assert.deepEqual(await repo.findCreatedSinceWithoutEvent(since, ["stopped"], settled), []);
+
+  await events.append(ON_A, "telegram.linked");
+  assert.deepEqual(await ids(), [ON_A, ON_B], "another event type does not count");
+  await events.append(ON_A, settled, { payload: { outcome: "scheduled" } });
+  assert.deepEqual(await ids(), [ON_B]);
+
+  await events.append(ON_A, "pair.authenticated");
+  const first = await events.firstAt(ON_A, ["pair.authenticated", "telegram.linked"]);
+  const linked = (await events.recent(ON_A)).find((e) => e.eventType === "telegram.linked");
+  assert.equal(first?.getTime(), linked?.createdAt.getTime());
+  assert.equal(await events.firstAt(ON_B, ["telegram.linked"]), null);
+
+  await db.delete(instanceEvents).where(inArray(instanceEvents.instanceId, [ON_A, ON_B]));
 });
 
 const SPLIT = "55555555-5555-4555-8555-555555555555";

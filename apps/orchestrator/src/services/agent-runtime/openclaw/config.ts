@@ -48,7 +48,9 @@ const CREDIT_HOOK_TIMEOUT_MS = 3000;
 const MEDIA_PLUGIN_ID = "agentforall-media";
 const MEDIA_ENV_KEY = "AGENTFORALL_MEDIA_API_KEY";
 const MEMORY_PLUGIN_ID = "memory-core";
-const MAIN_AGENT_ID = "main";
+export const MAIN_AGENT_ID = "main";
+const OWNER_IDENTITY = "owner";
+export const OWNER_SESSION_KEY = `agent:${MAIN_AGENT_ID}:direct:${OWNER_IDENTITY}`;
 export const MCP_RELAY_SERVER_NAME = "agentforall";
 export const WHATSAPP_CLOUD_PLUGIN_ID = "agentforall-whatsapp-cloud";
 export const WHATSAPP_CLOUD_CHANNEL_ID = "whatsapp_cloud";
@@ -431,7 +433,7 @@ function whatsappDmPolicy(
 function buildSession(owner: string[]): SessionConfig {
   return {
     dmScope: "per-peer",
-    ...(owner.length > 0 ? { identityLinks: { owner } } : {}),
+    ...(owner.length > 0 ? { identityLinks: { [OWNER_IDENTITY]: owner } } : {}),
   };
 }
 

@@ -63,6 +63,16 @@ export class EventRepository {
     });
   }
 
+  async firstAt(instanceId: string, eventTypes: readonly string[]): Promise<Date | null> {
+    const rows = await this.db
+      .select({ createdAt: instanceEvents.createdAt })
+      .from(instanceEvents)
+      .where(and(eq(instanceEvents.instanceId, instanceId), inArray(instanceEvents.eventType, [...eventTypes])))
+      .orderBy(asc(instanceEvents.createdAt), asc(instanceEvents.id))
+      .limit(1);
+    return rows[0]?.createdAt ?? null;
+  }
+
   async recent(instanceId: string, limit = 50): Promise<InstanceEvent[]> {
     const rows = await this.db
       .select()

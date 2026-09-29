@@ -1,5 +1,10 @@
 import { findTelegramChannel, findWhatsappChannel, findWhatsappCloudChannel } from "./channels.js";
-import type { ChannelConfig } from "./types.js";
+import type { ChannelConfig, Instance } from "./types.js";
+
+export interface OwnerRoute {
+  channel: "telegram" | "whatsapp";
+  to: string;
+}
 
 export interface OwnerIdentity {
   telegramUserId: string | null;
@@ -28,6 +33,18 @@ export function ownerPeerIds(identity: OwnerIdentity): string[] {
     if (identity.hasBusinessNumber) ids.push(`whatsapp_cloud:${identity.whatsappNumber}`);
   }
   return ids;
+}
+
+// The DM the bot itself can write to: its Telegram bot once linked, else its paired WhatsApp number.
+export function ownerRouteOf(inst: Pick<Instance, "config" | "pairingStatus">): OwnerRoute | null {
+  const identity = ownerIdentityOf(inst.config.channels);
+  if (identity.telegramUserId && findTelegramChannel(inst.config.channels)?.botToken) {
+    return { channel: "telegram", to: identity.telegramUserId };
+  }
+  if (identity.whatsappNumber && inst.pairingStatus === "paired") {
+    return { channel: "whatsapp", to: identity.whatsappNumber };
+  }
+  return null;
 }
 
 export function sameOwnerIds(a: readonly string[], b: readonly string[]): boolean {

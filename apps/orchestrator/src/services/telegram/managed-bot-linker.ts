@@ -41,6 +41,7 @@ const TRANSIENT_BACKOFF_BASE_MS = 1_000;
 const WELCOME_MAX_ATTEMPTS = 8;
 const WELCOME_RETRY_INTERVAL_MS = 15_000;
 const USERNAME_PREFIX_FALLBACK = "agentforall";
+export const TELEGRAM_LINKED_EVENT = "telegram.linked";
 const USERNAME_PREFIX_MAX = 12;
 const USERNAME_PREFIX_MIN = 3;
 
@@ -320,7 +321,7 @@ export class ManagedBotLinker {
       ...channels.filter((ch) => ch.type !== "telegram"),
       telegram,
     ]);
-    await this.eventLog.append(pending.instanceId, "telegram.linked", {
+    await this.eventLog.append(pending.instanceId, TELEGRAM_LINKED_EVENT, {
       actor: pending.userId,
       payload: { botUsername: update.bot.username, creatorId: update.user.id },
     });

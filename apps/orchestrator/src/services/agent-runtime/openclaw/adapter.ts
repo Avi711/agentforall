@@ -2,6 +2,7 @@ import type { Readable } from "node:stream";
 import type { ContainerArchiveFile } from "../../container-runtime.js";
 import type { ContainerRuntime } from "../../container-runtime.js";
 import type { FleetInstance, Instance } from "../../../domain/types.js";
+import type { OwnerRoute } from "../../../domain/owner.js";
 import { relayUrlsFor, type RelayUrls } from "../../relay.js";
 import {
   RuntimeImageMismatchError,
@@ -15,6 +16,8 @@ import type {
   ChannelStartOutcome,
   ConfigApplyOutcome,
   GatewayLiveness,
+  OwnerTurn,
+  OwnerTurnsOutcome,
   RuntimeCheck,
   RuntimeConfigFiles,
   WhatsappPairingRequest,
@@ -54,6 +57,7 @@ import {
 import { probeOpenclawGateway, probeOpenclawWhatsapp } from "./health.js";
 import { startOpenclawChannel } from "./channel-rpc.js";
 import { closeOpenclawBrowserTabs } from "./browser.js";
+import { scheduleOpenclawOwnerTurns } from "./owner-turns.js";
 import {
   injectOpenclawWhatsappSession,
   listOpenclawWhatsappPairingRequests,
@@ -317,6 +321,11 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   sendWhatsappMessage(containerId: string, to: string, text: string): Promise<boolean> {
     return sendOpenclawWhatsappMessage(this.runtime, containerId, to, text);
+  }
+
+  async scheduleOwnerTurns(containerId: string, route: OwnerRoute, turns: readonly OwnerTurn[]): Promise<OwnerTurnsOutcome> {
+    await scheduleOpenclawOwnerTurns(this.runtime, containerId, route, turns);
+    return "scheduled";
   }
 
   listWhatsappPairingRequests(containerId: string): Promise<WhatsappPairingRequest[]> {

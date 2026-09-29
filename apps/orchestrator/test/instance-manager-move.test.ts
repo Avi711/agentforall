@@ -686,6 +686,7 @@ class FakeRuntime {
       listWhatsappPairingRequests: async () => [],
       startWhatsappChannel: async () => ({ status: "started" as const }),
       sendWhatsappMessage: async () => true,
+      scheduleOwnerTurns: async () => "scheduled" as const,
       prepareState: async (inst) => {
         runtime.prepared.push(inst.id);
       },

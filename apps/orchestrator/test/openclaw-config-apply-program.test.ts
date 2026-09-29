@@ -1,69 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { mkdtemp, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { WebSocketServer, type WebSocket } from "ws";
 import { buildConfigApplyCommand } from "../src/services/agent-runtime/openclaw/config-rpc.js";
+import {
+  runInContainerProgram,
+  withGateway as withFakeGateway,
+  writeGatewayConfig,
+  type GatewayHandler,
+} from "./helpers/fake-gateway.js";
 
-const TOKEN = "gateway-token";
-
-type Handler = (method: string, params: Record<string, unknown>, socket: WebSocket) => unknown;
-
-// The program only ever talks to a real gateway, so the only honest way to pin its behaviour is
-// to run it against one. Scripted stand-ins cover the paths a live container cannot produce
-// on demand: rate limits, hangs, and a gateway that restarts mid-write.
 async function withGateway(
-  handler: Handler,
+  handler: GatewayHandler,
   run: (configPath: string) => Promise<{ stdout: string }>,
 ): Promise<{ stdout: string; requests: string[] }> {
-  const requests: string[] = [];
-  const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
-  server.on("connection", (socket) => {
-    socket.on("message", (data) => {
-      const frame = JSON.parse(String(data)) as {
-        id: string;
-        method: string;
-        params: Record<string, unknown>;
-      };
-      requests.push(frame.method);
-      let payload: unknown;
-      try {
-        payload = handler(frame.method, frame.params, socket);
-      } catch (err) {
-        const error = err as { message: string; code?: string };
-        socket.send(
-          JSON.stringify({
-            type: "res",
-            id: frame.id,
-            ok: false,
-            error: { code: error.code ?? "INVALID_REQUEST", message: error.message },
-          }),
-        );
-        return;
-      }
-      if (payload === undefined) return; // deliberate silence
-      socket.send(JSON.stringify({ type: "res", id: frame.id, ok: true, payload }));
-    });
-  });
-
-  await new Promise((resolve) => server.once("listening", resolve));
-  const { port } = server.address() as { port: number };
-
-  const dir = await mkdtemp(join(tmpdir(), "openclaw-apply-"));
-  const configPath = join(dir, "openclaw.json");
-  await writeFile(
-    configPath,
-    JSON.stringify({ gateway: { port, auth: { mode: "token", token: TOKEN } } }),
-  );
-
-  try {
-    const { stdout } = await run(configPath);
-    return { stdout, requests };
-  } finally {
-    server.close();
-  }
+  const { stdout, requests } = await withFakeGateway(handler, run);
+  return { stdout, requests: requests.map((request) => request.method) };
 }
 
 function runProgram(
@@ -72,23 +22,11 @@ function runProgram(
   timeoutMs = 6_000,
 ): Promise<{ stdout: string }> {
   const program = buildConfigApplyCommand(timeoutMs)[2] as string;
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ["-e", program, configPath, String(timeoutMs)]);
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString("utf8")));
-    child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString("utf8")));
-    child.on("error", reject);
-    child.on("close", () => {
-      assert.equal(stderr, "", `program wrote to stderr: ${stderr}`);
-      resolve({ stdout });
-    });
-    child.stdin.end(stdin);
-  });
+  return runInContainerProgram(program, [configPath, String(timeoutMs)], stdin);
 }
 
 const config = JSON.stringify({ channels: { telegram: { enabled: true } } });
-const accept: Handler = (method) => {
+const accept: GatewayHandler = (method) => {
   if (method === "connect") return {};
   if (method === "config.get") return { hash: "hash-1" };
   return {};
@@ -252,10 +190,8 @@ test("input that is not a config never reaches the gateway", async () => {
 });
 
 test("nothing listening on the gateway port is a transport failure at connect", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "openclaw-apply-"));
-  const configPath = join(dir, "openclaw.json");
   // Port 1 is reserved and never has a listener.
-  await writeFile(configPath, JSON.stringify({ gateway: { port: 1, auth: { token: TOKEN } } }));
+  const configPath = await writeGatewayConfig(1);
 
   const { stdout } = await runProgram(configPath, config, 3_000);
 

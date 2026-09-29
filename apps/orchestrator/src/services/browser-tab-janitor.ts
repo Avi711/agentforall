@@ -1,6 +1,6 @@
 import type { FastifyBaseLogger } from "fastify";
 import type { FleetInstance } from "../domain/types.js";
-import { TENANT_TIMEZONE } from "../domain/tenant.js";
+import { tenantClockOf } from "../domain/tenant.js";
 import type { BrowserTabsClosed } from "./agent-runtime/types.js";
 import { BackgroundTasks, type InstanceEventLog } from "./background-tasks.js";
 import { mapWithConcurrency } from "./concurrency.js";
@@ -17,19 +17,9 @@ interface MemoryEpisode {
   done: boolean;
 }
 
-const localClock = new Intl.DateTimeFormat("en-CA", {
-  timeZone: TENANT_TIMEZONE,
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  hourCycle: "h23",
-});
-
 export function nightlyRunDate(at: Date): string | null {
-  const parts = Object.fromEntries(localClock.formatToParts(at).map((part) => [part.type, part.value]));
-  if (Number(parts.hour) !== NIGHTLY_HOUR) return null;
-  return `${parts.year}-${parts.month}-${parts.day}`;
+  const clock = tenantClockOf(at);
+  return clock.hour === NIGHTLY_HOUR ? clock.date : null;
 }
 
 export class BrowserTabJanitor implements MemoryHighObserver {

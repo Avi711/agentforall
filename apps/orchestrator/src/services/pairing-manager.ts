@@ -24,7 +24,7 @@ const LINK_PROBE_TIMEOUT_MS = 5_000;
 const HELLO_ATTEMPTS = 3;
 const HELLO_RETRY_MS = 3_000;
 const READY_EVENT = "pair.ready";
-const AUTHENTICATED_EVENT = "pair.authenticated";
+export const PAIR_AUTHENTICATED_EVENT = "pair.authenticated";
 
 export function helloMessage(displayName: string): string {
   return `היי, זה ${displayName} 👋 החיבור הצליח. אפשר לכתוב לי כאן כל דבר.`;
@@ -252,7 +252,7 @@ export class PairingManager {
       return;
     }
 
-    await this.eventLog.append(instance.id, AUTHENTICATED_EVENT, {
+    await this.eventLog.append(instance.id, PAIR_AUTHENTICATED_EVENT, {
       payload: { accountId: accountId ?? null },
     });
     await this.teardownSidecar(instance.id, "completed");
@@ -268,7 +268,7 @@ export class PairingManager {
     const events = await this.eventLog.recent(instanceId, 30);
     for (const event of events) {
       if (event.eventType === READY_EVENT) return true;
-      if (event.eventType === AUTHENTICATED_EVENT) return false;
+      if (event.eventType === PAIR_AUTHENTICATED_EVENT) return false;
     }
     return false;
   }

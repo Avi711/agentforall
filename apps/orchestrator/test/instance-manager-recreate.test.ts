@@ -562,6 +562,7 @@ function adapter(options: { staleImage?: boolean; staleContainers?: string[] } =
     listWhatsappPairingRequests: async () => [],
     startWhatsappChannel: async () => ({ status: "started" as const }),
     sendWhatsappMessage: async () => true,
+    scheduleOwnerTurns: async () => "scheduled" as const,
     prepareState: async () => {},
     seedWorkspace: async () => {},
     isOnCurrentImage: async (containerId) => !stale.has(containerId),

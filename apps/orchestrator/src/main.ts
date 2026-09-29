@@ -42,6 +42,7 @@ import { AutoRestarter } from "./services/auto-restarter.js";
 import { MemoryWatch } from "./services/memory-watch.js";
 import { BrowserTabJanitor } from "./services/browser-tab-janitor.js";
 import { CapacityWatch } from "./services/capacity-watch.js";
+import { OnboardingCheckins } from "./services/onboarding-checkins.js";
 import { DEFAULT_RESOURCE_LIMITS } from "./domain/types.js";
 import { Reconciler } from "./services/reconciler.js";
 import { EventRepository } from "./storage/event-repository.js";
@@ -485,6 +486,10 @@ async function main(): Promise<void> {
   healthMonitor.start();
   memoryWatch.start();
   browserTabJanitor.start();
+  const onboardingCheckins = config.onboardingCheckinsEnabled
+    ? new OnboardingCheckins(repo, eventLog, hosts, log)
+    : null;
+  onboardingCheckins?.start();
 
   // Skip tick if a run is in flight, so overlapping intervals don't race on the same rows.
   let reconciling = false;
@@ -530,6 +535,7 @@ async function main(): Promise<void> {
     await Promise.all([
       autoRestarter?.settle(config.shutdownTimeoutMs / 2),
       browserTabJanitor.stop(config.shutdownTimeoutMs / 2),
+      onboardingCheckins?.stop(config.shutdownTimeoutMs / 2),
       capacityWatch.settle(config.shutdownTimeoutMs / 2),
     ]);
 
