@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { createAuthClient } from "better-auth/react";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 import { authErrorMessage } from "./error-messages";
-import { googleSignInBlocked } from "./in-app-browser";
+import { browserHandoff, type BrowserHandoff } from "./in-app-browser";
 
 export const authClient = createAuthClient({
   baseURL: process.env.NEXT_PUBLIC_APP_URL ?? "",
@@ -31,13 +31,14 @@ export function loginPath(redirectTo: string): string {
 export function useGoogleSignIn() {
   const [redirecting, setRedirecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [openInBrowserUrl, setOpenInBrowserUrl] = useState<string | null>(null);
+  const [handoff, setHandoff] = useState<BrowserHandoff | null>(null);
   useOnBfcacheRestore(() => setRedirecting(false));
 
   async function start(callbackURL: string) {
     setError(null);
-    if (googleSignInBlocked(navigator.userAgent)) {
-      setOpenInBrowserUrl(new URL(loginPath(callbackURL), window.location.origin).href);
+    const blocked = browserHandoff(navigator.userAgent, new URL(loginPath(callbackURL), window.location.origin).href);
+    if (blocked) {
+      setHandoff(blocked);
       return;
     }
     setRedirecting(true);
@@ -55,8 +56,8 @@ export function useGoogleSignIn() {
 
   function reset() {
     setError(null);
-    setOpenInBrowserUrl(null);
+    setHandoff(null);
   }
 
-  return { redirecting, error, openInBrowserUrl, start, reset };
+  return { redirecting, error, handoff, start, reset };
 }

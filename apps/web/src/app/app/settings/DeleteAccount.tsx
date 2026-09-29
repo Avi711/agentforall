@@ -162,7 +162,7 @@ export function DeleteAccount({ subscribed, credits, topupCredits }: { subscribe
             <li className="font-semibold">אי אפשר לבטל את המחיקה.</li>
           </ul>
           {confirmation}
-          {google.openInBrowserUrl ? <InAppBrowserNotice url={google.openInBrowserUrl} /> : null}
+          {google.handoff ? <InAppBrowserNotice handoff={google.handoff} /> : null}
           <ErrorAlert>{error ?? google.error}</ErrorAlert>
         </div>
       )}

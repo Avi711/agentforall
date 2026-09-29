@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { googleSignInBlocked } from "../../src/lib/auth/in-app-browser";
+import { browserHandoff } from "../../src/lib/auth/in-app-browser";
+
+const LOGIN = "https://agentforall.co.il/login?redirect=%2Fapp";
 
 const REFUSED_BY_GOOGLE = {
   instagramIos:
@@ -46,14 +48,34 @@ const KEEP_GOOGLE_SIGN_IN = {
     "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.7390.124 Mobile Safari/537.36 [WA4A/2.25.32.75;]",
 };
 
-test("apps whose browser Google refuses are caught", () => {
+test("apps whose browser Google refuses get a handoff", () => {
   for (const [name, ua] of Object.entries(REFUSED_BY_GOOGLE)) {
-    assert.equal(googleSignInBlocked(ua), true, name);
+    assert.notEqual(browserHandoff(ua, LOGIN), null, name);
   }
 });
 
 test("browsers and apps without a documented refusal keep the Google sign-in", () => {
   for (const [name, ua] of Object.entries(KEEP_GOOGLE_SIGN_IN)) {
-    assert.equal(googleSignInBlocked(ua), false, name);
+    assert.equal(browserHandoff(ua, LOGIN), null, name);
+  }
+});
+
+test("Instagram on iPhone hands off through its own external-browser link", () => {
+  assert.equal(
+    browserHandoff(REFUSED_BY_GOOGLE.instagramIos, LOGIN)?.href,
+    "instagram://extbrowser/?url=https%3A%2F%2Fagentforall.co.il%2Flogin%3Fredirect%3D%252Fapp",
+  );
+});
+
+test("Android apps hand off through an intent that falls back to the same page", () => {
+  const expected =
+    "intent://agentforall.co.il/login?redirect=%2Fapp#Intent;scheme=https;action=android.intent.action.VIEW;S.browser_fallback_url=https%3A%2F%2Fagentforall.co.il%2Flogin%3Fredirect%3D%252Fapp;end";
+  assert.equal(browserHandoff(REFUSED_BY_GOOGLE.instagramAndroid, LOGIN)?.href, expected);
+  assert.equal(browserHandoff(REFUSED_BY_GOOGLE.facebookAndroid, LOGIN)?.href, expected);
+});
+
+test("iPhone apps without a known handoff show only the menu steps", () => {
+  for (const name of ["facebookIos", "facebookIosLegacy", "tiktokIos", "linkedinIos"] as const) {
+    assert.deepEqual(browserHandoff(REFUSED_BY_GOOGLE[name], LOGIN), { url: LOGIN, href: null }, name);
   }
 });

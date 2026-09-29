@@ -223,7 +223,7 @@ export function LoginForm({
         <GoogleMark />
         <span>המשך עם Google</span>
       </button>
-      {google.openInBrowserUrl ? <InAppBrowserNotice url={google.openInBrowserUrl} /> : null}
+      {google.handoff ? <InAppBrowserNotice handoff={google.handoff} /> : null}
       <ErrorAlert>{google.error}</ErrorAlert>
       <div className="flex items-center gap-3 text-xs text-espresso-light" aria-hidden="true">
         <span className="h-px flex-1 bg-sand-light" />
