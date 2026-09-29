@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { createAuthClient } from "better-auth/react";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 import { authErrorMessage } from "./error-messages";
+import { googleSignInBlocked } from "./in-app-browser";
 
 export const authClient = createAuthClient({
   baseURL: process.env.NEXT_PUBLIC_APP_URL ?? "",
@@ -23,14 +24,23 @@ export function useOnBfcacheRestore(callback: () => void) {
   }, []);
 }
 
+export function loginPath(redirectTo: string): string {
+  return `/login?redirect=${encodeURIComponent(redirectTo)}`;
+}
+
 export function useGoogleSignIn() {
   const [redirecting, setRedirecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [openInBrowserUrl, setOpenInBrowserUrl] = useState<string | null>(null);
   useOnBfcacheRestore(() => setRedirecting(false));
 
   async function start(callbackURL: string) {
-    setRedirecting(true);
     setError(null);
+    if (googleSignInBlocked(navigator.userAgent)) {
+      setOpenInBrowserUrl(new URL(loginPath(callbackURL), window.location.origin).href);
+      return;
+    }
+    setRedirecting(true);
     try {
       const { error: signInError } = await signIn.social({ provider: "google", callbackURL });
       if (signInError) {
@@ -43,5 +53,10 @@ export function useGoogleSignIn() {
     }
   }
 
-  return { redirecting, error, start };
+  function reset() {
+    setError(null);
+    setOpenInBrowserUrl(null);
+  }
+
+  return { redirecting, error, openInBrowserUrl, start, reset };
 }

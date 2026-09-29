@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { authClient, useGoogleSignIn, useOnBfcacheRestore } from "@/lib/auth/client";
+import { authClient, loginPath, useGoogleSignIn, useOnBfcacheRestore } from "@/lib/auth/client";
 import { authErrorMessage, type AuthFailure } from "@/lib/auth/error-messages";
 import { useTurnstile } from "@/lib/auth/turnstile";
 import { MAX_NAME_LENGTH, MIN_PASSWORD_LENGTH } from "@/lib/auth/policy";
 import { BusyLabel } from "@/app/app/Marks";
 import { CaptchaSlot, Field, PasswordInput } from "@/components/auth/AuthFields";
+import { InAppBrowserNotice } from "@/components/auth/InAppBrowserNotice";
 import { ErrorAlert } from "@/components/ErrorAlert";
 import { AUTH_INPUT, AUTH_LINK, AUTH_PRIMARY, AUTH_SECONDARY, NEW_PASSWORD_HINT } from "@/components/auth/styles";
 import type { FormMode } from "./modes";
@@ -65,7 +66,7 @@ export function LoginForm({
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   // Lands on /login once confirmed, which forwards the new session to where the user was going.
-  const callbackURL = `/login?redirect=${encodeURIComponent(redirectTo)}`;
+  const callbackURL = loginPath(redirectTo);
   const sent = isSentMode(mode);
 
   useEffect(() => {
@@ -222,6 +223,7 @@ export function LoginForm({
         <GoogleMark />
         <span>המשך עם Google</span>
       </button>
+      {google.openInBrowserUrl ? <InAppBrowserNotice url={google.openInBrowserUrl} /> : null}
       <ErrorAlert>{google.error}</ErrorAlert>
       <div className="flex items-center gap-3 text-xs text-espresso-light" aria-hidden="true">
         <span className="h-px flex-1 bg-sand-light" />

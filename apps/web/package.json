@@ -24,6 +24,7 @@
     "drizzle-orm": "^0.45.0",
     "embla-carousel-react": "^8.6.0",
     "gsap": "^3.12.5",
+    "inapp-spy": "^5.0.10",
     "next": "^16.2.6",
     "pg": "^8.13.1",
     "react": "^19.0.0",
