@@ -181,6 +181,7 @@ const AppConfigSchema = z.object({
   autoRestartWindowMs: z.coerce.number().int().min(600_000).default(3_600_000),
   memoryWatchIntervalMs: z.coerce.number().int().min(60_000).default(300_000),
   memoryWatchWarnFraction: z.coerce.number().min(0.1).max(1).default(0.8),
+  capacityWarnBots: z.coerce.number().int().min(0).default(10),
   // Placement: a new bot's limit counts as limit ÷ overcommit; the reserve is RAM kept for the OS and the orchestrator.
   placementOvercommit: z.coerce.number().min(1).default(1),
   hostReserveMb: z.coerce.number().int().min(0).default(2048),
@@ -371,6 +372,7 @@ export function loadConfig(): AppConfig {
     autoRestartWindowMs: process.env.AUTO_RESTART_WINDOW_MS,
     memoryWatchIntervalMs: process.env.MEMORY_WATCH_INTERVAL_MS,
     memoryWatchWarnFraction: process.env.MEMORY_WATCH_WARN_FRACTION,
+    capacityWarnBots: process.env.CAPACITY_WARN_BOTS,
     placementOvercommit: process.env.PLACEMENT_OVERCOMMIT,
     hostReserveMb: process.env.HOST_RESERVE_MB,
     shutdownTimeoutMs: process.env.SHUTDOWN_TIMEOUT_MS,

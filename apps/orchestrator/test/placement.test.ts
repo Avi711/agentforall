@@ -156,3 +156,28 @@ test("a released reservation stops counting at once", async () => {
   placement.release("failed");
   assert.equal(await placement.choose(4096, "next"), "a");
 });
+
+test("capacity counts how many more default bots each eligible host takes, placements in flight included", async () => {
+  const { placement } = harness(
+    { a: { usedMb: 20_000 }, draining: { status: "draining" }, down: { reachable: false }, unknown: { capacityMb: null } },
+    { overcommit: 3, reserveMb: 2048 },
+  );
+  const before = await placement.capacity(3072);
+  assert.equal(before.room, 6);
+  assert.deepEqual(
+    before.hosts.map((h) => [h.hostId, h.room, h.skipped]),
+    [
+      ["a", 6, null],
+      ["draining", 0, "draining"],
+      ["down", 0, "unreachable"],
+      ["unknown", 0, "capacity unknown"],
+    ],
+  );
+  await placement.choose(3072, "placed");
+  assert.equal((await placement.capacity(3072)).room, 5);
+});
+
+test("a full host has no room, never a negative count", async () => {
+  const { placement } = harness({ a: { usedMb: 30_000 } });
+  assert.equal((await placement.capacity(3072)).room, 0);
+});

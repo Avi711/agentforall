@@ -22,6 +22,18 @@ interface Reservation {
   atMs: number;
 }
 
+export interface HostRoom {
+  hostId: string;
+  room: number;
+  headroomMb: number | null;
+  skipped: string | null;
+}
+
+export interface FleetCapacity {
+  room: number;
+  hosts: HostRoom[];
+}
+
 interface Verdict {
   hostId: string;
   headroomMb: number | null;
@@ -56,6 +68,17 @@ export class Placement {
     this.reservations.set(instanceId, { hostId: best.hostId, mb: this.counted(memoryMb), atMs: this.now() });
     this.logger.info({ hostId: best.hostId, headroomMb: best.headroomMb, memoryMb }, "bot placed");
     return best.hostId;
+  }
+
+  async capacity(memoryMb: number): Promise<FleetCapacity> {
+    const hosts = this.hosts.all();
+    const reachable = await Promise.all(hosts.map((host) => (this.eligible(host) ? host.gate.check() : false)));
+    const rooms = hosts.map((host, i): HostRoom => {
+      const free = host.status === "active" ? this.verdict(host, 0, reachable[i] === true) : this.skip(host, host.status);
+      const room = free.headroomMb === null ? 0 : Math.max(0, Math.floor(free.headroomMb / this.counted(memoryMb)));
+      return { hostId: host.hostId, room, headroomMb: free.headroomMb, skipped: free.skipped };
+    });
+    return { room: rooms.reduce((sum, host) => sum + host.room, 0), hosts: rooms };
   }
 
   release(instanceId: string): void {

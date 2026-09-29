@@ -27,7 +27,7 @@ function recordingLogger(lines: Line[]): FastifyBaseLogger {
 
 function harness(
   usage: Record<string, ContainerMemory | null | Error>,
-  options: { repoError?: Error; reachable?: () => boolean; observer?: MemoryHighObserver } = {},
+  options: { repoError?: Error; reachable?: () => boolean; observer?: MemoryHighObserver; onSwept?: () => void } = {},
 ) {
   const lines: Line[] = [];
   const instances: Instance[] = Object.keys(usage).map((id) =>
@@ -53,6 +53,7 @@ function harness(
     recordingLogger(lines),
     { intervalMs: 60_000, warnFraction: 0.8 },
     options.observer ?? null,
+    options.onSwept ?? null,
   );
   const of = (msg: string) => lines.filter((l) => l.msg === msg);
   return { watch, lines, of, usage, instances };
@@ -329,4 +330,28 @@ test("the observer hears the end of an episode: on recovery and when a high bot 
   h.instances.splice(h.instances.findIndex((inst) => inst.id === "b"), 1);
   await h.watch.sweep();
   assert.deepEqual(normal.sort(), ["a", "b"]);
+});
+
+test("the sweep listener runs after every completed sweep, not after a failed one, and cannot break the sweep", async () => {
+  let swept = 0;
+  const h = harness({ a: { usedBytes: 1 * GB, limitBytes: 3 * GB } }, { onSwept: () => void (swept += 1) });
+  await h.watch.sweep();
+  await h.watch.sweep();
+  assert.equal(swept, 2);
+
+  const failing = harness({ a: { usedBytes: 1 * GB, limitBytes: 3 * GB } }, { repoError: new Error("db away"), onSwept: () => void (swept += 1) });
+  await failing.watch.sweep();
+  assert.equal(swept, 2);
+
+  const throwing = harness(
+    { a: { usedBytes: 1 * GB, limitBytes: 3 * GB } },
+    {
+      onSwept: () => {
+        throw new Error("listener broke");
+      },
+    },
+  );
+  await throwing.watch.sweep();
+  assert.equal(throwing.watch.usedMb("host"), 1024);
+  assert.equal(throwing.of("sweep listener failed").length, 1);
 });

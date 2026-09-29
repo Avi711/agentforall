@@ -982,3 +982,6 @@ End of handoff.
 - Add a worker: runbook in `docs/hosting-plan-2026-09.md`. Measured on `worker-3`: ~4 min. Rerun the orchestrator startup right after the apply; before that the worker's registration is rejected (worker list is read at boot only).
 - Port allocator race fixed (4 of 10 simultaneous creates failed); 0 conflicts in 74 burst creates since. `PLACEMENT_OVERCOMMIT=3` (new bot peaks ~1 GB at boot).
 - Test method: temporary users `loadtest-NN` inserted in `user`, bots created through the orchestrator API as them (service token + `x-act-as-user`), then deleted the same way, then the users. All removed 2026-09-29: 0 test bots, users, containers, volumes or gateway keys left; `worker-3` VM, disk, address, secrets and host row deleted.
+
+## Fleet capacity warning (DEPLOYED 2026-09-29 17:21 UTC, orchestrator `38e1d7e5`)
+- After each memory sweep: warn "fleet capacity low" when fewer than `CAPACITY_WARN_BOTS` (10) default bots fit across active, reachable workers; repeats every 6 h, "restored" at 15+. Own alert policy `agent-forall fleet capacity low`; "no host has room for a new bot" (a refused sign-up) joins the shared orchestrator alert. When it fires: add a worker (about 4 min, runbook in the hosting plan).

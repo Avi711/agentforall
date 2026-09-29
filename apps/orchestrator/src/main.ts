@@ -41,6 +41,8 @@ import { HealthMonitor } from "./services/health-monitor.js";
 import { AutoRestarter } from "./services/auto-restarter.js";
 import { MemoryWatch } from "./services/memory-watch.js";
 import { BrowserTabJanitor } from "./services/browser-tab-janitor.js";
+import { CapacityWatch } from "./services/capacity-watch.js";
+import { DEFAULT_RESOURCE_LIMITS } from "./domain/types.js";
 import { Reconciler } from "./services/reconciler.js";
 import { EventRepository } from "./storage/event-repository.js";
 import { HealthService } from "./services/health-service.js";
@@ -218,6 +220,7 @@ async function main(): Promise<void> {
     log,
     { intervalMs: config.memoryWatchIntervalMs, warnFraction: config.memoryWatchWarnFraction },
     browserTabJanitor,
+    () => capacityWatch.swept(),
   );
   const placement = new Placement(
     hosts,
@@ -225,6 +228,10 @@ async function main(): Promise<void> {
     { overcommit: config.placementOvercommit, reserveMb: config.hostReserveMb },
     log,
   );
+  const capacityWatch = new CapacityWatch(placement, log, {
+    warnBots: config.capacityWarnBots,
+    memoryMb: DEFAULT_RESOURCE_LIMITS.memoryMb,
+  });
 
   if (config.pullImagesOnStartup) {
     await tryPullImage(runtime, runtimeAdapters.get(config.agentRuntimeKind).image, log);
@@ -523,6 +530,7 @@ async function main(): Promise<void> {
     await Promise.all([
       autoRestarter?.settle(config.shutdownTimeoutMs / 2),
       browserTabJanitor.stop(config.shutdownTimeoutMs / 2),
+      capacityWatch.settle(config.shutdownTimeoutMs / 2),
     ]);
 
     try {

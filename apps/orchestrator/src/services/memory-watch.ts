@@ -36,6 +36,7 @@ export class MemoryWatch implements HostUsage {
     private readonly logger: FastifyBaseLogger,
     private readonly config: MemoryWatchConfig,
     private readonly highObserver: MemoryHighObserver | null = null,
+    private readonly onSwept: (() => void) | null = null,
   ) {}
 
   start(): void {
@@ -97,6 +98,12 @@ export class MemoryWatch implements HostUsage {
       }
     } catch (err) {
       this.logger.error({ err }, "memory watch sweep failed");
+      return;
+    }
+    try {
+      this.onSwept?.();
+    } catch (err) {
+      this.logger.error({ err }, "sweep listener failed");
     }
   }
 

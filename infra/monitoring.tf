@@ -107,15 +107,37 @@ resource "google_monitoring_alert_policy" "orchestrator_errors" {
   notification_channels = local.alert_channels
 
   conditions {
-    display_name = "Restart budget exhausted, fleet liveness failure, host unreachable, or bot memory high"
+    display_name = "Restart budget exhausted, liveness failure, host unreachable, bot memory high, or no room"
     condition_matched_log {
-      filter = "resource.type=\"gce_instance\" AND logName=\"projects/${var.project_id}/logs/gcplogs-docker-driver\" AND jsonPayload.container.name=\"/orchestrator\" AND (jsonPayload.message:\"auto restart budget exhausted\" OR jsonPayload.message:\"most bots failed liveness at once\" OR jsonPayload.message:\"host unreachable\" OR jsonPayload.message:\"reconciliation failed\" OR jsonPayload.message:\"bot memory high\")"
+      filter = "resource.type=\"gce_instance\" AND logName=\"projects/${var.project_id}/logs/gcplogs-docker-driver\" AND jsonPayload.container.name=\"/orchestrator\" AND (jsonPayload.message:\"auto restart budget exhausted\" OR jsonPayload.message:\"most bots failed liveness at once\" OR jsonPayload.message:\"host unreachable\" OR jsonPayload.message:\"reconciliation failed\" OR jsonPayload.message:\"bot memory high\" OR jsonPayload.message:\"no host has room for a new bot\")"
     }
   }
 
   alert_strategy {
     notification_rate_limit {
       period = "1800s"
+    }
+    auto_close = "3600s"
+  }
+}
+
+# Its own policy, so the shared one's one-hour auto-close cannot swallow it; the orchestrator itself repeats it every 6 hours.
+resource "google_monitoring_alert_policy" "fleet_capacity_low" {
+  display_name          = "agent-forall fleet capacity low"
+  combiner              = "OR"
+  enabled               = true
+  notification_channels = local.alert_channels
+
+  conditions {
+    display_name = "Fewer than CAPACITY_WARN_BOTS new bots fit on the workers"
+    condition_matched_log {
+      filter = "resource.type=\"gce_instance\" AND logName=\"projects/${var.project_id}/logs/gcplogs-docker-driver\" AND jsonPayload.container.name=\"/orchestrator\" AND jsonPayload.message:\"fleet capacity low\""
+    }
+  }
+
+  alert_strategy {
+    notification_rate_limit {
+      period = "3600s"
     }
     auto_close = "3600s"
   }
