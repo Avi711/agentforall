@@ -1,5 +1,5 @@
 import type { MDXComponents } from "mdx/types";
-import Link from "next/link";
+import { PendingLink } from "@/app/app/Pending";
 import { Figure } from "@/components/blog/Figure";
 import { KeyPoint, KeyPointItem, SectionTitle, Tip } from "@/components/blog/GuideBlocks";
 import { Platform, PlatformPicker } from "@/components/blog/PlatformGuide";
@@ -18,7 +18,7 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
     ),
     a: ({ href = "", ...props }) =>
       href.startsWith("/") ? (
-        <Link href={href} className="font-semibold text-terra hover:underline" {...props} />
+        <PendingLink href={href} className="font-semibold text-terra hover:underline" {...props} />
       ) : (
         <a href={href} target="_blank" rel="noopener noreferrer" className="font-semibold text-terra hover:underline" {...props} />
       ),

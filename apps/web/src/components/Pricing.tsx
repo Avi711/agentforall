@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { PendingLink } from "@/app/app/Pending";
 import { formatCredits } from "@/lib/billing/format";
 import { TRIAL_CREDITS, TRIAL_DAYS } from "@/lib/billing/pricing";
 import { BusinessOffer } from "./pricing/BusinessOffer";
@@ -24,9 +24,9 @@ export function Pricing({ ctaHref = "/app" }: { ctaHref?: string }) {
         <PlanGrid
           align="center"
           renderAction={(_plan, { className }) => (
-            <Link href={ctaHref} className={className}>
+            <PendingLink href={ctaHref} className={className}>
               מתחילים בחינם
-            </Link>
+            </PendingLink>
           )}
         />
 

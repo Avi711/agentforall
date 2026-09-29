@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { PendingLink } from "@/app/app/Pending";
 
 const links = [
   { label: "איך זה עובד", href: "/#how-it-works" },
@@ -25,14 +26,13 @@ export function Navbar() {
 
   return (
     <nav
-      data-site-nav
       className={`fixed top-0 z-50 w-full transition-all duration-300 ${
         scrolled
           ? "border-b border-sand/40 bg-cream/90 shadow-sm backdrop-blur-xl"
           : "bg-transparent"
       }`}
     >
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4 sm:px-8">
+      <div data-site-nav className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4 sm:px-8">
         <Link href="/" className="text-xl text-espresso" style={{ letterSpacing: '-0.02em' }}>
           <span className="font-extrabold">Agent</span><span className="font-normal text-espresso-light">for</span><span className="font-extrabold text-terra">All</span>
         </Link>
@@ -47,12 +47,12 @@ export function Navbar() {
               {link.label}
             </a>
           ))}
-          <Link
+          <PendingLink
             href={CTA.href}
             className="rounded-full bg-espresso px-6 py-2.5 text-sm font-bold text-cream transition-all hover:bg-terra hover:shadow-lg hover:shadow-terra/20"
           >
             {CTA.label}
-          </Link>
+          </PendingLink>
         </div>
 
         <button
@@ -82,13 +82,12 @@ export function Navbar() {
               {link.label}
             </a>
           ))}
-          <Link
+          <PendingLink
             href={CTA.href}
-            onClick={() => setMenuOpen(false)}
             className="mt-4 block rounded-full bg-terra px-6 py-3 text-center text-base font-bold text-white"
           >
             {CTA.label}
-          </Link>
+          </PendingLink>
         </div>
       )}
     </nav>

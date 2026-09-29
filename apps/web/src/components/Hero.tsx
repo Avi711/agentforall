@@ -1,3 +1,4 @@
+import { PendingLink } from "@/app/app/Pending";
 import { InteractiveChat } from "./InteractiveChat";
 import { WhatsAppIcon } from "./WhatsAppIcon";
 
@@ -27,13 +28,13 @@ export function Hero() {
             </p>
 
             <div className="hero-fade mt-10 flex flex-col items-center gap-4 sm:flex-row lg:justify-start" style={{ animationDelay: "0.7s" }}>
-              <a
+              <PendingLink
                 href="/app"
                 className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-terra px-8 py-4 text-lg font-bold text-white shadow-lg shadow-terra/25 transition-all hover:bg-espresso hover:shadow-xl hover:shadow-espresso/20 sm:w-auto"
               >
                 <WhatsAppIcon className="h-5 w-5" />
                 אני רוצה סוכן
-              </a>
+              </PendingLink>
               <a
                 href="#how-it-works"
                 className="group inline-flex items-center gap-2 text-base font-semibold text-espresso-light transition hover:text-terra"

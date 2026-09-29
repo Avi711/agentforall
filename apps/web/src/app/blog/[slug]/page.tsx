@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Footer } from "@/components/Footer";
 import { Navbar } from "@/components/Navbar";
+import { PendingLink } from "@/app/app/Pending";
 import { GuideHero } from "@/components/blog/GuideHero";
 import { GuideOverview } from "@/components/blog/GuideOverview";
 import { Step } from "@/components/blog/GuideBlocks";
@@ -152,12 +153,12 @@ function PostEnd({ meta }: { meta: PostMeta }) {
       <div className="mt-14 rounded-[24px] bg-terra-pale/60 px-6 py-8 text-center sm:px-10">
         <p className="font-display text-2xl text-espresso">רוצים סוכן כזה לעצמכם?</p>
         <p className="mt-2 text-espresso-light">7 ימי ניסיון, בלי כרטיס אשראי.</p>
-        <Link
+        <PendingLink
           href="/app"
           className="mt-5 inline-flex rounded-full bg-terra px-7 py-3 text-base font-bold text-white transition hover:bg-espresso"
         >
           רוצה סוכן
-        </Link>
+        </PendingLink>
       </div>
     </>
   );
