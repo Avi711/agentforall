@@ -8,3 +8,4 @@ export const AUTH_LINK = "text-terra-dark underline underline-offset-4 hover:tex
 export const NEW_PASSWORD_HINT = `לפחות ${MIN_PASSWORD_LENGTH} תווים. משפט קצר שקל לזכור עובד מצוין.`;
 export const AUTH_SECONDARY =
   "px-5 py-3 rounded-xl border border-sand bg-white text-espresso font-medium hover:bg-cream-dark transition disabled:opacity-50";
+export const AUTH_WIDE_BUTTON = `pressable flex w-full items-center justify-center gap-3 ${AUTH_SECONDARY}`;

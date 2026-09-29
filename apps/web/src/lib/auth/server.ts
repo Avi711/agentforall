@@ -20,7 +20,7 @@ function requireEnv(name: string): string {
   return value;
 }
 
-const BASE_URL = requireEnv("BETTER_AUTH_URL");
+export const AUTH_BASE_URL = requireEnv("BETTER_AUTH_URL");
 requireEnv("RESEND_API_KEY");
 
 // Cloudflare's always-pass test secrets start with 1x/2x/3x.
@@ -35,10 +35,10 @@ function turnstileSecret(): string {
 
 export const auth = betterAuth({
   secret: requireEnv("BETTER_AUTH_SECRET"),
-  baseURL: BASE_URL,
+  baseURL: AUTH_BASE_URL,
   // Lock redirects (post-OAuth, callbackURL on signIn) to our
   // own origin. Without this Better Auth falls back to permissive defaults.
-  trustedOrigins: [BASE_URL],
+  trustedOrigins: [AUTH_BASE_URL],
 
   database: drizzleAdapter(getDb(), {
     provider: "pg",
@@ -50,7 +50,7 @@ export const auth = betterAuth({
     background: (work) => after(work),
     claimAccount: (userId) => getAuthService().claimAccount(userId),
     noteVerificationSent: (userId) => getAuthService().noteVerificationSent(userId),
-    appUrl: BASE_URL,
+    appUrl: AUTH_BASE_URL,
   }),
 
   rateLimit: {

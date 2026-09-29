@@ -4,3 +4,7 @@ const SAFE_PATH_RE = /^\/(?![/\\])(?!api(?:[/?#]|$))[^\s\\\u0000-\u001f\u007f]*$
 export function safeRedirectPath(value: unknown, fallback = "/app"): string {
   return typeof value === "string" && SAFE_PATH_RE.test(value) ? value : fallback;
 }
+
+export function loginPath(redirectTo: string): string {
+  return `/login?redirect=${encodeURIComponent(redirectTo)}`;
+}

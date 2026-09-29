@@ -4,7 +4,7 @@ import { browserHandoff } from "../../src/lib/auth/in-app-browser";
 
 const LOGIN = "https://agentforall.co.il/login?redirect=%2Fapp";
 
-const REFUSED_BY_GOOGLE = {
+const SOCIAL_APPS = {
   instagramIos:
     "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/22F76 Instagram 393.1.0.36.70 (iPhone15,3; iOS 18_5; en_US; en; scale=3.00; 1290x2796; IABMV/1; 776538208) Safari/604.1)",
   instagramAndroid:
@@ -19,11 +19,13 @@ const REFUSED_BY_GOOGLE = {
     "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Safari/604.1 musical_ly_41.9.0",
   tiktokAndroid:
     "Mozilla/5.0 (Linux; Android 14; Pixel 8 Build/UQ1A.240105.004; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/121.0.6167.143 Mobile Safari/537.36 musical_ly_2023303040 JsSdk/1.0 NetType/WIFI Channel/googleplay AppName/musical_ly app_version/33.3.4 ByteLocale/en ByteFullLocale/en Region/US AppId/1233 Spark/1.5.0.5-alpha.2 AppVersion/33.3.4 BytedanceWebview/d8a21c6",
+  threadsAndroid:
+    "Mozilla/5.0 (Linux; Android 14; Pixel 8 Build/AP2A.240905.003; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/130.0.6723.58 Mobile Safari/537.36 Barcelona 355.0.0.39.109 Android (34/14; 420dpi; 1080x2205; Google/google; Pixel 8; shiba; shiba; en_US; 657318936)",
   linkedinIos:
     "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 {useragents: [LinkedInApp]/9.30.1753",
 };
 
-const KEEP_GOOGLE_SIGN_IN = {
+const BROWSERS_AND_OTHER_APPS = {
   safariIos:
     "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",
   chromeIos:
@@ -48,34 +50,29 @@ const KEEP_GOOGLE_SIGN_IN = {
     "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.7390.124 Mobile Safari/537.36 [WA4A/2.25.32.75;]",
 };
 
-test("apps whose browser Google refuses get a handoff", () => {
-  for (const [name, ua] of Object.entries(REFUSED_BY_GOOGLE)) {
-    assert.notEqual(browserHandoff(ua, LOGIN), null, name);
+const INSTAGRAM_HANDOFF =
+  "instagram://extbrowser/?url=https%3A%2F%2Fagentforall.co.il%2Flogin%3Fredirect%3D%252Fapp";
+const CHROME_INTENT =
+  "intent://agentforall.co.il/login?redirect=%2Fapp#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=https%3A%2F%2Fagentforall.co.il%2Flogin%3Fredirect%3D%252Fapp;end";
+
+test("Instagram on iPhone opens the default browser through its own external-browser link", () => {
+  assert.deepEqual(browserHandoff(SOCIAL_APPS.instagramIos, LOGIN), { opens: "default-browser", href: INSTAGRAM_HANDOFF });
+});
+
+test("social apps on Android open the same page in Chrome", () => {
+  for (const name of ["instagramAndroid", "facebookAndroid", "threadsAndroid", "tiktokAndroid"] as const) {
+    assert.deepEqual(browserHandoff(SOCIAL_APPS[name], LOGIN), { opens: "chrome", href: CHROME_INTENT }, name);
   }
 });
 
-test("browsers and apps without a documented refusal keep the Google sign-in", () => {
-  for (const [name, ua] of Object.entries(KEEP_GOOGLE_SIGN_IN)) {
-    assert.equal(browserHandoff(ua, LOGIN), null, name);
-  }
-});
-
-test("Instagram on iPhone hands off through its own external-browser link", () => {
-  assert.equal(
-    browserHandoff(REFUSED_BY_GOOGLE.instagramIos, LOGIN)?.href,
-    "instagram://extbrowser/?url=https%3A%2F%2Fagentforall.co.il%2Flogin%3Fredirect%3D%252Fapp",
-  );
-});
-
-test("Android apps hand off through an intent that falls back to the same page", () => {
-  const expected =
-    "intent://agentforall.co.il/login?redirect=%2Fapp#Intent;scheme=https;action=android.intent.action.VIEW;S.browser_fallback_url=https%3A%2F%2Fagentforall.co.il%2Flogin%3Fredirect%3D%252Fapp;end";
-  assert.equal(browserHandoff(REFUSED_BY_GOOGLE.instagramAndroid, LOGIN)?.href, expected);
-  assert.equal(browserHandoff(REFUSED_BY_GOOGLE.facebookAndroid, LOGIN)?.href, expected);
-});
-
-test("iPhone apps without a known handoff show only the menu steps", () => {
+test("iPhone apps without a known way out get no button", () => {
   for (const name of ["facebookIos", "facebookIosLegacy", "tiktokIos", "linkedinIos"] as const) {
-    assert.deepEqual(browserHandoff(REFUSED_BY_GOOGLE[name], LOGIN), { href: null }, name);
+    assert.equal(browserHandoff(SOCIAL_APPS[name], LOGIN), null, name);
+  }
+});
+
+test("real browsers and other apps get no button", () => {
+  for (const [name, ua] of Object.entries(BROWSERS_AND_OTHER_APPS)) {
+    assert.equal(browserHandoff(ua, LOGIN), null, name);
   }
 });

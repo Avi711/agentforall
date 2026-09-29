@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getServerSession } from "@/lib/auth/session";
 import { z } from "zod";
 import { urlErrorMessage } from "@/lib/auth/error-messages";
-import { safeRedirectPath } from "@/lib/http/safe-redirect";
+import { loginPath, safeRedirectPath } from "@/lib/http/safe-redirect";
+import { browserHandoff } from "@/lib/auth/in-app-browser";
+import { AUTH_BASE_URL } from "@/lib/auth/server";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { LoginForm } from "./LoginForm";
 import { FORM_MODES, type FormMode } from "./modes";
@@ -30,9 +33,17 @@ export default async function LoginPage({
     redirect(safeRedirect);
   }
 
+  const userAgent = (await headers()).get("user-agent") ?? "";
+  const openInBrowser = browserHandoff(userAgent, new URL(loginPath(safeRedirect), AUTH_BASE_URL).href);
+
   return (
     <AuthCard title="כניסה ל-Agent For All" subtitle="הסוכן האישי שלכם, באוואטסאפ שלכם.">
-      <LoginForm redirectTo={safeRedirect} initialMode={initialMode(mode, error)} initialError={urlErrorMessage(error)} />
+      <LoginForm
+        redirectTo={safeRedirect}
+        initialMode={initialMode(mode, error)}
+        initialError={urlErrorMessage(error)}
+        openInBrowser={openInBrowser}
+      />
     </AuthCard>
   );
 }

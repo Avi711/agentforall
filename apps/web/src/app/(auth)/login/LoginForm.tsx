@@ -1,15 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { authClient, loginPath, useGoogleSignIn, useOnBfcacheRestore } from "@/lib/auth/client";
+import { authClient, useGoogleSignIn, useOnBfcacheRestore } from "@/lib/auth/client";
+import type { BrowserHandoff } from "@/lib/auth/in-app-browser";
+import { loginPath } from "@/lib/http/safe-redirect";
 import { authErrorMessage, type AuthFailure } from "@/lib/auth/error-messages";
 import { useTurnstile } from "@/lib/auth/turnstile";
 import { MAX_NAME_LENGTH, MIN_PASSWORD_LENGTH } from "@/lib/auth/policy";
 import { BusyLabel } from "@/app/app/Marks";
 import { CaptchaSlot, Field, PasswordInput } from "@/components/auth/AuthFields";
-import { InAppBrowserDialog } from "@/components/auth/InAppBrowserDialog";
+import { OpenInBrowserButton } from "@/components/auth/OpenInBrowserButton";
 import { ErrorAlert } from "@/components/ErrorAlert";
-import { AUTH_INPUT, AUTH_LINK, AUTH_PRIMARY, AUTH_SECONDARY, NEW_PASSWORD_HINT } from "@/components/auth/styles";
+import { AUTH_INPUT, AUTH_LINK, AUTH_WIDE_BUTTON, AUTH_PRIMARY, AUTH_SECONDARY, NEW_PASSWORD_HINT } from "@/components/auth/styles";
 import type { FormMode } from "./modes";
 
 type SentMode = "verify-sent" | "unverified" | "reset-sent";
@@ -44,10 +46,12 @@ export function LoginForm({
   redirectTo,
   initialMode,
   initialError,
+  openInBrowser,
 }: {
   redirectTo: string;
   initialMode: FormMode;
   initialError: string | null;
+  openInBrowser: BrowserHandoff | null;
 }) {
   const google = useGoogleSignIn();
   const [urlError, setUrlError] = useState(initialError);
@@ -210,20 +214,21 @@ export function LoginForm({
 
   const label = SUBMIT_LABEL[mode];
   const heading = MODE_HEADING[mode];
+  const openInBrowserButton = openInBrowser ? <OpenInBrowserButton handoff={openInBrowser} /> : null;
+  // Google refuses Android app webviews, so there the way into Chrome leads.
+  const chromeFirst = openInBrowser?.opens === "chrome";
 
   return (
     <div className="space-y-5">
       <ErrorAlert>{urlError}</ErrorAlert>
-      <button
-        type="button"
-        onClick={() => google.start(redirectTo)}
-        disabled={busy}
-        className="w-full flex items-center justify-center gap-3 px-5 py-3 rounded-xl border border-sand bg-white hover:bg-cream-dark transition disabled:opacity-50 text-espresso font-medium"
-      >
-        <GoogleMark />
-        <span>המשך עם Google</span>
-      </button>
-      {google.handoff ? <InAppBrowserDialog handoff={google.handoff} onClose={google.reset} /> : null}
+      <div className="space-y-3">
+        {chromeFirst ? openInBrowserButton : null}
+        <button type="button" onClick={() => google.start(redirectTo)} disabled={busy} className={AUTH_WIDE_BUTTON}>
+          <GoogleMark />
+          <span>המשך עם Google</span>
+        </button>
+        {chromeFirst ? null : openInBrowserButton}
+      </div>
       <ErrorAlert>{google.error}</ErrorAlert>
       <div className="flex items-center gap-3 text-xs text-espresso-light" aria-hidden="true">
         <span className="h-px flex-1 bg-sand-light" />
