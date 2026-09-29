@@ -3,7 +3,6 @@ import { mkdir } from "node:fs/promises";
 import type { FastifyBaseLogger } from "fastify";
 import {
   makeWASocket,
-  Browsers,
   DisconnectReason,
   fetchLatestBaileysVersion,
   jidNormalizedUser,
@@ -113,7 +112,7 @@ export class BaileysSession extends EventEmitter {
 
     this.sock = makeWASocket({
       auth: state,
-      browser: Browsers.ubuntu("Agent For All"),
+      browser: ["Agent For All", "Chrome", "1.0.0"],
       version,
       printQRInTerminal: false,
       syncFullHistory: false,
