@@ -25,12 +25,12 @@ type Select = (sel: string) => HTMLElement[];
 
 export function HowItWorks() {
   const root = useRef<HTMLElement>(null);
-  const smallViewport = useRef<HTMLDivElement>(null);
+  const largeViewport = useRef<HTMLDivElement>(null);
 
-  // Measured against the small viewport so browser bars sliding in or out never flip the stack mid-scroll.
+  // Measured against the large viewport (browser bars retracted, as while scrolling down): unlike innerHeight it holds still as the bars slide, so the stack never flips mid-scroll.
   useEffect(() => {
     const el = root.current;
-    const viewport = smallViewport.current;
+    const viewport = largeViewport.current;
     const header = el?.querySelector<HTMLElement>("[data-header]");
     const cards = el ? Array.from(el.querySelectorAll<HTMLElement>("[data-step]")) : [];
     const nav = document.querySelector<HTMLElement>("[data-site-nav]");
@@ -183,7 +183,7 @@ export function HowItWorks() {
 
   return (
     <section ref={root} id="how-it-works" aria-labelledby="how-it-works-title" className="py-16 sm:py-24 lg:pt-0 lg:pb-24">
-      <div ref={smallViewport} className="pointer-events-none invisible fixed inset-x-0 top-0 h-svh" />
+      <div ref={largeViewport} className="pointer-events-none invisible fixed inset-x-0 top-0 h-lvh" />
       <div className="max-w-5xl mx-auto px-4 sm:px-6 max-lg:relative lg:grid lg:grid-cols-2 lg:grid-rows-[auto_1fr] lg:gap-x-20">
         {/* On phones the title pins inside an overlay that ends one card (plus its two 24px margins) early, so it leaves with the cards. */}
         <div
