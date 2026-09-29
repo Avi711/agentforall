@@ -76,6 +76,6 @@ test("Android apps hand off through an intent that falls back to the same page",
 
 test("iPhone apps without a known handoff show only the menu steps", () => {
   for (const name of ["facebookIos", "facebookIosLegacy", "tiktokIos", "linkedinIos"] as const) {
-    assert.deepEqual(browserHandoff(REFUSED_BY_GOOGLE[name], LOGIN), { url: LOGIN, href: null }, name);
+    assert.deepEqual(browserHandoff(REFUSED_BY_GOOGLE[name], LOGIN), { href: null }, name);
   }
 });

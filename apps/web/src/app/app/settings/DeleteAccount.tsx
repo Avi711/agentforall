@@ -5,7 +5,7 @@ import { authClient, useGoogleSignIn } from "@/lib/auth/client";
 import { authErrorMessage, type AuthFailure } from "@/lib/auth/error-messages";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 import { Field, PasswordInput } from "@/components/auth/AuthFields";
-import { InAppBrowserNotice } from "@/components/auth/InAppBrowserNotice";
+import { InAppBrowserDialog } from "@/components/auth/InAppBrowserDialog";
 import { ErrorAlert } from "@/components/ErrorAlert";
 import { AUTH_LINK } from "@/components/auth/styles";
 import { formatCredits } from "@/lib/billing/format";
@@ -162,7 +162,7 @@ export function DeleteAccount({ subscribed, credits, topupCredits }: { subscribe
             <li className="font-semibold">אי אפשר לבטל את המחיקה.</li>
           </ul>
           {confirmation}
-          {google.handoff ? <InAppBrowserNotice handoff={google.handoff} /> : null}
+          {google.handoff ? <InAppBrowserDialog handoff={google.handoff} onClose={google.reset} /> : null}
           <ErrorAlert>{error ?? google.error}</ErrorAlert>
         </div>
       )}

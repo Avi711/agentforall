@@ -3,7 +3,6 @@ import InAppSpy from "inapp-spy";
 type AppKey = ReturnType<typeof InAppSpy>["appKey"];
 
 export interface BrowserHandoff {
-  url: string;
   href: string | null;
 }
 
@@ -21,7 +20,7 @@ const GOOGLE_REFUSED_APPS: ReadonlySet<AppKey> = new Set<AppKey>([
 export function browserHandoff(userAgent: string, url: string): BrowserHandoff | null {
   const { appKey } = InAppSpy({ ua: userAgent });
   if (!GOOGLE_REFUSED_APPS.has(appKey)) return null;
-  return { url, href: handoffHref(appKey, userAgent, url) };
+  return { href: handoffHref(appKey, userAgent, url) };
 }
 
 // Neither link is documented for these apps, so the menu steps stay on screen as the path that always works.

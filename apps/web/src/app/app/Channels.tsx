@@ -4,7 +4,6 @@ import { useId, useState, type ReactNode } from "react";
 import { ROW_ACTION_CLASS, TILE_BASE, TILE_CLASS } from "./action-buttons";
 import { ChevronEnd, TelegramGlyph, WhatsAppGlyph } from "./Marks";
 import { formatPhoneForDisplay } from "@/lib/phone";
-import { useCopy } from "@/lib/use-copy";
 import { PendingLink } from "./Pending";
 import type { BotSnapshot } from "./useBotStatus";
 
@@ -529,6 +528,23 @@ function ChannelPanel({ entry }: { entry: ChannelEntry }) {
 
 const FACT_TILE =
   "flex h-full min-h-[4.25rem] w-full flex-col justify-center gap-1 rounded-xl bg-cream px-3.5 py-2.5 text-start";
+
+function useCopy(text: string | undefined): { copied: boolean; copy: (() => Promise<void>) | null } {
+  const [copied, setCopied] = useState(false);
+  if (!text) return { copied, copy: null };
+  return {
+    copied,
+    copy: async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1800);
+      } catch {
+        // Clipboard blocked (insecure context); the value stays visible to copy by hand.
+      }
+    },
+  };
+}
 
 // The whole tile is the action, so copying or changing a value never means hunting for a link at the far edge.
 function FactTile({ fact }: { fact: Fact }) {
