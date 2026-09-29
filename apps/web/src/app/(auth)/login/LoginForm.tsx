@@ -214,20 +214,16 @@ export function LoginForm({
 
   const label = SUBMIT_LABEL[mode];
   const heading = MODE_HEADING[mode];
-  const openInBrowserButton = openInBrowser ? <OpenInBrowserButton handoff={openInBrowser} /> : null;
-  // Google refuses Android app webviews, so there the way into Chrome leads.
-  const chromeFirst = openInBrowser?.opens === "chrome";
 
   return (
     <div className="space-y-5">
       <ErrorAlert>{urlError}</ErrorAlert>
       <div className="space-y-3">
-        {chromeFirst ? openInBrowserButton : null}
         <button type="button" onClick={() => google.start(redirectTo)} disabled={busy} className={AUTH_WIDE_BUTTON}>
           <GoogleMark />
           <span>המשך עם Google</span>
         </button>
-        {chromeFirst ? null : openInBrowserButton}
+        {openInBrowser ? <OpenInBrowserButton handoff={openInBrowser} /> : null}
       </div>
       <ErrorAlert>{google.error}</ErrorAlert>
       <div className="flex items-center gap-3 text-xs text-espresso-light" aria-hidden="true">
