@@ -13,7 +13,7 @@ export function Footer() {
               <span className="font-extrabold">Agent</span><span className="font-normal text-espresso-light">for</span><span className="font-extrabold text-terra">All</span>
             </span>
             <p className="mt-3 max-w-xs text-sm leading-relaxed text-espresso-light">
-              סוכן AI אישי בוואטסאפ וטלגרם. מ-{PLANS.basic.priceIls} ש״ח לחודש, כולל מע״מ.
+              סוכן AI אישי בוואטסאפ וטלגרם. מ-{PLANS.basic.priceIls} ש״ח לחודש.
             </p>
           </div>
 
@@ -54,7 +54,7 @@ export function Footer() {
             <OperatorLine />
           </p>
           <p>
-            מחירים כוללים מע״מ · תמיכה בעברית · שירות ישראלי
+            תמיכה בעברית · שירות ישראלי
           </p>
         </div>
       </div>

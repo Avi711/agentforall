@@ -223,7 +223,7 @@ function PlanChangeSummary({
       />
       {recurring}
       <p className="text-xs">
-        {creditNote}החיוב מהכרטיס השמור במנוי, כולל מע״מ.{toYearly ? " שינוי של תוכנית שנתית אפשרי אחר כך רק דרכנו." : ""}
+        {creditNote}החיוב מהכרטיס השמור במנוי.{toYearly ? " שינוי של תוכנית שנתית אפשרי אחר כך רק דרכנו." : ""}
       </p>
     </div>
   );

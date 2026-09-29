@@ -101,7 +101,7 @@ export function TopupPanel({ terms, urgent }: { terms: TopupTerms; urgent: boole
           </div>
 
           <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-[13px] text-espresso-light">קרדיטים שלא פגים. חיוב חד־פעמי, כולל מע״מ.</p>
+            <p className="text-[13px] text-espresso-light">קרדיטים שלא פגים. חיוב חד־פעמי.</p>
             <button
               type="button"
               onClick={() => void topup.redirect("topup", () => startTopup(amount))}

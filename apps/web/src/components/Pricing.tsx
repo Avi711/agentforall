@@ -17,7 +17,7 @@ export function Pricing({ ctaHref = "/app" }: { ctaHref?: string }) {
             תוכנית לכל קצב
           </h2>
           <p className="mt-4 text-base leading-relaxed text-espresso-light sm:text-lg">
-            {TRIAL_DAYS} ימי ניסיון עם {formatCredits(TRIAL_CREDITS)} קרדיטים, בלי כרטיס אשראי. המחירים כוללים מע״מ.
+            {TRIAL_DAYS} ימי ניסיון עם {formatCredits(TRIAL_CREDITS)} קרדיטים, בלי כרטיס אשראי.
           </p>
         </header>
 

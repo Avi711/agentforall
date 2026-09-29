@@ -240,7 +240,7 @@ export function BillingSection({ initial }: { initial: BillingStatus }) {
             <h2 id="plans-title" className="font-display text-xl text-espresso sm:text-2xl">
               בחרו תוכנית
             </h2>
-            <p className="text-sm text-espresso-light">המחירים כוללים מע״מ. אפשר לשנות או לבטל בכל עת.</p>
+            <p className="text-sm text-espresso-light">אפשר לשנות או לבטל בכל עת.</p>
           </header>
           <PlanCheckout pendingPlan={pendingPlan} disabled={busy} onChoose={(code) => redirect(code, () => startCheckout(code))} />
           <BusinessOffer />
