@@ -8,6 +8,7 @@ import { InstanceManager } from "../src/services/instance-manager.js";
 function harness(insert: (attempt: number) => unknown) {
   const chosen: string[] = [];
   const released: string[] = [];
+  const portsReleased: number[] = [];
   let attempt = 0;
   const repo = { insertIfUserActiveBelowLimit: async () => insert(attempt++) };
   const hosts = { for: () => ({ adapters: { get: () => ({ containerName: (id: string) => `c-${id}` }) } }) };
@@ -21,7 +22,7 @@ function harness(insert: (attempt: number) => unknown) {
   const manager = new InstanceManager(
     repo as never,
     hosts as never,
-    { allocate: async () => 19000 } as never,
+    { allocate: async () => 19000, release: (_hostId: string, port: number) => void portsReleased.push(port) } as never,
     placement as never,
     { maxProvisionRetries: 3, agentRuntimeKind: "openclaw", maxInstancesPerUser: 1 } as AppConfig,
     { append: async () => {} } as never,
@@ -35,13 +36,14 @@ function harness(insert: (attempt: number) => unknown) {
       provider: { kind: "gateway", apiKey: "k", model: "m" },
       channels: [{ type: "whatsapp" }],
     } as never);
-  return { create, chosen, released };
+  return { create, chosen, released, portsReleased };
 }
 
 test("a create refused by the quota releases its placement", async () => {
   const h = harness(() => null);
   await assert.rejects(h.create(), QuotaExceededError);
   assert.deepEqual(h.released, h.chosen);
+  assert.deepEqual(h.portsReleased, [19000]);
 });
 
 test("every attempt lost to a port race releases its placement", async () => {
@@ -51,4 +53,5 @@ test("every attempt lost to a port race releases its placement", async () => {
   await assert.rejects(h.create());
   assert.equal(h.chosen.length, 3);
   assert.deepEqual(h.released, h.chosen);
+  assert.equal(h.portsReleased.length, 3);
 });

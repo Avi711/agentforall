@@ -726,7 +726,12 @@ export class InstanceManager {
     // Whatever the failed boot left there would otherwise run beside the bot, or block a later move to that host.
     await this.removeBotFromHost(target, inst);
     const gatewayPort = await this.portAllocator.allocate(toHostId);
-    const restored = await this.repo.moveBack(inst.id, { toHostId, gatewayPort });
+    let restored: boolean;
+    try {
+      restored = await this.repo.moveBack(inst.id, { toHostId, gatewayPort });
+    } finally {
+      this.portAllocator.release(toHostId, gatewayPort);
+    }
     if (!restored) throw new InvalidStateError(inst.status, "move");
     await this.eventLog.append(inst.id, "move.rolled_back", { payload: { from: inst.hostId, to: toHostId, gatewayPort } });
     this.logger.warn(
@@ -754,6 +759,8 @@ export class InstanceManager {
         if (!isUniqueViolation(err)) throw err;
         lastError = err instanceof Error ? err : new Error(String(err));
         this.logger.warn({ instanceId: inst.id, port: gatewayPort, attempt }, "port conflict on the target; retrying");
+      } finally {
+        this.portAllocator.release(targetHostId, gatewayPort);
       }
     }
     throw lastError ?? new Error("failed to place the bot on the target host");
@@ -1143,6 +1150,8 @@ export class InstanceManager {
           continue;
         }
         throw lastError;
+      } finally {
+        if (gatewayPort !== null) this.portAllocator.release(hostId, gatewayPort);
       }
     }
 

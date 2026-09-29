@@ -92,6 +92,7 @@ test("a port taken on the target between allocation and the flip is retried with
   await h.manager.move(ID, TARGET);
 
   assert.deepEqual(h.repo.moves.map((m) => m.gatewayPort), [19000, 19001]);
+  assert.deepEqual(h.portsReleased, [19000, 19001], "every port handed out is released, the winner once its row holds it");
   assert.equal(h.repo.instance.gatewayPort, 19001);
   assert.equal(h.storage.uploads.length, 1);
 });
@@ -784,7 +785,9 @@ function harness(
       gate: { check: async () => options.targetReachable ?? true },
     },
   );
+  const portsReleased: number[] = [];
   const portAllocator = {
+    release: (_hostId: string, port: number) => void portsReleased.push(port),
     allocate: async (hostId: string) => {
       const used = new Set(await repo.getActiveGatewayPorts(hostId));
       for (let port = 19000; port < 19100; port++) if (!used.has(port)) return port;
@@ -818,5 +821,5 @@ function harness(
     null,
     storage,
   );
-  return { manager, repo, source, target, storage: storage ?? new FakeStorage([]), order, events, warnings };
+  return { manager, repo, source, target, storage: storage ?? new FakeStorage([]), order, events, warnings, portsReleased };
 }
