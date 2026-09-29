@@ -7,6 +7,7 @@ import { PRIMARY_ACTION, SECONDARY_ACTION } from "@/components/pricing/styles";
 import { WhatsAppChatLink } from "@/components/WhatsAppChatLink";
 import { SETTINGS_PATH } from "@/lib/billing/urls";
 import { Spinner, SummaryRows, SurfaceCard, type Tone } from "../../Marks";
+import { StatementLine } from "../StatementLine";
 import { useCheckoutSettlement } from "./useCheckoutSettlement";
 
 const HOME_PATH = "/app";
@@ -103,7 +104,10 @@ function Receipt({ receipt }: { receipt: PaymentReceipt }) {
       }
     >
       <SummaryRows rows={receipt.rows} />
-      <p className="text-xs text-espresso-light">הקבלה נשלחה אליכם במייל.</p>
+      <p className="flex flex-col gap-0.5 text-xs leading-relaxed text-espresso-light">
+        <span>הקבלה נשלחה אליכם במייל מפאדל, ספק התשלומים שלנו.</span>
+        <StatementLine />
+      </p>
     </ResultCard>
   );
 }
