@@ -219,9 +219,13 @@ export function LoginForm({
     <div className="space-y-5">
       <ErrorAlert>{urlError}</ErrorAlert>
       <div className="space-y-3">
-        <button type="button" onClick={() => google.start(redirectTo)} disabled={busy} className={AUTH_WIDE_BUTTON}>
-          <GoogleMark />
-          <span>המשך עם Google</span>
+        <button type="button" onClick={() => google.start(redirectTo)} disabled={busy} aria-busy={google.redirecting} className={AUTH_WIDE_BUTTON}>
+          <BusyLabel busy={google.redirecting} busyText="עוברים לגוגל…">
+            <span className="inline-flex items-center gap-3">
+              <GoogleMark />
+              המשך עם Google
+            </span>
+          </BusyLabel>
         </button>
         {openInBrowser ? <OpenInBrowserButton handoff={openInBrowser} /> : null}
       </div>
