@@ -5,7 +5,7 @@
 **Last updated:** 2026-09-30
 
 ## Onboarding check-ins — live since 2026-09-30
-- Orchestrator `89b24bf4…` (commit `36ce8a7`, Cloud Build `896befcd`), recreated 2026-09-30 ~02:10 IL; 14 bots running, no errors after restart.
+- Orchestrator `7db0dcbf…` (commits `36ce8a7` + `f089a03`, Cloud Build `fd6c9cbf`), recreated 2026-09-30 ~03:05 IL; no errors after restart.
 - Bots created in the last 48 h whose owner is linked (Telegram, else paired WhatsApp) get 3 one-shot OpenClaw cron turns in session `agent:main:direct:owner`: 19:00 on the link day (next day if under 3 h away), then 09:00, then 12:00 Israel. Swept every 10 min; one `onboarding.checkins_settled` event per bot.
 - Off switch: `ONBOARDING_CHECKINS_ENABLED=false` in the `.env.runtime` block of `infra/startup/control-plane.sh`, then apply and rerun startup. It stops new scheduling only; scheduled jobs (declarationKey `agentforall:onboarding-checkin-1..3`) stay in each bot until run or `openclaw cron rm`.
 - OpenClaw 8.2 facts: `at` ignores `tz` (send UTC); a job missed while the gateway is down runs ~3 min after restart at any hour, so each prompt stays silent when over 2 h late.
