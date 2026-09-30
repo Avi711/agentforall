@@ -5,7 +5,7 @@ import Link from "next/link";
 import { PendingLink } from "@/app/app/Pending";
 
 const links = [
-  { label: "איך זה עובד", href: "/#how-it-works" },
+  { label: "איך זה עובד", href: "/#setup" },
   { label: "מחירים", href: "/#pricing" },
   { label: "בלוג", href: "/blog" },
   { label: "שאלות נפוצות", href: "/#faq" },

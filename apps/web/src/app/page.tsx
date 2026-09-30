@@ -1,46 +1,12 @@
-import { Navbar } from "@/components/Navbar";
-import { Hero } from "@/components/Hero";
-import { Features } from "@/components/Features";
-import { Connections } from "@/components/Connections";
-import { HowItWorks } from "@/components/HowItWorks";
-import { Comparison } from "@/components/Comparison";
-import { Pricing } from "@/components/Pricing";
-import { TalkToUs } from "@/components/TalkToUs";
-import { FAQ } from "@/components/FAQ";
-import { Footer } from "@/components/Footer";
-import { Disclaimer } from "@/components/Disclaimer";
-import { faqs } from "@/content/faq.he";
-
-const faqStructuredData = {
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  mainEntity: faqs.map((faq) => ({
-    "@type": "Question",
-    name: faq.q,
-    acceptedAnswer: { "@type": "Answer", text: faq.a },
-  })),
-};
+import { FAQ_STRUCTURED_DATA } from "@/components/landing/content";
+import { Landing } from "@/components/landing/Landing";
+import "@/components/landing/landing.css";
 
 export default function Home() {
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqStructuredData) }}
-      />
-      <Navbar />
-      <main id="main">
-        <Hero />
-        <Features />
-        <Connections />
-        <HowItWorks />
-        <Comparison />
-        <Disclaimer />
-        <Pricing />
-        <TalkToUs />
-        <FAQ />
-      </main>
-      <Footer />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(FAQ_STRUCTURED_DATA) }} />
+      <Landing />
     </>
   );
 }

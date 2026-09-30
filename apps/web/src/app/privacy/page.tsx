@@ -26,7 +26,7 @@ export default function PrivacyPage() {
       <section>
         <h2 className="mb-3 text-xl font-bold text-espresso">2. איך אנחנו שומרים את המידע</h2>
         <ul className="list-inside list-disc space-y-2 ps-2">
-          <li>כל סוכן רץ על שרת פרטי ומבודד (Isolated container).</li>
+          <li>כל סוכן רץ בסביבה פרטית ומבודדת (Isolated container).</li>
           <li>המידע מוצפן במנוחה (AES-256) ובמעבר (TLS 1.3).</li>
           <li>גישה פנימית מוגבלת לעובדים מורשים בלבד, תחת הסכמי סודיות.</li>
           <li>השרתים נמצאים במרכזי נתונים תקניים של ספקי ענן מובילים, באירופה.</li>

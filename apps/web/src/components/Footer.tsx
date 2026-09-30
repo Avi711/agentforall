@@ -21,8 +21,8 @@ export function Footer() {
           <div>
             <h3 className="mb-3 text-sm font-bold text-espresso">המוצר</h3>
             <ul className="space-y-2 text-sm text-espresso-light">
-              <li><Link href="/#features" className="transition hover:text-terra">יכולות</Link></li>
-              <li><Link href="/#how-it-works" className="transition hover:text-terra">איך זה עובד</Link></li>
+              <li><Link href="/#day" className="transition hover:text-terra">יכולות</Link></li>
+              <li><Link href="/#setup" className="transition hover:text-terra">איך זה עובד</Link></li>
               <li><Link href="/#pricing" className="transition hover:text-terra">מחירים</Link></li>
               <li><Link href="/blog" className="transition hover:text-terra">בלוג</Link></li>
               <li><Link href="/#faq" className="transition hover:text-terra">שאלות נפוצות</Link></li>

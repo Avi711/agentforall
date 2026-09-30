@@ -66,6 +66,7 @@ export function AccessibilityWidget() {
     <div ref={panelRef}>
       <button
         type="button"
+        data-a11y-trigger
         onClick={() => setOpen((o) => !o)}
         aria-label="הגדרות נגישות"
         aria-expanded={open}

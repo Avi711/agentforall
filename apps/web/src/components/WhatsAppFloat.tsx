@@ -4,6 +4,7 @@ import { WhatsAppIcon } from "./WhatsAppIcon";
 export function WhatsAppFloat() {
   return (
     <a
+      data-whatsapp-float
       href={SITE_WHATSAPP_URL}
       target="_blank"
       rel="noopener noreferrer"

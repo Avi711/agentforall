@@ -1,0 +1,171 @@
+.landing {
+  --page: var(--color-cream);
+  --surface: #ffffff;
+  --surface-2: var(--color-cream-dark);
+  --ink: var(--color-espresso);
+  --ink-2: var(--color-espresso-light);
+  --line: var(--color-sand-light);
+  --line-2: var(--color-sand);
+  --accent-ink: var(--color-terra-strong);
+  --accent-soft: var(--color-terra-pale);
+  --good: var(--color-sage-dark);
+  --good-soft: var(--color-sage-pale);
+  --card-shadow: 0 1px 0 rgba(44, 24, 16, 0.04), 0 24px 60px -32px rgba(44, 24, 16, 0.18);
+  --thread-shadow: 0 24px 60px -32px rgba(44, 24, 16, 0.25);
+  --phone-shadow: 0 40px 90px -30px rgba(44, 24, 16, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.5);
+  --phone-bezel: #1c1c1e;
+  --night: #17100c;
+  --night-line: rgba(243, 234, 223, 0.12);
+  --night-card-shadow: 0 40px 90px -30px rgba(0, 0, 0, 0.8);
+  --tile-shadow: 0 8px 24px -12px rgba(44, 24, 16, 0.35);
+  --tile-active-shadow: 0 0 0 4px rgba(199, 82, 42, 0.14), 0 12px 28px -12px rgba(168, 64, 30, 0.55);
+  --wa-header: #008069;
+  --wa-header-ink: #ffffff;
+  --wa-bg: #efe7dd;
+  --wa-out: #d9fdd3;
+  --wa-in: #ffffff;
+  --wa-ink: #111b21;
+  --wa-ink-2: #5c4033;
+  --wa-tick: #53bdeb;
+  --wa-meta: #667781;
+  --wa-chip: #e1f2fb;
+  --wa-chip-ink: #54656f;
+  --wa-bar: #f0f2f5;
+  --wa-input: #ffffff;
+  --wa-card: #f3ede4;
+  --wa-card-surface: #ffffff;
+  --wa-line: #e8dcc8;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* The site-wide accessibility button floats bottom-left: the bar leaves it a slot at its inline end, and the footer ends with that much room. */
+html:has(.landing) {
+  --sticky-cta-h: 4.5rem;
+  --a11y-clearance: 4.25rem;
+}
+
+@media (min-width: 640px) {
+  html:has(.landing) {
+    --sticky-cta-h: 5.5rem;
+    --a11y-clearance: 4.75rem;
+  }
+}
+
+body:has(.landing) [data-whatsapp-float] {
+  display: none;
+}
+
+@media (max-width: 1023px) {
+  html:has(.landing [data-sticky-cta][data-visible]) {
+    scroll-padding-bottom: calc(var(--sticky-cta-h) + 2rem);
+  }
+  body:has(.landing [data-sticky-cta][data-visible]) [data-a11y-trigger] {
+    translate: 0 calc(-1 * env(safe-area-inset-bottom));
+  }
+}
+
+.landing .night-stage {
+  --ink: var(--color-bone);
+  --ink-2: var(--color-ash);
+  background-color: var(--night);
+}
+
+.landing .font-display3 {
+  font-weight: 900;
+  letter-spacing: -0.03em;
+}
+
+.landing .font-h2 {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.landing .wa-wallpaper {
+  background-color: var(--wa-bg);
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23c8c3ba' fill-opacity='0.16'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+.landing .wa-out {
+  border-start-end-radius: 4px;
+}
+
+.landing .wa-in {
+  border-start-start-radius: 4px;
+}
+
+@keyframes landing-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+}
+
+@supports (animation-timeline: view()) {
+  .landing .rise {
+    animation: landing-rise 1ms linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 35%;
+  }
+}
+
+@keyframes landing-appear {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+.landing .appear {
+  animation: landing-appear 480ms var(--ease-out) both;
+}
+
+@keyframes landing-pulse {
+  from {
+    stroke-dashoffset: 0.16;
+  }
+  to {
+    stroke-dashoffset: -1;
+  }
+}
+
+.landing .hub-pulse {
+  stroke-dasharray: 0.16 2;
+  filter: drop-shadow(0 0 1.5px rgba(232, 135, 95, 0.9));
+  animation: landing-pulse 1100ms cubic-bezier(0.45, 0, 0.2, 1) both;
+}
+
+.landing .hub-core {
+  box-shadow: 0 0 0 10px rgba(199, 82, 42, 0.08), 0 0 0 22px rgba(199, 82, 42, 0.04), 0 20px 40px -16px rgba(168, 64, 30, 0.65);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing .rise,
+  .landing .appear {
+    animation: none;
+  }
+  .landing .hub-pulse {
+    display: none;
+  }
+  .landing *,
+  .landing *::before,
+  .landing *::after {
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+  }
+}
+
+html[data-reduced-motion] .landing .rise,
+html[data-reduced-motion] .landing .appear {
+  animation: none;
+}
+
+html[data-reduced-motion] .landing .hub-pulse {
+  display: none;
+}
+
+html[data-reduced-motion] .landing *,
+html[data-reduced-motion] .landing *::before,
+html[data-reduced-motion] .landing *::after {
+  transition-duration: 1ms !important;
+  transition-delay: 0ms !important;
+}

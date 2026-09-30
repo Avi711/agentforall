@@ -6,6 +6,10 @@ export interface PlanCopy {
   highlights: readonly string[];
 }
 
+export const WHATSAPP_BUSINESS_SOON = true;
+
+export const CANCEL_ANYTIME = "ביטול בכל עת";
+
 export const PLAN_COPY: Record<PlanTier, PlanCopy> = {
   basic: {
     tagline: "לשימוש אישי יומיומי",
@@ -17,7 +21,7 @@ export const PLAN_COPY: Record<PlanTier, PlanCopy> = {
   },
   pro: {
     tagline: "לעומס גבוה ואוטומציות",
-    highlights: ["כל מה שבסטנדרט", "לסוכן שעובד על משימות ארוכות", "וואטסאפ לעסקים (בקרוב)"],
+    highlights: ["כל מה שבסטנדרט", "לסוכן שעובד על משימות ארוכות", WHATSAPP_BUSINESS_SOON ? "וואטסאפ לעסקים (בקרוב)" : "וואטסאפ לעסקים"],
   },
 };
 
@@ -33,7 +37,7 @@ export const CREDITS_EXPLAINER =
   "כל פעולה של הסוכן עולה קרדיטים לפי כמה עבודה היא דורשת: תשובה קצרה עולה מעט, משימה ארוכה או אוטומטית עולה יותר. כאן תראו כמה נשאר ובאיזה קצב אתם צורכים. קרדיטים שטוענים בנוסף למנוי לא פגים.";
 
 export const PLAN_TRUST_POINTS: readonly string[] = [
-  "ביטול בכל עת",
+  CANCEL_ANYTIME,
   `החזר מלא תוך ${REFUND_WINDOW_DAYS} יום אם לא נוצלו קרדיטים`,
   "טעינת קרדיטים בכל עת, והם לא פגים",
 ];

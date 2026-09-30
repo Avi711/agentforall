@@ -25,6 +25,9 @@
   --color-wa-teal: #128C7E;
   --color-telegram: #229ED9;
   --color-wa-light: #DCF8C6;
+  --color-bone: #F3EADF;
+  --color-ash: #B9A897;
+  --color-terra-strong: #B94A23;
 }
 
 /* Base layer so any utility still wins. */
@@ -75,17 +78,6 @@ html {
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-/* Subtle grain texture */
-.grain::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  opacity: 0.3;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
 }
 
 /* Smooth fade-in for sections */
@@ -140,26 +132,6 @@ body {
   50%      { box-shadow: 0 0 0 6px rgba(199, 82, 42, 0); opacity: 0.92; }
 }
 .animate-ember { animation: ember 2.4s ease-in-out infinite; }
-
-/* Slow rotation for setup-panel decorative arcs */
-@keyframes spin-slow { to { transform: rotate(360deg); } }
-.animate-spin-slow { animation: spin-slow 14s linear infinite; }
-.animate-spin-slow-reverse { animation: spin-slow 22s linear infinite reverse; }
-
-/* Soft drift for the halo behind the monogram */
-@keyframes halo-breathe {
-  0%, 100% { opacity: 0.45; transform: scale(1); }
-  50%      { opacity: 0.85; transform: scale(1.08); }
-}
-.animate-halo { animation: halo-breathe 2.8s ease-in-out infinite; }
-
-@keyframes runtime-sweep {
-  0%   { transform: translateX(-100%); opacity: 0; }
-  20%  { opacity: 1; }
-  80%  { opacity: 1; }
-  100% { transform: translateX(420%); opacity: 0; }
-}
-.animate-runtime-sweep { animation: runtime-sweep 2.4s ease-in-out infinite; }
 
 @keyframes card-progress {
   from { transform: translateX(250%); }
@@ -261,21 +233,6 @@ a:has(> .link-hint.is-pending) {
   animation: link-pending 900ms ease-in-out 120ms infinite;
 }
 
-/* Subtle reveal on scroll */
-@keyframes reveal-up {
-  from { opacity: 0; transform: translateY(24px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-.reveal {
-  opacity: 0;
-  will-change: opacity, transform;
-}
-
-.reveal.in-view {
-  animation: reveal-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
 /* Typing indicator dots */
 @keyframes typing-dot {
   0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
@@ -292,54 +249,17 @@ a:has(> .link-hint.is-pending) {
   background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23c8c3ba' fill-opacity='0.15'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
 }
 
-/* ── Stories-style progress bar (GPU-composited, no layout thrash) ── */
-@keyframes bar-fill {
-  from { transform: scaleX(0); }
-  to   { transform: scaleX(1); }
-}
-
-.bar-fill-active {
-  animation: bar-fill var(--bar-duration, 5000ms) linear forwards;
-  will-change: transform;
-}
-
-/* ── Marquee scroll (GPU-composited translateX) ── */
-@keyframes marquee-scroll {
-  from { transform: translateX(0); }
-  to   { transform: translateX(-33.333%); }
-}
-
-.marquee-row {
-  animation: marquee-scroll 40s linear infinite;
-  animation-direction: var(--marquee-direction, normal);
-  will-change: transform;
-  width: max-content;
-}
-
-.marquee-row:hover {
-  animation-play-state: paused;
-}
-
 /* Respect reduced-motion preference (IL AA requirement) */
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .animate-fade-up,
   .animate-float,
   .animate-ember,
-  .animate-spin-slow,
-  .animate-spin-slow-reverse,
-  .animate-halo,
-  .animate-runtime-sweep,
   .card-progress::after,
   .animate-popover,
-  .reveal,
-  .reveal.in-view,
-  .bar-fill-active,
-  .marquee-row,
   .typing-dot {
     animation: none !important;
   }
-  .reveal { opacity: 1 !important; }
   dialog, dialog::backdrop { transition: none; }
   .card-progress::after { width: 100%; opacity: 0.7; }
   a:has(> .link-hint.is-pending) { animation: none !important; opacity: 0.6; }
@@ -362,6 +282,7 @@ html[data-high-contrast] {
   --color-terra: #9A3C1E;
   --color-terra-light: #C4502A;
   --color-terra-dark: #7A2E14;
+  --color-terra-strong: #8A3518;
   --color-terra-pale: #FFE4D6;
   --color-sage-dark: #2F4A34;
   --color-sand: #666666;
@@ -388,20 +309,11 @@ html[data-reduced-motion] .animate-float,
 html[data-reduced-motion] .animate-ember,
 html[data-reduced-motion] .animate-spin,
 html[data-reduced-motion] .animate-ping,
-html[data-reduced-motion] .animate-spin-slow,
-html[data-reduced-motion] .animate-spin-slow-reverse,
-html[data-reduced-motion] .animate-halo,
-html[data-reduced-motion] .animate-runtime-sweep,
 html[data-reduced-motion] .card-progress::after,
 html[data-reduced-motion] .animate-popover,
-html[data-reduced-motion] .reveal,
-html[data-reduced-motion] .reveal.in-view,
-html[data-reduced-motion] .bar-fill-active,
-html[data-reduced-motion] .marquee-row,
 html[data-reduced-motion] .typing-dot {
   animation: none !important;
 }
-html[data-reduced-motion] .reveal { opacity: 1 !important; }
 html[data-reduced-motion] dialog,
 html[data-reduced-motion] dialog::backdrop,
 html[data-reduced-motion] .disclosure { transition: none; }
@@ -432,36 +344,3 @@ html[data-reduced-motion] a:has(> .link-hint.is-pending) { animation: none !impo
 [data-platform="android"] [data-only="ios"] {
   display: none;
 }
-
-/* ── Scroll-driven reveals: native timelines, no observer; unsupported browsers just show the content ── */
-@keyframes sd-reveal {
-  from { opacity: 0; transform: translateY(28px); }
-  to { opacity: 1; transform: none; }
-}
-@supports (animation-timeline: view()) {
-  .sd-reveal,
-  .sd-stagger > * {
-    animation: sd-reveal linear backwards;
-    animation-timeline: view();
-    animation-range: entry 0% entry 40%;
-  }
-}
-
-/* ── Hero load sequence ── */
-@keyframes hero-rise { to { transform: translateY(0); } }
-@keyframes hero-fade { to { opacity: 1; } }
-.hero-line { display: block; overflow: hidden; }
-.hero-rise { display: inline-block; transform: translateY(110%); animation: hero-rise 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) forwards; }
-.hero-fade { opacity: 0; animation: hero-fade 0.7s ease forwards; }
-
-.lift { transition: transform 0.3s ease, box-shadow 0.3s ease; }
-.lift:hover { transform: translateY(-4px); box-shadow: 0 24px 50px -30px rgba(44, 24, 16, 0.3); }
-
-@media (prefers-reduced-motion: reduce) {
-  .sd-reveal, .sd-stagger > *, .hero-rise, .hero-fade { animation: none !important; opacity: 1; transform: none; }
-  .lift, .lift:hover { transition: none; transform: none; }
-}
-html[data-reduced-motion] .sd-reveal,
-html[data-reduced-motion] .sd-stagger > *,
-html[data-reduced-motion] .hero-rise,
-html[data-reduced-motion] .hero-fade { animation: none !important; opacity: 1; transform: none; }
