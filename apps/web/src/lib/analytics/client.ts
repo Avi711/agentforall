@@ -16,13 +16,11 @@ export function startAnalytics(token: string | undefined): void {
         cross_subdomain_cookie: false,
         mask_personal_data_properties: true,
         custom_personal_data_properties: SECRET_QUERY_PARAMS,
+        // Flags are unused and every /flags call sends the raw first-visit URL and referrer; surveys cannot show without them.
         advanced_disable_feature_flags: true,
-        // What is collected is decided here; toggles in PostHog's settings cannot widen it.
-        disable_session_recording: true,
         disable_surveys: true,
-        capture_heatmaps: false,
-        capture_dead_clicks: false,
-        autocapture: { capture_copied_text: false },
+        // Stays off until pairing codes, phone numbers and emails on the dashboard are masked.
+        disable_session_recording: true,
         before_send: scrubEvent,
       });
       return posthog;

@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { PendingLink } from "@/app/app/Pending";
 import { FLOW_BUTTON } from "./flow-buttons";
-import { NO_CAPTURE_CLASS } from "@/lib/analytics/privacy";
 
 interface Props {
   title: string;
@@ -26,7 +25,7 @@ export function ConnectedCard({ title, children, chat }: Props) {
           לדשבורד
         </PendingLink>
         {chat ? (
-          <a href={chat.href} target="_blank" rel="noopener noreferrer" className={`${FLOW_BUTTON.primary} ${NO_CAPTURE_CLASS}`}>
+          <a href={chat.href} target="_blank" rel="noopener noreferrer" className={FLOW_BUTTON.primary}>
             {chat.icon}
             <span>{chat.label}</span>
           </a>

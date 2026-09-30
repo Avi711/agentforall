@@ -4,7 +4,6 @@ import { useId, useState, type ReactNode } from "react";
 import { ROW_ACTION_CLASS, TILE_BASE, TILE_CLASS } from "./action-buttons";
 import { ChevronEnd, TelegramGlyph, WhatsAppGlyph } from "./Marks";
 import { formatPhoneForDisplay } from "@/lib/phone";
-import { NO_CAPTURE_CLASS } from "@/lib/analytics/privacy";
 import { PendingLink } from "./Pending";
 import type { BotSnapshot } from "./useBotStatus";
 
@@ -630,7 +629,7 @@ function PanelAction({ action }: { action: Action }) {
   }
   if (action.external) {
     return (
-      <a href={action.href} target="_blank" rel="noopener noreferrer" className={`${className} ${NO_CAPTURE_CLASS}`}>
+      <a href={action.href} target="_blank" rel="noopener noreferrer" className={className}>
         {action.icon ? <span aria-hidden>{action.icon}</span> : null}
         <span>{action.label}</span>
         {action.icon ? null : <ArrowOut />}
