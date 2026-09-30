@@ -3,12 +3,14 @@ import { PendingLink } from "./Pending";
 import { requireSession } from "@/lib/auth/session";
 import { UserMenu } from "./UserMenu";
 import { BrandMark } from "./Marks";
+import { AnalyticsIdentity } from "./AnalyticsIdentity";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const session = await requireSession("/login");
 
   return (
     <div className="min-h-screen bg-cream flex flex-col">
+      <AnalyticsIdentity userId={session.user.id} />
       <header className="bg-cream/85 backdrop-blur supports-[backdrop-filter]:bg-cream/70 sticky top-0 z-30 border-b border-sand-light/70">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
           <PendingLink

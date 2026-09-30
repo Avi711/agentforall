@@ -2,6 +2,7 @@
 
 import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { authClient, useGoogleSignIn } from "@/lib/auth/client";
+import { forgetUser } from "@/lib/analytics/client";
 import { authErrorMessage, type AuthFailure } from "@/lib/auth/error-messages";
 import { UNEXPECTED_ERROR_HE } from "@/lib/messages.he";
 import { Field, PasswordInput } from "@/components/auth/AuthFields";
@@ -45,6 +46,7 @@ export function DeleteAccount({ subscribed, credits, topupCredits }: { subscribe
     try {
       const res = await authClient.deleteUser(withPassword ? { password: withPassword } : {});
       if (!res.error) {
+        forgetUser();
         window.location.assign("/");
         return;
       }

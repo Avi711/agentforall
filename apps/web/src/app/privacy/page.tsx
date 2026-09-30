@@ -18,7 +18,7 @@ export default function PrivacyPage() {
           <li><strong className="text-espresso">מידע תפעולי:</strong> הודעות שאתם מחליפים עם הסוכן — לצורך מתן השירות בלבד.</li>
           <li><strong className="text-espresso">אפליקציות מחוברות:</strong> אם בחרתם לחבר לסוכן אפליקציות חיצוניות (למשל יומן, אימייל או קבצים), הסוכן ניגש למידע שבהן רק כדי לבצע את מה שביקשתם ממנו.</li>
           <li><strong className="text-espresso">מידע טכני:</strong> כתובת IP, סוג דפדפן, זמני גישה — למטרות אבטחה ואנליטיקה.</li>
-          <li><strong className="text-espresso">Meta Pixel + Google Analytics:</strong> לצורך מדידת ביצועי אתר ופרסום.</li>
+          <li><strong className="text-espresso">Meta Pixel + PostHog:</strong> לצורך מדידת ביצועי אתר ופרסום.</li>
           <li><strong className="text-espresso">Cloudflare Turnstile + Resend:</strong> בדיקה נגד בוטים במסכי הכניסה, ושליחת מיילים לאישור הכתובת ולבחירת סיסמה.</li>
         </ul>
       </section>

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { PendingLink } from "./Pending";
 import { Spinner } from "./Marks";
 import { signOut } from "@/lib/auth/client";
+import { forgetUser } from "@/lib/analytics/client";
 
 interface MenuUser {
   email: string;
@@ -49,6 +50,7 @@ export function UserMenu({ user }: { user: MenuUser }) {
     setSigningOut(true);
     try {
       await signOut();
+      forgetUser();
       startLeave(() => {
         router.replace("/login");
         router.refresh();
