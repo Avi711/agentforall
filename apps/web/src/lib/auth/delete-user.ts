@@ -8,6 +8,7 @@ type DeleteUserOptions = NonNullable<NonNullable<BetterAuthOptions["user"]>["del
 export interface AccountCleanup {
   cancelBilling(userId: string): Promise<void>;
   deleteBots(userId: string): Promise<void>;
+  eraseAnalytics(userId: string): void;
 }
 
 // No verification email: Better Auth then deletes only for a session under a day old, else answers SESSION_EXPIRED.
@@ -24,6 +25,9 @@ export function deleteUserOptions(cleanup: AccountCleanup): DeleteUserOptions {
         throw err;
       }
       await cleanup.deleteBots(user.id);
+    },
+    afterDelete: async (user) => {
+      cleanup.eraseAnalytics(user.id);
     },
   };
 }

@@ -11,11 +11,13 @@ export class AuthRepository {
     this.db = db ?? getDb();
   }
 
-  async claimAccount(userId: string): Promise<void> {
-    await this.db
+  async claimAccount(userId: string): Promise<boolean> {
+    const claimed = await this.db
       .update(user)
       .set({ emailVerified: true, name: null, image: null, updatedAt: sql`now()` })
-      .where(and(eq(user.id, userId), eq(user.emailVerified, false)));
+      .where(and(eq(user.id, userId), eq(user.emailVerified, false)))
+      .returning({ id: user.id });
+    return claimed.length > 0;
   }
 
   async touchUser(userId: string): Promise<void> {

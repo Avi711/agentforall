@@ -53,6 +53,7 @@ import type {
   WebhookRequest,
 } from "../../src/lib/billing/provider/types";
 import { BillingService } from "../../src/lib/billing/service";
+import type { ProductEvent } from "../../src/lib/analytics/events";
 
 export const USER: BillingUser = { id: "user-1", email: "u@example.com", name: "Dana", betaAccess: false };
 export const NOW = new Date("2026-08-26T10:00:00.000Z");
@@ -591,6 +592,7 @@ export interface Harness extends CreditHarness {
   payments: InMemoryPayments;
   events: InMemoryEvents;
   trialClaims: InMemoryTrialClaims;
+  tracked: Array<{ userId: string; event: ProductEvent }>;
 }
 
 export function harness(
@@ -608,6 +610,7 @@ export function harness(
   const payments = new InMemoryPayments(subscriptions);
   const events = new InMemoryEvents(base.clock);
   const trialClaims = new InMemoryTrialClaims();
+  const tracked: Harness["tracked"] = [];
   const service = new BillingService({
     providers: registry,
     subscriptions,
@@ -619,10 +622,13 @@ export function harness(
     enforcement: opts.enforcement ?? true,
     appUrl: "https://app.example",
     background: opts.background,
+    track: (userId, event) => {
+      tracked.push({ userId, event });
+    },
     now: () => base.clock.now(),
     logger: capturingLogger(base.logs),
   });
-  return { ...base, service, provider, subscriptions, checkouts, payments, events, trialClaims };
+  return { ...base, service, provider, subscriptions, checkouts, payments, events, trialClaims, tracked };
 }
 
 export function subscription(overrides: Partial<Subscription> = {}): Subscription {

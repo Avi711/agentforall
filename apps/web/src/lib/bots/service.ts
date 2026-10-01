@@ -20,6 +20,8 @@ import type {
 } from "../orchestrator/types";
 import { GONE_BOT_STATUSES } from "../orchestrator/types";
 import { getBotLifecycleHooks, type BotLifecycleHooks } from "../billing";
+import type { TrackProductEvent } from "../analytics/events";
+import { trackProductEvent } from "../analytics/server";
 import type { BillingUser } from "../billing/domain";
 import type {
   CreateBotBody,
@@ -84,6 +86,7 @@ export class BotService {
   constructor(
     private readonly orchestrator: BotOrchestratorPort = getOrchestratorClient(),
     private readonly hooks: BotLifecycleHooks = getBotLifecycleHooks(),
+    private readonly track: TrackProductEvent = trackProductEvent,
   ) {}
 
   findActiveBot(userId: string): Promise<Instance | null> {
@@ -104,6 +107,7 @@ export class BotService {
       displayName: input.displayName,
       channel: input.channel,
     });
+    this.track(owner.id, { name: "bot_created", source: "new" });
     await this.afterBotCreated(owner.id);
     return { bot, created: true };
   }
@@ -154,6 +158,7 @@ export class BotService {
   async restoreBackupUpload(owner: BillingUser, restoreToken: string): Promise<Instance> {
     await this.hooks.beforeBotCreate(owner);
     const bot = await this.orchestrator.restoreBackupUpload(owner.id, restoreToken);
+    this.track(owner.id, { name: "bot_created", source: "backup" });
     await this.afterBotCreated(owner.id);
     return bot;
   }

@@ -1,5 +1,6 @@
 import type { BetterAuthOptions } from "better-auth";
 import { createAuthMiddleware } from "better-auth/api";
+import type { ProductEvent, SignUpMethod, TrackProductEvent } from "../analytics/events";
 import type { OutgoingEmail } from "../email/client";
 import {
   existingAccountEmail,
@@ -24,16 +25,26 @@ export interface EmailPasswordDeps {
   deliver(kind: AuthEmailKind, email: OutgoingEmail): Promise<void>;
   // Keeps work alive past the response without the caller waiting on it.
   background(work: Promise<unknown>): void;
-  // Marks the mailbox proven; a still-unverified account also drops the profile its signer-up typed.
-  claimAccount(userId: string): Promise<void>;
+  // Marks the mailbox proven, true when this call did; a still-unverified account also drops the profile its signer-up typed.
+  claimAccount(userId: string): Promise<boolean>;
   noteVerificationSent(userId: string): Promise<void>;
+  track: TrackProductEvent;
   appUrl: string;
 }
+
+const EMAIL_SIGN_UP: ProductEvent = { name: "signed_up", method: "email" };
 
 const LAST_LINK_AGE_MS = (UNVERIFIED_SIGN_UP_MAX_AGE_DAYS * 24 - EMAIL_VERIFICATION_TTL_HOURS) * 60 * 60 * 1000;
 
 export function normalizeName(name: string): string {
   return name.trim().slice(0, MAX_NAME_LENGTH);
+}
+
+// Social sign-ups are created by Better Auth's "/callback/:id" endpoint, with the provider in the id param.
+export function signUpMethod(path: string | undefined, params: Record<string, unknown> | undefined): SignUpMethod {
+  if (path === "/sign-up/email") return "email";
+  if (path === "/callback/:id" && params?.id === "google") return "google";
+  return "unknown";
 }
 
 type EmailPasswordOptions = Required<
@@ -64,11 +75,11 @@ export function emailPasswordOptions(deps: EmailPasswordDeps): EmailPasswordOpti
       sendResetPassword: ({ user, url }) => deps.deliver("reset-password", resetPasswordEmail(user.email, url)),
       // The reset link proves the mailbox and replaces any password a squatter set before the owner arrived.
       onPasswordReset: async ({ user }) => {
-        try {
-          await deps.claimAccount(user.id);
-        } catch (err) {
+        const claimed = await deps.claimAccount(user.id).catch((err: unknown) => {
           console.error("[auth] claiming the account after reset failed", err instanceof Error ? err.message : err);
-        }
+          return false;
+        });
+        if (claimed) deps.track(user.id, EMAIL_SIGN_UP);
         deps.background(deps.deliver("password-changed", passwordChangedEmail(user.email, loginUrl)));
       },
       onExistingUserSignUp: ({ user }) =>
@@ -89,6 +100,9 @@ export function emailPasswordOptions(deps: EmailPasswordDeps): EmailPasswordOpti
           console.error("[auth] recording a verification send failed", err instanceof Error ? err.message : err);
         }
       },
+      afterEmailVerification: async (user) => {
+        deps.track(user.id, EMAIL_SIGN_UP);
+      },
     },
     databaseHooks: {
       user: {
@@ -97,6 +111,11 @@ export function emailPasswordOptions(deps: EmailPasswordDeps): EmailPasswordOpti
           before: async (user, ctx) => ({
             data: { ...user, name: normalizeName(user.name), image: ctx?.path === "/sign-up/email" ? null : user.image },
           }),
+          // An email account counts once its mailbox is proven: unconfirmed ones are purged and never reach PostHog.
+          after: async (user, ctx) => {
+            const method = signUpMethod(ctx?.path, ctx?.params);
+            if (method !== "email") deps.track(user.id, { name: "signed_up", method });
+          },
         },
       },
     },

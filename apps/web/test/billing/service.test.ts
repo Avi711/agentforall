@@ -1363,3 +1363,37 @@ describe("admin grant", () => {
     assert.deepEqual(summaries.get("user-2")?.balance, { kind: "none" });
   });
 });
+
+describe("product analytics", () => {
+  test("a new checkout is tracked once; reopening the same checkout is not a new one", async () => {
+    const h = harness();
+    await h.service.startCheckout(USER, "standard");
+    await h.service.startCheckout(USER, "standard");
+    assert.deepEqual(h.tracked, [{ userId: USER.id, event: { name: "checkout_started", kind: "subscription", product: "standard" } }]);
+  });
+
+  test("the first charge and a renewal are tracked as subscription payments; a redelivered charge is not", async () => {
+    const h = harness();
+    const session = await openSubscriptionCheckout(h);
+    h.tracked.length = 0;
+    await deliver(h, paymentSucceeded({ reference: { checkoutSessionId: session.id } }));
+    await deliver(h, paymentSucceeded({ reference: { checkoutSessionId: session.id } }));
+    await deliver(h, paymentSucceeded({ planCode: null, payment: { providerPaymentId: "pay_2", amountAgorot: 20000, currency: "ILS" } }));
+    assert.deepEqual(h.tracked, [
+      { userId: USER.id, event: { name: "subscription_paid", plan: "standard", new_subscription: true } },
+      { userId: USER.id, event: { name: "subscription_paid", plan: "standard", new_subscription: false } },
+    ]);
+  });
+
+  test("a paid top-up is tracked once, however often it is delivered", async () => {
+    const h = harness();
+    h.subscriptions.seed(subscription());
+    await h.service.startTopup(USER, 50);
+    const session = first(h.checkouts.rows);
+    h.tracked.length = 0;
+    const event = () => paymentSucceeded({ providerSubscriptionId: null, planCode: null, payment: { providerPaymentId: "pay_t1", amountAgorot: 5000, currency: "ILS" }, reference: { checkoutSessionId: session.id } });
+    await deliver(h, event());
+    await deliver(h, event());
+    assert.deepEqual(h.tracked, [{ userId: USER.id, event: { name: "credits_purchased", product: session.productCode } }]);
+  });
+});

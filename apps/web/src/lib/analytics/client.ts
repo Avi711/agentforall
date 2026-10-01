@@ -1,5 +1,5 @@
 import type { PostHog } from "posthog-js";
-import { ANALYTICS_ORIGIN, ANALYTICS_UI_HOST } from "./hosts";
+import { ANALYTICS_APP_HOST, ANALYTICS_ORIGIN } from "./hosts";
 import { SECRET_QUERY_PARAMS, scrubEvent } from "./privacy";
 
 let ready: Promise<PostHog | null> | undefined;
@@ -11,7 +11,7 @@ export function startAnalytics(token: string | undefined): void {
     ({ default: posthog }) => {
       posthog.init(token, {
         api_host: ANALYTICS_ORIGIN,
-        ui_host: ANALYTICS_UI_HOST,
+        ui_host: ANALYTICS_APP_HOST,
         defaults: "2026-08-30",
         cross_subdomain_cookie: false,
         mask_personal_data_properties: true,

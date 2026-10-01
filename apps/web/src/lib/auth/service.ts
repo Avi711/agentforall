@@ -36,8 +36,8 @@ export class AuthService {
     }
   }
 
-  async claimAccount(userId: string): Promise<void> {
-    await this.repo.claimAccount(userId);
+  claimAccount(userId: string): Promise<boolean> {
+    return this.repo.claimAccount(userId);
   }
 
   // The purge counts from the last link sent, so no live link outlives its account.

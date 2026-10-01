@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { betterAuth } from "better-auth";
 import { memoryAdapter } from "better-auth/adapters/memory";
 import { APIError } from "better-auth/api";
-import { emailPasswordOptions, type AuthEmailKind } from "../../src/lib/auth/email-password";
+import { emailPasswordOptions, signUpMethod, type AuthEmailKind } from "../../src/lib/auth/email-password";
+import type { ProductEvent } from "../../src/lib/analytics/events";
 import { USER_ADDITIONAL_FIELDS } from "../../src/lib/auth/user-fields";
 import type { OutgoingEmail } from "../../src/lib/email/client";
 import { CONFIRM_INTENT_COOKIE } from "../../src/lib/auth/policy";
@@ -14,11 +15,12 @@ const EMAIL = "owner@example.com";
 const PASSWORD = "correct horse battery";
 const APP = "http://localhost:3000";
 
-function setup(overrides: { claimAccount?: (userId: string) => Promise<void> } = {}) {
+function setup(overrides: { claimAccount?: (userId: string) => Promise<boolean> } = {}) {
   const db: Record<string, Row[]> = { user: [], session: [], account: [], verification: [] };
   const sent: Array<{ kind: AuthEmailKind; email: OutgoingEmail }> = [];
   const touched: string[] = [];
   const backgroundWork: Array<Promise<unknown>> = [];
+  const tracked: Array<{ userId: string; event: ProductEvent }> = [];
   const auth = betterAuth({
     secret: "test-secret-with-enough-entropy-000000",
     baseURL: APP,
@@ -34,10 +36,15 @@ function setup(overrides: { claimAccount?: (userId: string) => Promise<void> } =
       claimAccount:
         overrides.claimAccount ??
         (async (userId) => {
-          for (const user of db.user) if (user.id === userId) user.emailVerified = true;
+          const unclaimed = db.user.find((user) => user.id === userId && user.emailVerified === false);
+          if (unclaimed) unclaimed.emailVerified = true;
+          return unclaimed !== undefined;
         }),
       noteVerificationSent: async (userId) => {
         touched.push(userId);
+      },
+      track: (userId, event) => {
+        tracked.push({ userId, event });
       },
       appUrl: APP,
     }),
@@ -61,7 +68,7 @@ function setup(overrides: { claimAccount?: (userId: string) => Promise<void> } =
 
   const settle = () => Promise.all(backgroundWork.splice(0));
 
-  return { auth, db, sent, touched, link, resetToken, signInSession, settle };
+  return { auth, db, sent, touched, tracked, link, resetToken, signInSession, settle };
 }
 
 function rejectsWith(code: string) {
@@ -83,6 +90,36 @@ test("sign-up sends a confirmation email and opens no session until it is confir
   assert.equal(sent[0]?.email.to, EMAIL);
   assert.match(sent[0]?.email.html ?? "", /dir="rtl"/);
   assert.deepEqual(touched, [db.user[0]?.id]);
+});
+
+test("an email sign-up is tracked once its mailbox is proven, never while unconfirmed", async () => {
+  const { auth, db, link, tracked } = setup();
+
+  await auth.api.signUpEmail({ body: { email: EMAIL, password: PASSWORD, name: "Dana" } });
+  await auth.api.signUpEmail({ body: { email: EMAIL, password: PASSWORD, name: "Dana" } });
+  assert.deepEqual(tracked, []);
+
+  await auth.api.verifyEmail({ query: { token: link("verify-email").searchParams.get("token") ?? "" } });
+  assert.deepEqual(tracked, [{ userId: db.user[0]?.id, event: { name: "signed_up", method: "email" } }]);
+});
+
+test("a password reset that proves the mailbox counts as the sign-up; a later reset does not count again", async () => {
+  const { auth, db, resetToken, tracked } = setup();
+  await auth.api.signUpEmail({ body: { email: EMAIL, password: PASSWORD, name: "Dana" } });
+
+  for (const password of ["a brand new passphrase", "another new passphrase"]) {
+    await auth.api.requestPasswordReset({ body: { email: EMAIL, redirectTo: "/reset-password" } });
+    await auth.api.resetPassword({ body: { newPassword: password, token: resetToken() } });
+  }
+
+  assert.deepEqual(tracked, [{ userId: db.user[0]?.id, event: { name: "signed_up", method: "email" } }]);
+});
+
+test("the sign-up method comes from the endpoint that created the user", () => {
+  assert.equal(signUpMethod("/sign-up/email", {}), "email");
+  assert.equal(signUpMethod("/callback/:id", { id: "google" }), "google");
+  assert.equal(signUpMethod("/callback/:id", { id: "apple" }), "unknown");
+  assert.equal(signUpMethod(undefined, undefined), "unknown");
 });
 
 test("the confirmation email links to our click-to-confirm page, never straight to the API", async () => {

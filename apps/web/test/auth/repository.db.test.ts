@@ -75,7 +75,7 @@ test("unconfirmed sign-ups without a social login go once no link was sent since
 });
 
 test("claiming an unconfirmed account verifies it and drops the profile its signer-up typed", { skip }, async () => {
-  await repo.claimAccount("fresh-password");
+  assert.equal(await repo.claimAccount("fresh-password"), true);
 
   const [row] = await db.select().from(user).where(sql`${user.id} = 'fresh-password'`);
   assert.equal(row?.emailVerified, true);
@@ -84,7 +84,7 @@ test("claiming an unconfirmed account verifies it and drops the profile its sign
 });
 
 test("claiming an already confirmed account changes nothing", { skip }, async () => {
-  await repo.claimAccount("verified-password");
+  assert.equal(await repo.claimAccount("verified-password"), false);
 
   const [row] = await db.select().from(user).where(sql`${user.id} = 'verified-password'`);
   assert.equal(row?.name, "Typed Name");

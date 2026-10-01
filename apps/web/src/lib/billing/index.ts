@@ -19,6 +19,7 @@ import {
   DrizzleTrialClaimRepository,
 } from "./repository";
 import { BillingService } from "./service";
+import { trackProductEvent } from "../analytics/server";
 
 export interface BotLifecycleHooks {
   beforeBotCreate(owner: BillingUser): Promise<void>;
@@ -48,6 +49,7 @@ export function getBillingService(): BillingService {
       enforcement: config.enforcement,
       appUrl: config.appUrl,
       background: (work) => after(work),
+      track: trackProductEvent,
       logger: consoleBillingLogger,
     });
   }

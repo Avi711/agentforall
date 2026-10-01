@@ -76,6 +76,7 @@ import type {
   WebhookRequest,
 } from "./provider/types";
 import { SETTINGS_PATH, checkoutReturnPath } from "./urls";
+import { ignoreProductEvents, type TrackProductEvent } from "../analytics/events";
 
 const CHECKOUT_TTL_MS = HOUR_MS;
 const REUSED_CHECKOUT_MIN_LIFETIME_MS = HOUR_MS / 4;
@@ -157,6 +158,7 @@ export interface BillingServiceDeps {
   appUrl: string;
   // Paddle expects a webhook answer within 5 seconds.
   background?: (work: Promise<unknown>) => void;
+  track?: TrackProductEvent;
   now?: () => Date;
   logger?: BillingLogger;
 }
@@ -203,6 +205,7 @@ export class BillingService {
   private readonly enforcement: boolean;
   private readonly appUrl: string;
   private readonly background: ((work: Promise<unknown>) => void) | undefined;
+  private readonly track: TrackProductEvent;
   private readonly now: () => Date;
   private readonly log: BillingLogger;
 
@@ -217,6 +220,7 @@ export class BillingService {
     this.enforcement = deps.enforcement;
     this.appUrl = deps.appUrl;
     this.background = deps.background;
+    this.track = deps.track ?? ignoreProductEvents;
     this.now = deps.now ?? (() => new Date());
     this.log = deps.logger ?? consoleBillingLogger;
   }
@@ -512,6 +516,7 @@ export class BillingService {
       product: product.productCode,
       sessionId: session.id,
     });
+    this.track(user.id, { name: "checkout_started", kind: product.kind, product: product.productCode });
     return { url: result.url };
   }
 
@@ -604,6 +609,7 @@ export class BillingService {
     const recorded = await this.payments.record(
       toNewPayment(provider, event.payment, { status: "succeeded", occurredAt: event.occurredAt, userId: session.userId, subscriptionId: null, planCode: null }),
     );
+    if (recorded) this.track(session.userId, { name: "credits_purchased", product: session.productCode });
     await this.checkouts.settle(session.id, "completed", event.occurredAt);
     await this.credits.grantTopup(session.userId, session.credits, topupGrantRef(provider, event.payment.providerPaymentId));
     await this.recapAfterLedgerWrite(session.userId);
@@ -631,6 +637,8 @@ export class BillingService {
       : await this.startSubscription(provider, event, providerSubscriptionId, plan, userId);
     const subscription = application.outcome === "applied" ? application.subscription : existing;
     if (!subscription) throw new Error("duplicate first payment without a stored subscription");
+    // A subscription started in our checkout pays with its session; renewals and plan changes arrive without one.
+    if (application.outcome === "applied") this.track(userId, { name: "subscription_paid", plan: plan.code, new_subscription: session !== null });
     if (session) await this.checkouts.settle(session.id, "completed", event.occurredAt);
     await this.credits.grantPlanCredits(
       userId,

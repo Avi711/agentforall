@@ -43,12 +43,15 @@ function recordingCleanup(overrides: Partial<AccountCleanup> = {}) {
     deleteBots: async (userId) => {
       calls.push(`bots:${userId}`);
     },
+    eraseAnalytics: (userId) => {
+      calls.push(`analytics:${userId}`);
+    },
     ...overrides,
   };
   return { cleanup, calls };
 }
 
-test("a fresh session deletes the account straight away, billing first, then the bots", async () => {
+test("a fresh session deletes the account straight away: billing, then the bots, then its analytics once it is gone", async () => {
   const { cleanup, calls } = recordingCleanup();
   const { auth, db, signIn } = setup(cleanup);
   const headers = await signIn();
@@ -57,7 +60,7 @@ test("a fresh session deletes the account straight away, billing first, then the
   const result = await auth.api.deleteUser({ headers, body: {} });
 
   assert.deepEqual(result, { success: true, message: "User deleted" });
-  assert.deepEqual(calls, [`billing:${userId}`, `bots:${userId}`]);
+  assert.deepEqual(calls, [`billing:${userId}`, `bots:${userId}`, `analytics:${userId}`]);
   assert.equal(db.user.length, 0);
   assert.equal(db.session.length, 0);
 });

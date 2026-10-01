@@ -11,6 +11,8 @@ import { getAuthService } from "./service";
 import { emailPasswordOptions } from "./email-password";
 import { USER_ADDITIONAL_FIELDS } from "./user-fields";
 import { PASSWORD_COMPROMISED_HE } from "../messages.he";
+import { trackProductEvent } from "../analytics/server";
+import { eraseAnalyticsPerson } from "../analytics/erasure";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -50,6 +52,7 @@ export const auth = betterAuth({
     background: (work) => after(work),
     claimAccount: (userId) => getAuthService().claimAccount(userId),
     noteVerificationSent: (userId) => getAuthService().noteVerificationSent(userId),
+    track: trackProductEvent,
     appUrl: AUTH_BASE_URL,
   }),
 
@@ -111,6 +114,7 @@ export const auth = betterAuth({
     deleteUser: deleteUserOptions({
       cancelBilling: (userId) => getBillingService().cancelForAccountDeletion(userId),
       deleteBots: (userId) => botService.deleteAllForUser(userId),
+      eraseAnalytics: (userId) => after(() => eraseAnalyticsPerson(userId)),
     }),
     additionalFields: USER_ADDITIONAL_FIELDS,
   },
