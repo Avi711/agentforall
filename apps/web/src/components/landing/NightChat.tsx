@@ -14,7 +14,7 @@ export function NightChat() {
   const p = usePlayOnce(ref, PLAY_MS);
 
   return (
-    <div ref={ref} aria-hidden="true" className="mx-auto w-full max-w-[440px]">
+    <div ref={ref} aria-hidden="true" className="night-chat mx-auto w-full max-w-[440px]">
       <div className="overflow-hidden rounded-[28px] shadow-(--night-card-shadow)">
         <ChatHeader name={BUSINESS} status="מחובר" tint />
         <div className="wa-wallpaper grid px-3 py-4 sm:px-4">

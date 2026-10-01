@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { PendingLink } from "@/app/app/Pending";
 import { WhatsAppChatLink } from "@/components/WhatsAppChatLink";
 import { WhatsAppIcon } from "@/components/WhatsAppIcon";
-import { CTA_LABEL, TRIAL_NOTE, WHATSAPP_ASK } from "./content";
-import { FOCUS, MICRO, PRIMARY_BUTTON } from "./theme";
+import { CTA_LABEL, WHATSAPP_ASK } from "./content";
+import { ArrowForward } from "./marks";
+import { FOCUS, SMALL_PRIMARY_BUTTON } from "./theme";
 
 const HIDE_NEAR = "[data-final-cta], footer";
 
@@ -48,12 +49,12 @@ export function StickyCta() {
         visible ? "translate-y-0" : "translate-y-full"
       }`}
     >
-      <div className="flex h-(--sticky-cta-h) items-center gap-3 pe-(--a11y-clearance) ps-4">
-        <PendingLink href="/app" className={`${PRIMARY_BUTTON} min-h-12 flex-1 flex-col gap-0 py-1.5 leading-tight`}>
-          <span>{CTA_LABEL}</span>
-          <span className={`${MICRO} font-medium text-white/85`}>{TRIAL_NOTE}</span>
+      <div className="flex h-(--sticky-cta-h) items-center justify-between gap-3 pe-(--a11y-clearance) ps-4">
+        <PendingLink href="/app" className={SMALL_PRIMARY_BUTTON}>
+          {CTA_LABEL}
+          <ArrowForward className="h-4 w-4" />
         </PendingLink>
-        <WhatsAppChatLink className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-(--line-2) text-wa-teal hover:bg-(--surface) ${FOCUS}`}>
+        <WhatsAppChatLink className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-(--line-2) text-wa-teal hover:bg-(--surface) ${FOCUS}`}>
           <WhatsAppIcon className="h-6 w-6" />
           <span className="sr-only">{WHATSAPP_ASK}</span>
         </WhatsAppChatLink>

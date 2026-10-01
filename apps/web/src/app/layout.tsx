@@ -3,6 +3,7 @@ import { Heebo, Secular_One } from "next/font/google";
 import { MetaPixel } from "@/components/MetaPixel";
 import { WhatsAppFloat } from "@/components/WhatsAppFloat";
 import { AccessibilityWidget } from "@/components/AccessibilityWidget";
+import { DARK_MODE_BOOT } from "@/components/landing/darkMode";
 import {
   SITE_NAME,
   SITE_PHONE,
@@ -157,8 +158,9 @@ export default function RootLayout({
   return (
     <html lang="he-IL" dir="rtl" className={`${heebo.variable} ${secular.variable}`} suppressHydrationWarning>
       <head>
-        {/* Persisted accessibility prefs must be on <html> before first paint; the widget only syncs them later. */}
+        {/* Persisted accessibility and theme prefs must be on <html> before first paint; their controls only sync them later. */}
         <script dangerouslySetInnerHTML={{ __html: A11Y_BOOT }} />
+        <script dangerouslySetInnerHTML={{ __html: DARK_MODE_BOOT }} />
       </head>
       <body
         className="bg-cream font-[family-name:var(--font-heebo)] text-espresso antialiased"

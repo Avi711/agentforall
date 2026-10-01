@@ -32,13 +32,17 @@ export const APP_ACTIONS = [
   { slug: "wix", action: "מנהל ומעדכן את האתר והבלוג שלכם." },
 ] as const;
 
-export const NAV_LINKS = [
-  { label: "מה הוא עושה", href: "#day" },
-  { label: "לעסקים", href: "#business" },
-  { label: "איך מתחילים", href: "#setup" },
-  { label: "מחירים", href: "#pricing" },
-  { label: "שאלות", href: "#faq" },
-] as const;
+const SECTION_LINKS = {
+  day: { label: "מה הוא עושה", href: "#day" },
+  business: { label: "לעסקים", href: "#business" },
+  setup: { label: "איך מתחילים", href: "#setup" },
+  pricing: { label: "מחירים", href: "#pricing" },
+  faq: { label: "שאלות", href: "#faq" },
+} as const;
+
+export const NAV_LINKS = [SECTION_LINKS.day, SECTION_LINKS.business, SECTION_LINKS.setup, SECTION_LINKS.pricing, SECTION_LINKS.faq];
+
+export const HEADER_LINKS = [SECTION_LINKS.business, SECTION_LINKS.pricing, SECTION_LINKS.faq];
 
 interface Moment {
   time: string;

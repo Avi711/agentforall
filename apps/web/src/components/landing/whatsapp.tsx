@@ -91,7 +91,7 @@ export function Composer({ text = "", placeholder = "הודעה" }: { text?: str
           <span className="text-(--wa-meta)">{placeholder}</span>
         )}
       </span>
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-(--wa-header) text-white">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-(--wa-action) text-white">
         {text ? (
           <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 -scale-x-100" fill="currentColor">
             <path d="M2 21 23 12 2 3v7l15 2-15 2z" />
@@ -121,7 +121,7 @@ export function Phone({ children, className = "" }: { children: ReactNode; class
   return (
     <div className={`relative rounded-[44px] bg-(--phone-bezel) p-[10px] shadow-(--phone-shadow) ${className}`}>
       <span aria-hidden="true" className="absolute inset-x-0 top-[14px] mx-auto h-[22px] w-[92px] rounded-full bg-(--phone-bezel)" />
-      <div className="flex h-full flex-col overflow-hidden rounded-[34px] bg-white contain-inline-size">{children}</div>
+      <div className="flex h-full flex-col overflow-hidden rounded-[34px] bg-(--wa-bg) contain-inline-size">{children}</div>
     </div>
   );
 }

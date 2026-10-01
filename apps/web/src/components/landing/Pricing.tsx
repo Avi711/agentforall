@@ -110,7 +110,7 @@ function IntervalToggle({ value, onChange }: { value: BillingInterval; onChange:
             className={`${SMALL} min-h-11 whitespace-nowrap rounded-full px-5 font-semibold transition-colors ${FOCUS} ${active ? "bg-(--ink) text-(--page)" : "text-(--ink-2) hover:text-(--ink)"}`}
           >
             {intervalAdjective(interval)}
-            {interval === "year" ? <span className={active ? "text-terra-light" : "text-(--accent-ink)"}> · {YEARLY_DISCOUNT_PERCENT}% הנחה</span> : null}
+            {interval === "year" ? <span className={active ? "text-(--accent-on-ink)" : "text-(--accent-ink)"}> · {YEARLY_DISCOUNT_PERCENT}% הנחה</span> : null}
           </button>
         );
       })}

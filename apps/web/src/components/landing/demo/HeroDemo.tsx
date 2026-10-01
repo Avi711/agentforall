@@ -113,7 +113,7 @@ export function HeroDemo() {
   const status = working ? "עובד על זה…" : time >= T.sent && time < T.work ? "מקליד…" : "מחובר";
 
   return (
-    <div ref={region} role="region" aria-label="הדגמה: כך הסוכן עובד" className="mx-auto w-full max-w-[400px]">
+    <div ref={region} role="region" aria-label="הדגמה: כך הסוכן עובד" className="phone-glow mx-auto w-full max-w-[400px]">
       <p className="sr-only">{`דוגמה: ${scenario.request}. הסוכן עונה: ${scenario.reply}`}</p>
 
       <Phone className="h-[640px]">

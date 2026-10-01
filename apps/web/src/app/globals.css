@@ -1,8 +1,6 @@
 @import "tailwindcss";
 
-/* How-it-works motion is opt-in: the section sets data-motion / data-stack once it has measured and bound. */
-@custom-variant motion-on (&:where([data-motion="on"], [data-motion="on"] *));
-@custom-variant stack (&:where([data-stack], [data-stack] *));
+@custom-variant landing-dark (&:where([data-landing-theme="dark"] *));
 
 @theme {
   --color-cream: #FBF8F3;
