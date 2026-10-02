@@ -111,7 +111,7 @@ export function WhatsappNumberConfirmDialog({
             </span>
             <span className="flex flex-1 flex-col">
               <span className="text-sm font-semibold text-espresso">אפשר גם טלגרם</span>
-              <span className="text-[13px] text-espresso-light">בלי מספר נוסף, בלחיצה אחת</span>
+              <span className="text-[13px] text-espresso-light">בלי מספר נוסף, בשתי לחיצות</span>
             </span>
             <span className="shrink-0 text-espresso-light">{pending === "telegram" ? <Spinner /> : <ChevronEnd />}</span>
           </button>

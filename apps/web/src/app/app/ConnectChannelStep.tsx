@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { PendingLink, useNavigate } from "./Pending";
-import { BusyLabel, MonogramDisc } from "./Marks";
+import { ChannelOfferTile } from "./ChannelOfferTile";
+import { useNavigate } from "./Pending";
+import { BusyLabel, MonogramDisc, TelegramMark, WhatsAppMark } from "./Marks";
 import { WhatsappNumberConfirmDialog } from "./WhatsappNumberDialog";
 
 export function ConnectChannelStep({
@@ -37,24 +38,27 @@ export function ConnectChannelStep({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <ChannelChoice
-          href="/app/bot/telegram"
-          title="טלגרם"
-          badge="מומלץ"
-          description="חיבור מיידי בשתי לחיצות — בלי מספר טלפון"
+      <div className="grid gap-2.5 sm:grid-cols-2">
+        <ChannelOfferTile
+          glyph={<TelegramMark />}
+          name="טלגרם"
+          featured
+          offer="חיבור מיידי בשתי לחיצות — בלי מספר טלפון"
+          target={{ kind: "link", label: "חיבור טלגרם", href: "/app/bot/telegram" }}
         />
         {whatsappBusiness ? (
-          <ChannelChoice
-            href="/app/bot/whatsapp-business"
-            title="וואטסאפ עסקי"
-            description="מספר עסקי ללקוחות שלכם, דרך מטא"
+          <ChannelOfferTile
+            glyph={<WhatsAppMark business />}
+            name="וואטסאפ עסקי"
+            offer="מספר עסקי ללקוחות שלכם, דרך מטא"
+            target={{ kind: "link", label: "חיבור וואטסאפ עסקי", href: "/app/bot/whatsapp-business" }}
           />
         ) : (
-          <ChannelChoice
-            onClick={() => setConfirmWhatsapp(true)}
-            title="וואטסאפ"
-            description="דורש מספר ייעודי לסוכן — לא המספר האישי שלכם"
+          <ChannelOfferTile
+            glyph={<WhatsAppMark />}
+            name="וואטסאפ"
+            offer="דורש מספר ייעודי לסוכן — לא המספר האישי שלכם"
+            target={{ kind: "button", label: "חיבור וואטסאפ", onClick: () => setConfirmWhatsapp(true) }}
           />
         )}
       </div>
@@ -81,47 +85,5 @@ export function ConnectChannelStep({
         />
       )}
     </div>
-  );
-}
-
-const CHOICE_LINK =
-  "flex flex-col gap-1 text-start rounded-2xl border border-sand bg-white px-4 py-3.5 transition hover:border-terra hover:bg-terra-pale/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-terra";
-
-function ChannelChoice({
-  href,
-  onClick,
-  title,
-  description,
-  badge,
-}: {
-  href?: string;
-  onClick?: () => void;
-  title: string;
-  description: string;
-  badge?: string;
-}) {
-  const className = CHOICE_LINK;
-  const body = (
-    <>
-      <span className="flex items-center gap-2">
-        <span className="text-sm font-medium text-espresso">{title}</span>
-        {badge ? (
-          <span className="rounded-full bg-terra text-white text-[10px] font-medium px-2 py-0.5">{badge}</span>
-        ) : null}
-      </span>
-      <span className="text-xs text-espresso-light leading-relaxed">{description}</span>
-    </>
-  );
-  if (href) {
-    return (
-      <PendingLink href={href} className={className}>
-        {body}
-      </PendingLink>
-    );
-  }
-  return (
-    <button type="button" onClick={onClick} className={className}>
-      {body}
-    </button>
   );
 }

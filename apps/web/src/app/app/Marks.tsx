@@ -74,6 +74,22 @@ export function TelegramGlyph() {
   );
 }
 
+export function WhatsAppMark({ business = false }: { business?: boolean }) {
+  return (
+    <span className={`inline-flex ${business ? "text-wa-teal" : "text-wa-green"}`}>
+      <WhatsAppGlyph />
+    </span>
+  );
+}
+
+export function TelegramMark() {
+  return (
+    <span className="inline-flex text-telegram">
+      <TelegramGlyph />
+    </span>
+  );
+}
+
 const BUSY_LABEL_CELL = "col-start-1 row-start-1 inline-flex items-center justify-center gap-1.5";
 
 // Both labels share one grid cell, so the button never resizes on swap; compact pills omit busyText.
