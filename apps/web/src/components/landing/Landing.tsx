@@ -11,10 +11,11 @@ import { Proof } from "./Proof";
 import { Setup } from "./Setup";
 import { StickyCta } from "./StickyCta";
 import { Trust } from "./Trust";
+import { REPLAY_READABLE_CLASS } from "@/lib/analytics/privacy";
 
 export function Landing() {
   return (
-    <div className="landing min-h-screen overflow-x-clip bg-(--page) text-(--ink) selection:bg-terra/25">
+    <div className={`${REPLAY_READABLE_CLASS} landing min-h-screen overflow-x-clip bg-(--page) text-(--ink) selection:bg-terra/25`}>
       <Header />
       <main id="main">
         <Hero />

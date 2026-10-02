@@ -2,6 +2,7 @@ import { SITE_WHATSAPP_URL } from "@/lib/site";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { Footer } from "./Footer";
+import { ReplayReadable } from "./ReplayReadable";
 
 export function LegalPage({
   title,
@@ -13,7 +14,7 @@ export function LegalPage({
   children: ReactNode;
 }) {
   return (
-    <>
+    <ReplayReadable>
       <main id="main" className="min-h-screen px-5 py-24 sm:px-8">
         <div className="mx-auto max-w-3xl">
           <Link href="/" className="text-sm font-medium text-terra hover:underline">
@@ -33,7 +34,7 @@ export function LegalPage({
         </div>
       </main>
       <Footer />
-    </>
+    </ReplayReadable>
   );
 }
 

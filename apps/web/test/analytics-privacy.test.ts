@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { CaptureResult } from "posthog-js";
-import { scrubEvent, scrubUrl } from "../src/lib/analytics/privacy";
+import { maskReplayAttribute, maskReplayRequest, maskReplayText, scrubEvent, scrubUrl } from "../src/lib/analytics/privacy";
 
 function pageview(properties: CaptureResult["properties"], extra: Partial<CaptureResult> = {}): CaptureResult {
   return { uuid: "1", event: "$pageview", properties, ...extra };
@@ -85,4 +85,40 @@ test("dashboard screens send page views and identity, never clicks", () => {
   }
   assert.notEqual(scrubEvent({ uuid: "1", event: "$autocapture", properties: { $pathname: "/login" } }), null);
   assert.notEqual(scrubEvent({ uuid: "1", event: "$autocapture", properties: { $pathname: "/apps-guide" } }), null);
+});
+
+test("replay data is left to the recorder's own masking, untouched by the event filter", () => {
+  const snapshot: CaptureResult = { uuid: "1", event: "$snapshot", properties: { $snapshot_data: [{ data: { href: "/_next/image?url=%2Fhero.webp&w=640" } }] } };
+  assert.equal(scrubEvent(snapshot), snapshot);
+});
+
+const readable = { closest: (selector: string) => (selector === ".replay-readable" ? {} : null) };
+const outsideReadable = { closest: () => null };
+const maskedInsideReadable = { closest: () => ({}) };
+
+test("replay text is readable only inside readable sections, and PostHog's ph-mask still wins there", () => {
+  assert.equal(maskReplayText("רוצה סוכן?", readable), "רוצה סוכן?");
+  assert.equal(maskReplayText("050-123 4567", outsideReadable), "******* ****");
+  assert.equal(maskReplayText("שם הלקוח", maskedInsideReadable), "** *****");
+  assert.equal(maskReplayText("someone@example.com"), "*******************");
+});
+
+test("replay content attributes are masked outside readable sections; build assets stay linked", () => {
+  assert.equal(maskReplayAttribute("aria-label", "מספר הסוכן: 050-1234567", outsideReadable), "***");
+  assert.equal(maskReplayAttribute("href", "https://wa.me/972501234567", outsideReadable), "***");
+  assert.equal(maskReplayAttribute("imagesrcset", "https://lh3.googleusercontent.com/a/photo 1x", outsideReadable), "***");
+  assert.equal(maskReplayAttribute("xlink:href", "https://example.com/u/42", outsideReadable), "***");
+  assert.equal(maskReplayAttribute("href", "/_next/static/chunks/app.css", outsideReadable), "/_next/static/chunks/app.css");
+  assert.equal(maskReplayAttribute("class", "rounded-xl", outsideReadable), "rounded-xl");
+  assert.equal(maskReplayAttribute("aria-label", "פתיחת התפריט", readable), "פתיחת התפריט");
+  assert.equal(maskReplayAttribute("value", "someone@example.com"), "***");
+});
+
+test("replayed request URLs keep our own paths without secrets, and only the origin of other sites", () => {
+  const request = (name: string) => ({ name, entryType: "resource", startTime: 0, duration: 12 });
+  const own = "https://agentforall.co.il";
+
+  assert.equal(maskReplayRequest(request(`${own}/api/bot/1/pair/status?session=5f1c`), own).name, `${own}/api/bot/1/pair/status`);
+  assert.equal(maskReplayRequest(request("https://lh3.googleusercontent.com/a/ACg8oc-photo=s96-c"), own).name, "https://lh3.googleusercontent.com");
+  assert.equal(maskReplayRequest(request("/verify-email?token=abc"), own).name, "/verify-email");
 });

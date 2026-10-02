@@ -1,4 +1,4 @@
-import type { CaptureResult, Properties } from "posthog-js";
+import type { CaptureResult, CapturedNetworkRequest, Properties, SessionRecordingOptions } from "posthog-js";
 
 export const SECRET_QUERY_PARAMS = ["token", "session", "_ptxn"];
 
@@ -6,9 +6,85 @@ const RELATIVE_BASE = "https://relative.invalid";
 const KEPT_QUERY_PARAMS = new Set(["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "mode", "error"]);
 const DASHBOARD_EVENTS = new Set(["$pageview", "$pageleave", "$identify", "$set"]);
 const CHAIN_HREF = /(attr__href|href)="((?:[^"\\]|\\.)*)"/g;
+// Content attributes only: an allowlist would also strip the layout and SVG attributes replay needs to draw the page.
+const MASKED_ATTRIBUTES = new Set([
+  "href",
+  "src",
+  "srcset",
+  "title",
+  "alt",
+  "placeholder",
+  "value",
+  "content",
+  "aria-label",
+  "aria-description",
+  "aria-valuetext",
+  "aria-placeholder",
+  "imagesrcset",
+  "poster",
+  "data",
+  "action",
+  "formaction",
+  "xlink:href",
+  "ping",
+  "cite",
+]);
+const MASK = "***";
+const OWN_STATIC_ASSETS = "/_next/static/";
+const POSTHOG_MASK_CLASS = "ph-mask";
+
+export const REPLAY_READABLE_CLASS = "replay-readable";
+
+interface ReplayElement {
+  closest(selector: string): unknown;
+}
+
+// Deny by default: a new page, a streamed segment or anything outside a readable section is over-masked, never leaked.
+export const REPLAY_PRIVACY: SessionRecordingOptions = {
+  maskAllInputs: true,
+  maskTextSelector: "*",
+  maskTextFn: maskReplayText,
+  blockSelector: `img:not(.${REPLAY_READABLE_CLASS} img), iframe`,
+  maskAttributeFn: maskReplayAttribute,
+  maskCapturedNetworkRequestFn: maskReplayRequest,
+  recordHeaders: false,
+  recordBody: false,
+  captureCanvas: { recordCanvas: false },
+};
+
+export function maskReplayText(text: string, element?: ReplayElement): string {
+  return isReadable(element) ? text : text.replace(/\S/g, "*");
+}
+
+// Build assets stay linked: a stylesheet rrweb could not inline yet would otherwise replay unstyled.
+export function maskReplayAttribute(name: string, value: string, element?: ReplayElement): string {
+  if (!MASKED_ATTRIBUTES.has(name) || isReadable(element) || value.startsWith(OWN_STATIC_ASSETS)) return value;
+  return MASK;
+}
+
+// Other origins keep only their origin: a path such as a profile-photo URL can identify the person.
+export function maskReplayRequest(request: CapturedNetworkRequest, ownOrigin = globalThis.location?.origin): CapturedNetworkRequest {
+  return { ...request, name: maskReplayUrl(request.name, ownOrigin) };
+}
+
+function maskReplayUrl(url: string, ownOrigin: string | undefined): string {
+  let origin: string;
+  try {
+    origin = new URL(url).origin;
+  } catch {
+    return scrubUrl(url);
+  }
+  return origin === ownOrigin ? scrubUrl(url) : origin;
+}
+
+function isReadable(element: ReplayElement | undefined): boolean {
+  return Boolean(element?.closest(`.${REPLAY_READABLE_CLASS}`)) && !element?.closest(`.${POSTHOG_MASK_CLASS}`);
+}
 
 // Deny by default: the SDK masks only listed params, and never in referrers or clicked links.
 export function scrubEvent(event: CaptureResult | null): CaptureResult | null {
+  // Replay data is masked by the recorder; walking it here would rewrite every image and link URL it holds.
+  if (event?.event === "$snapshot") return event;
   if (!event || !isAllowedOnScreen(event.event, event.properties.$pathname)) return null;
   return {
     ...event,

@@ -1,6 +1,6 @@
 import type { PostHog } from "posthog-js";
 import { ANALYTICS_APP_HOST, ANALYTICS_ORIGIN } from "./hosts";
-import { SECRET_QUERY_PARAMS, scrubEvent } from "./privacy";
+import { REPLAY_PRIVACY, SECRET_QUERY_PARAMS, scrubEvent } from "./privacy";
 
 let ready: Promise<PostHog | null> | undefined;
 
@@ -19,8 +19,8 @@ export function startAnalytics(token: string | undefined): void {
         // Flags are unused and every /flags call sends the raw first-visit URL and referrer; surveys cannot show without them.
         advanced_disable_feature_flags: true,
         disable_surveys: true,
-        // Stays off until pairing codes, phone numbers and emails on the dashboard are masked.
-        disable_session_recording: true,
+        session_recording: REPLAY_PRIVACY,
+        enable_recording_console_log: false,
         before_send: scrubEvent,
       });
       return posthog;
