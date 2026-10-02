@@ -43,7 +43,7 @@ function isAllowedOnScreen(eventName: string, pathname: unknown): boolean {
   return !isUnder(pathname, "/app") || DASHBOARD_EVENTS.has(eventName);
 }
 
-function isUnder(pathname: string, section: string): boolean {
+export function isUnder(pathname: string, section: string): boolean {
   return pathname === section || pathname.startsWith(`${section}/`);
 }
 

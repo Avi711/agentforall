@@ -1,7 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { and, eq, lt, ne, notExists, or, sql } from "drizzle-orm";
-import { account, rateLimit, user, type Database } from "@agent-forall/db";
+import { account, metaAttribution, rateLimit, user, type Database } from "@agent-forall/db";
 import { getDb } from "../db";
 
 export class AuthRepository {
@@ -12,12 +12,16 @@ export class AuthRepository {
   }
 
   async claimAccount(userId: string): Promise<boolean> {
-    const claimed = await this.db
-      .update(user)
-      .set({ emailVerified: true, name: null, image: null, updatedAt: sql`now()` })
-      .where(and(eq(user.id, userId), eq(user.emailVerified, false)))
-      .returning({ id: user.id });
-    return claimed.length > 0;
+    return this.db.transaction(async (tx) => {
+      const claimed = await tx
+        .update(user)
+        .set({ emailVerified: true, name: null, image: null, updatedAt: sql`now()` })
+        .where(and(eq(user.id, userId), eq(user.emailVerified, false)))
+        .returning({ id: user.id });
+      if (claimed.length === 0) return false;
+      await tx.delete(metaAttribution).where(eq(metaAttribution.userId, userId));
+      return true;
+    });
   }
 
   async touchUser(userId: string): Promise<void> {

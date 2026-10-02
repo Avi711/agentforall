@@ -2,17 +2,14 @@
 
 import Script from "next/script";
 import { usePathname } from "next/navigation";
+import { isUnder } from "@/lib/analytics/privacy";
 
-const RAW_PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID;
-// Numeric check guards the inline script below from env-var injection.
-const PIXEL_ID = RAW_PIXEL_ID && /^\d+$/.test(RAW_PIXEL_ID) ? RAW_PIXEL_ID : undefined;
+// Conversions go server-side; these screens carry URL tokens or customer data the Pixel's automatic matching would read.
+const UNTRACKED_SECTIONS = ["/app", "/admin", "/login", "/reset-password", "/verify-email"];
 
-// Auth pages carry tokens in their URLs, and automatic advanced matching would read the typed email.
-const AUTH_PAGES = ["/login", "/reset-password", "/verify-email"];
-
-export function MetaPixel() {
+export function MetaPixel({ pixelId }: { pixelId: string | null }) {
   const pathname = usePathname();
-  if (!PIXEL_ID || AUTH_PAGES.some((page) => pathname.startsWith(page))) return null;
+  if (!pixelId || UNTRACKED_SECTIONS.some((section) => isUnder(pathname, section))) return null;
 
   return (
     <>
@@ -26,7 +23,7 @@ export function MetaPixel() {
           t.src=v;s=b.getElementsByTagName(e)[0];
           s.parentNode.insertBefore(t,s)}(window, document,'script',
           'https://connect.facebook.net/en_US/fbevents.js');
-          fbq('init', '${PIXEL_ID}');
+          fbq('init', '${pixelId}');
           fbq('track', 'PageView');
         `}
       </Script>
@@ -35,42 +32,10 @@ export function MetaPixel() {
           height="1"
           width="1"
           style={{ display: "none" }}
-          src={`https://www.facebook.com/tr?id=${PIXEL_ID}&ev=PageView&noscript=1`}
+          src={`https://www.facebook.com/tr?id=${pixelId}&ev=PageView&noscript=1`}
           alt=""
         />
       </noscript>
     </>
   );
-}
-
-export interface TrackLeadArgs {
-  eventId: string;
-  email?: string;
-  phone?: string;
-  name?: string;
-}
-
-// Fires a deduplicated Lead event. eventId MUST be forwarded to the server so
-// Meta can collapse the Pixel event with the matching Conversions API event
-// (dedup window: 48h on event_name + event_id).
-export function trackLead(args: TrackLeadArgs): void {
-  if (typeof window === "undefined" || typeof window.fbq !== "function" || !PIXEL_ID) {
-    return;
-  }
-
-  // Re-init with customer data so Meta hashes it client-side for Advanced
-  // Matching. This raises the EMQ score even when the server event is blocked.
-  const matching: FbqAdvancedMatching = {};
-  if (args.email) matching.em = args.email;
-  if (args.phone) matching.ph = args.phone;
-  if (args.name) {
-    const [first, ...rest] = args.name.trim().split(/\s+/).filter(Boolean);
-    if (first) matching.fn = first;
-    if (rest.length > 0) matching.ln = rest.join(" ");
-  }
-  if (Object.keys(matching).length > 0) {
-    window.fbq("init", PIXEL_ID, matching);
-  }
-
-  window.fbq("track", "Lead", {}, { eventID: args.eventId });
 }

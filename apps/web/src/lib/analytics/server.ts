@@ -1,6 +1,7 @@
 import "server-only";
 import { after } from "next/server";
 import { PostHog } from "posthog-node";
+import { getMetaConversions } from "../meta-capi";
 import type { TrackProductEvent } from "./events";
 import { ANALYTICS_INGEST_HOST } from "./hosts";
 
@@ -27,10 +28,12 @@ function getClient(): PostHog | null {
   return client;
 }
 
-// Sent after the response: a slow or failing PostHog never delays or fails the request that caused the event.
+// Sent after the response: a slow or failing PostHog or Meta never delays or fails the request that caused the event.
 export const trackProductEvent: TrackProductEvent = (userId, event) => {
   const posthog = getClient();
-  if (!posthog) return;
-  const { name, ...properties } = event;
-  after(() => posthog.captureImmediate({ distinctId: userId, event: name, properties }));
+  if (posthog) {
+    const { name, ...properties } = event;
+    after(() => posthog.captureImmediate({ distinctId: userId, event: name, properties }));
+  }
+  after(() => getMetaConversions().track(userId, event));
 };

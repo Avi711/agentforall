@@ -1369,7 +1369,23 @@ describe("product analytics", () => {
     const h = harness();
     await h.service.startCheckout(USER, "standard");
     await h.service.startCheckout(USER, "standard");
-    assert.deepEqual(h.tracked, [{ userId: USER.id, event: { name: "checkout_started", kind: "subscription", product: "standard" } }]);
+    assert.deepEqual(h.tracked, [
+      { userId: USER.id, event: { name: "checkout_started", kind: "subscription", product: "standard", amount_agorot: 20000, currency: "ILS" } },
+    ]);
+  });
+
+  test("the trial is tracked when the first bot starts it, and never again", async () => {
+    const h = harness();
+    await h.service.beforeBotCreate(USER);
+    await h.service.beforeBotCreate(USER);
+    assert.deepEqual(h.tracked, [{ userId: USER.id, event: { name: "trial_started" } }]);
+  });
+
+  test("a paying user's first bot starts no trial and tracks none", async () => {
+    const h = harness();
+    h.subscriptions.seed(subscription());
+    await h.service.beforeBotCreate(USER);
+    assert.deepEqual(h.tracked, []);
   });
 
   test("the first charge and a renewal are tracked as subscription payments; a redelivered charge is not", async () => {
@@ -1380,8 +1396,8 @@ describe("product analytics", () => {
     await deliver(h, paymentSucceeded({ reference: { checkoutSessionId: session.id } }));
     await deliver(h, paymentSucceeded({ planCode: null, payment: { providerPaymentId: "pay_2", amountAgorot: 20000, currency: "ILS" } }));
     assert.deepEqual(h.tracked, [
-      { userId: USER.id, event: { name: "subscription_paid", plan: "standard", new_subscription: true } },
-      { userId: USER.id, event: { name: "subscription_paid", plan: "standard", new_subscription: false } },
+      { userId: USER.id, event: { name: "subscription_paid", plan: "standard", new_subscription: true, amount_agorot: 20000, currency: "ILS" } },
+      { userId: USER.id, event: { name: "subscription_paid", plan: "standard", new_subscription: false, amount_agorot: 20000, currency: "ILS" } },
     ]);
   });
 
@@ -1394,6 +1410,8 @@ describe("product analytics", () => {
     const event = () => paymentSucceeded({ providerSubscriptionId: null, planCode: null, payment: { providerPaymentId: "pay_t1", amountAgorot: 5000, currency: "ILS" }, reference: { checkoutSessionId: session.id } });
     await deliver(h, event());
     await deliver(h, event());
-    assert.deepEqual(h.tracked, [{ userId: USER.id, event: { name: "credits_purchased", product: session.productCode } }]);
+    assert.deepEqual(h.tracked, [
+      { userId: USER.id, event: { name: "credits_purchased", product: session.productCode, amount_agorot: 5000, currency: "ILS" } },
+    ]);
   });
 });

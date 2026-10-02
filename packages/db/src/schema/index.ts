@@ -11,6 +11,7 @@ export { instanceSettings } from "./instance-settings.js";
 export { instanceEvents } from "./instance-events.js";
 export { integrationSessions, INTEGRATION_PROVIDERS } from "./integrations.js";
 export { leads, PLATFORMS } from "./leads.js";
+export { metaAttribution } from "./meta-attribution.js";
 export {
   billingCheckoutSessions,
   billingSubscriptions,

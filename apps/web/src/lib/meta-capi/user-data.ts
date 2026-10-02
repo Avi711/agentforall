@@ -17,6 +17,7 @@ export interface UserDataInput {
   userAgent?: string;
   fbp?: string;
   fbc?: string;
+  countryCode?: string;
   eventSourceUrl?: string;
 }
 
@@ -26,6 +27,7 @@ export interface UserData {
   fn?: string[];
   ln?: string[];
   external_id?: string[];
+  country?: string[];
   client_ip_address?: string;
   client_user_agent?: string;
   fbp?: string;
@@ -52,6 +54,8 @@ export function buildUserData(input: UserDataInput): UserData {
   }
 
   if (input.externalId) ud.external_id = [sha256Hex(input.externalId)];
+  const country = input.countryCode?.trim().toLowerCase();
+  if (country) ud.country = [sha256Hex(country)];
 
   if (input.clientIp) ud.client_ip_address = input.clientIp;
   if (input.userAgent) ud.client_user_agent = input.userAgent;

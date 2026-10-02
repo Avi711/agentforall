@@ -15,12 +15,18 @@ const EMAIL = "owner@example.com";
 const PASSWORD = "correct horse battery";
 const APP = "http://localhost:3000";
 
-function setup(overrides: { claimAccount?: (userId: string) => Promise<boolean> } = {}) {
+function setup(
+  overrides: {
+    claimAccount?: (userId: string) => Promise<boolean>;
+    rememberBrowser?: (userId: string, headers: Headers | undefined) => Promise<void>;
+  } = {},
+) {
   const db: Record<string, Row[]> = { user: [], session: [], account: [], verification: [] };
   const sent: Array<{ kind: AuthEmailKind; email: OutgoingEmail }> = [];
   const touched: string[] = [];
   const backgroundWork: Array<Promise<unknown>> = [];
   const tracked: Array<{ userId: string; event: ProductEvent }> = [];
+  const remembered: Array<{ userId: string; userAgent: string | null }> = [];
   const auth = betterAuth({
     secret: "test-secret-with-enough-entropy-000000",
     baseURL: APP,
@@ -43,6 +49,11 @@ function setup(overrides: { claimAccount?: (userId: string) => Promise<boolean> 
       noteVerificationSent: async (userId) => {
         touched.push(userId);
       },
+      rememberBrowser:
+        overrides.rememberBrowser ??
+        (async (userId, headers) => {
+          remembered.push({ userId, userAgent: headers?.get("user-agent") ?? null });
+        }),
       track: (userId, event) => {
         tracked.push({ userId, event });
       },
@@ -68,7 +79,7 @@ function setup(overrides: { claimAccount?: (userId: string) => Promise<boolean> 
 
   const settle = () => Promise.all(backgroundWork.splice(0));
 
-  return { auth, db, sent, touched, tracked, link, resetToken, signInSession, settle };
+  return { auth, db, sent, touched, tracked, remembered, link, resetToken, signInSession, settle };
 }
 
 function rejectsWith(code: string) {
@@ -113,6 +124,89 @@ test("a password reset that proves the mailbox counts as the sign-up; a later re
   }
 
   assert.deepEqual(tracked, [{ userId: db.user[0]?.id, event: { name: "signed_up", method: "email" } }]);
+});
+
+test("the browser that signs up is remembered, and the browser that confirms and signs in refreshes it", async () => {
+  const { auth, db, link, remembered } = setup();
+
+  await auth.api.signUpEmail({ body: { email: EMAIL, password: PASSWORD, name: "Dana" }, headers: new Headers({ "user-agent": "phone" }) });
+  await auth.api.verifyEmail({
+    query: { token: link("verify-email").searchParams.get("token") ?? "" },
+    headers: new Headers({ "user-agent": "laptop" }),
+  });
+
+  const userId = String(db.user[0]?.id);
+  assert.deepEqual(remembered, [
+    { userId, userAgent: "phone" },
+    { userId, userAgent: "laptop" },
+  ]);
+});
+
+test("an email sign-up never waits for its browser to be stored, so a new address answers as fast as a known one", async () => {
+  const { auth, db } = setup({ rememberBrowser: () => new Promise<void>(() => {}) });
+
+  await auth.api.signUpEmail({ body: { email: EMAIL, password: PASSWORD, name: "Dana" } });
+
+  assert.equal(db.user.length, 1);
+});
+
+test("a reset that claims the account stores the claimant's browser before the sign-up is tracked", async () => {
+  const { auth, db, resetToken, remembered, tracked } = setup();
+  await auth.api.signUpEmail({ body: { email: EMAIL, password: PASSWORD, name: "Dana" }, headers: new Headers({ "user-agent": "squatter" }) });
+
+  await auth.api.requestPasswordReset({ body: { email: EMAIL, redirectTo: "/reset-password" } });
+  const res = await auth.handler(
+    new Request(`${APP}/api/auth/reset-password`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: APP, "user-agent": "owner" },
+      body: JSON.stringify({ newPassword: "a brand new passphrase", token: resetToken() }),
+    }),
+  );
+
+  assert.equal(res.status, 200);
+  const userId = String(db.user[0]?.id);
+  assert.deepEqual(remembered.at(-1), { userId, userAgent: "owner" });
+  assert.deepEqual(tracked, [{ userId, event: { name: "signed_up", method: "email" } }]);
+});
+
+function hooksWith(order: string[]) {
+  return emailPasswordOptions({
+    deliver: async () => {},
+    background: () => {},
+    claimAccount: async () => false,
+    noteVerificationSent: async () => {},
+    rememberBrowser: async () => {
+      await Promise.resolve();
+      order.push("remember");
+    },
+    track: (_userId, event) => {
+      order.push(event.name);
+    },
+    appUrl: APP,
+  }).databaseHooks;
+}
+
+test("a Google sign-up stores its browser before the sign-up is tracked", async () => {
+  const order: string[] = [];
+  const afterCreate = hooksWith(order).user?.create?.after;
+  assert.ok(afterCreate);
+  const now = new Date();
+  const user = { id: "g1", email: EMAIL, name: "Dana", emailVerified: true, image: null, createdAt: now, updatedAt: now };
+  const callback = { path: "/callback/:id", params: { id: "google" }, headers: new Headers() };
+
+  await afterCreate(user, callback as unknown as Parameters<typeof afterCreate>[1]);
+
+  assert.deepEqual(order, ["remember", "signed_up"]);
+});
+
+test("a session deleted mid-refresh reaches the update hook as null and is skipped, not thrown on", async () => {
+  const order: string[] = [];
+  const afterUpdate = hooksWith(order).session?.update?.after;
+  assert.ok(afterUpdate);
+
+  await afterUpdate(null as unknown as Parameters<typeof afterUpdate>[0], null);
+
+  assert.deepEqual(order, []);
 });
 
 test("the sign-up method comes from the endpoint that created the user", () => {

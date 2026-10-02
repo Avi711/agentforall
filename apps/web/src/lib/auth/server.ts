@@ -3,6 +3,7 @@ import { after } from "next/server";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { getDb } from "../db";
+import { errorMessage } from "../error-message";
 import { botService } from "../bots/service";
 import { getBillingService } from "../billing";
 import { captcha, haveIBeenPwned } from "better-auth/plugins";
@@ -12,6 +13,7 @@ import { emailPasswordOptions } from "./email-password";
 import { USER_ADDITIONAL_FIELDS } from "./user-fields";
 import { PASSWORD_COMPROMISED_HE } from "../messages.he";
 import { trackProductEvent } from "../analytics/server";
+import { getMetaConversions } from "../meta-capi";
 import { eraseAnalyticsPerson } from "../analytics/erasure";
 
 function requireEnv(name: string): string {
@@ -52,6 +54,7 @@ export const auth = betterAuth({
     background: (work) => after(work),
     claimAccount: (userId) => getAuthService().claimAccount(userId),
     noteVerificationSent: (userId) => getAuthService().noteVerificationSent(userId),
+    rememberBrowser: (userId, headers) => getMetaConversions().rememberBrowser(userId, headers),
     track: trackProductEvent,
     appUrl: AUTH_BASE_URL,
   }),
@@ -67,10 +70,9 @@ export const auth = betterAuth({
   // Better Auth attaches emails to its log lines (e.g. "User not found { email }"); keep only messages and errors.
   logger: {
     log: (level, message, ...args) => {
-      // Database errors append the query parameters (emails among them), so only the part before them is kept.
       const errors = args
         .filter((arg): arg is Error => arg instanceof Error)
-        .map((err) => `${err.name}: ${err.message.split("\nparams:")[0]}`);
+        .map((err) => `${err.name}: ${errorMessage(err)}`);
       const line = message.startsWith("[better-auth]") ? message : `[better-auth] ${message}`;
       if (level === "error") console.error(line, ...errors);
       else if (level === "warn") console.warn(line, ...errors);

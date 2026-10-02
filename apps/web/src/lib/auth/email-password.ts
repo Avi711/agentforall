@@ -25,9 +25,10 @@ export interface EmailPasswordDeps {
   deliver(kind: AuthEmailKind, email: OutgoingEmail): Promise<void>;
   // Keeps work alive past the response without the caller waiting on it.
   background(work: Promise<unknown>): void;
-  // Marks the mailbox proven, true when this call did; a still-unverified account also drops the profile its signer-up typed.
+  // Marks the mailbox proven, true when this call did; a still-unverified account also drops the profile and browser its signer-up brought.
   claimAccount(userId: string): Promise<boolean>;
   noteVerificationSent(userId: string): Promise<void>;
+  rememberBrowser(userId: string, headers: Headers | undefined): Promise<void>;
   track: TrackProductEvent;
   appUrl: string;
 }
@@ -74,12 +75,15 @@ export function emailPasswordOptions(deps: EmailPasswordDeps): EmailPasswordOpti
       }),
       sendResetPassword: ({ user, url }) => deps.deliver("reset-password", resetPasswordEmail(user.email, url)),
       // The reset link proves the mailbox and replaces any password a squatter set before the owner arrived.
-      onPasswordReset: async ({ user }) => {
+      onPasswordReset: async ({ user }, request) => {
         const claimed = await deps.claimAccount(user.id).catch((err: unknown) => {
           console.error("[auth] claiming the account after reset failed", err instanceof Error ? err.message : err);
           return false;
         });
-        if (claimed) deps.track(user.id, EMAIL_SIGN_UP);
+        if (claimed) {
+          await deps.rememberBrowser(user.id, request?.headers);
+          deps.track(user.id, EMAIL_SIGN_UP);
+        }
         deps.background(deps.deliver("password-changed", passwordChangedEmail(user.email, loginUrl)));
       },
       onExistingUserSignUp: ({ user }) =>
@@ -114,7 +118,26 @@ export function emailPasswordOptions(deps: EmailPasswordDeps): EmailPasswordOpti
           // An email account counts once its mailbox is proven: unconfirmed ones are purged and never reach PostHog.
           after: async (user, ctx) => {
             const method = signUpMethod(ctx?.path, ctx?.params);
-            if (method !== "email") deps.track(user.id, { name: "signed_up", method });
+            const remembering = deps.rememberBrowser(user.id, ctx?.headers);
+            if (method === "email") {
+              // Awaiting would make a new address answer slower than a known one.
+              deps.background(remembering);
+              return;
+            }
+            await remembering;
+            deps.track(user.id, { name: "signed_up", method });
+          },
+        },
+      },
+      // A sign-in, or the daily refresh of an active session, keeps the stored browser current.
+      session: {
+        create: {
+          after: (session, ctx) => deps.rememberBrowser(session.userId, ctx?.headers),
+        },
+        update: {
+          // Null despite the type when the session was deleted mid-refresh, e.g. by a sign-out in another tab.
+          after: async (session, ctx) => {
+            if (session) await deps.rememberBrowser(session.userId, ctx?.headers);
           },
         },
       },

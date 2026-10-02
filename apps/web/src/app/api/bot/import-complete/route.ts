@@ -7,7 +7,7 @@ import { toBillingUser } from "@/lib/billing/user";
 export const maxDuration = 120;
 
 export const POST = authenticatedHandler(
-  { bodySchema: BackupRestoreBodySchema, requireEntitlement: true },
+  { bodySchema: BackupRestoreBodySchema, requireEntitlement: true, rememberBrowser: true },
   async ({ user, body }) => {
     const bot = await botService.restoreBackupUpload(toBillingUser(user), body.restoreToken);
     return NextResponse.json({ bot }, { status: 201 });

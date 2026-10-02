@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Heebo, Secular_One } from "next/font/google";
 import { MetaPixel } from "@/components/MetaPixel";
+import { metaPixelId } from "@/lib/meta-capi/config";
 import { WhatsAppFloat } from "@/components/WhatsAppFloat";
 import { AccessibilityWidget } from "@/components/AccessibilityWidget";
 import { DARK_MODE_BOOT } from "@/components/landing/darkMode";
@@ -167,7 +168,7 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <a href="#main" className="skip-link">דלג לתוכן הראשי</a>
-        <MetaPixel />
+        <MetaPixel pixelId={metaPixelId()} />
         {children}
         <WhatsAppFloat />
         <AccessibilityWidget />

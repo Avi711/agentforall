@@ -267,6 +267,7 @@ export class BillingService {
     if (isPaidReason(withoutTrial.reason)) return;
     if (trial.kind === "available" && (await this.trialClaims.claim(trialClaimKey(user.email), user.id))) {
       await this.credits.startTrial(user.id);
+      this.track(user.id, { name: "trial_started" });
       return;
     }
     if (!withoutTrial.entitled) throw new TrialUnavailableError();
@@ -491,7 +492,7 @@ export class BillingService {
       amountAgorot: product.amountAgorot,
       expiresAt,
     });
-    const result = await this.createProviderCheckout(provider, {
+    const checkout: CreateCheckoutInput = {
       checkoutSessionId: session.id,
       userId: user.id,
       email: user.email,
@@ -505,7 +506,8 @@ export class BillingService {
       successUrl: this.checkoutReturnUrl(session.id),
       failureUrl: this.checkoutReturnUrl(session.id),
       expiresAt,
-    });
+    };
+    const result = await this.createProviderCheckout(provider, checkout);
     if (result.providerCheckoutId) {
       await this.checkouts.setProviderCheckoutId(session.id, result.providerCheckoutId);
     }
@@ -516,7 +518,13 @@ export class BillingService {
       product: product.productCode,
       sessionId: session.id,
     });
-    this.track(user.id, { name: "checkout_started", kind: product.kind, product: product.productCode });
+    this.track(user.id, {
+      name: "checkout_started",
+      kind: product.kind,
+      product: product.productCode,
+      amount_agorot: checkout.amountAgorot,
+      currency: checkout.currency,
+    });
     return { url: result.url };
   }
 
@@ -609,7 +617,14 @@ export class BillingService {
     const recorded = await this.payments.record(
       toNewPayment(provider, event.payment, { status: "succeeded", occurredAt: event.occurredAt, userId: session.userId, subscriptionId: null, planCode: null }),
     );
-    if (recorded) this.track(session.userId, { name: "credits_purchased", product: session.productCode });
+    if (recorded) {
+      this.track(session.userId, {
+        name: "credits_purchased",
+        product: session.productCode,
+        amount_agorot: event.payment.amountAgorot,
+        currency: event.payment.currency,
+      });
+    }
     await this.checkouts.settle(session.id, "completed", event.occurredAt);
     await this.credits.grantTopup(session.userId, session.credits, topupGrantRef(provider, event.payment.providerPaymentId));
     await this.recapAfterLedgerWrite(session.userId);
@@ -638,7 +653,15 @@ export class BillingService {
     const subscription = application.outcome === "applied" ? application.subscription : existing;
     if (!subscription) throw new Error("duplicate first payment without a stored subscription");
     // A subscription started in our checkout pays with its session; renewals and plan changes arrive without one.
-    if (application.outcome === "applied") this.track(userId, { name: "subscription_paid", plan: plan.code, new_subscription: session !== null });
+    if (application.outcome === "applied") {
+      this.track(userId, {
+        name: "subscription_paid",
+        plan: plan.code,
+        new_subscription: session !== null,
+        amount_agorot: event.payment.amountAgorot,
+        currency: event.payment.currency,
+      });
+    }
     if (session) await this.checkouts.settle(session.id, "completed", event.occurredAt);
     await this.credits.grantPlanCredits(
       userId,

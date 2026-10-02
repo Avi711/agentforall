@@ -8,6 +8,7 @@ import { getBillingService } from "../billing";
 import { BillingError } from "../billing/errors";
 import { toBillingUser } from "../billing/user";
 import { readJsonBody } from "../http/json-body";
+import { getMetaConversions } from "../meta-capi";
 
 export type Handler<Body> = (ctx: {
   userId: string;
@@ -21,6 +22,8 @@ export interface HandlerOptions<Body> {
   requireWhatsappConsent?: boolean;
   // Paid-only actions (creating a bot). No-op while BILLING_REQUIRED is off.
   requireEntitlement?: boolean;
+  // Funnel steps reported to Meta: a signed-in user may have arrived through a newer ad click than the one on record.
+  rememberBrowser?: boolean;
 }
 
 export function authenticatedHandler<Body = undefined>(
@@ -59,6 +62,8 @@ export function authenticatedHandler<Body = undefined>(
       }
       body = parsed.data;
     }
+
+    if (opts.rememberBrowser) await getMetaConversions().rememberBrowser(session.user.id, req.headers);
 
     try {
       return await handler({ userId: session.user.id, user: session.user, body });

@@ -14,7 +14,7 @@ export const GET = authenticatedHandler({}, async ({ userId }) => {
 });
 
 export const POST = authenticatedHandler(
-  { bodySchema: CreateBotBodySchema, requireEntitlement: true },
+  { bodySchema: CreateBotBodySchema, requireEntitlement: true, rememberBrowser: true },
   async ({ user, body }) => {
     const result = await botService.createBot(toBillingUser(user), body);
     return NextResponse.json(

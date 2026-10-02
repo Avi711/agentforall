@@ -1,5 +1,7 @@
 import { readCapiConfig } from "./config";
 import { postServerEvents, type CapiSendResult, type ServerEvent } from "./client";
+import { MetaAttributionRepository } from "./repository";
+import { MetaConversions } from "./service";
 import { buildUserData, hasMatchableIdentifier, type UserDataInput } from "./user-data";
 
 export interface SendLeadEventInput extends UserDataInput {
@@ -9,6 +11,13 @@ export interface SendLeadEventInput extends UserDataInput {
 }
 
 const LOG_PREFIX = "[meta-capi]";
+
+let conversions: MetaConversions | undefined;
+
+export function getMetaConversions(): MetaConversions {
+  conversions ??= new MetaConversions({ config: readCapiConfig(), store: new MetaAttributionRepository() });
+  return conversions;
+}
 
 // Sends a single server-side Lead event. Contract: never throws. Callers can
 // fire-and-forget via `after()` without their own try/catch.

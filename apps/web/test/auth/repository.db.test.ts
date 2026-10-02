@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
 import { sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { account, createDbFromPool, rateLimit, user, type Database } from "@agent-forall/db";
+import { account, createDbFromPool, metaAttribution, rateLimit, user, type Database } from "@agent-forall/db";
 import { AuthRepository } from "../../src/lib/auth/repository";
 
 // Runs only against a throwaway Postgres (see docs/whatsapp-cloud-api.md §11).
@@ -74,21 +74,27 @@ test("unconfirmed sign-ups without a social login go once no link was sent since
   assert.equal(orphanAccounts.length, 0);
 });
 
-test("claiming an unconfirmed account verifies it and drops the profile its signer-up typed", { skip }, async () => {
+test("claiming an unconfirmed account verifies it and drops the profile and browser its signer-up brought", { skip }, async () => {
+  await db.insert(metaAttribution).values({ userId: "fresh-password", fbc: "fb.1.1789990000000.squatter", userAgent: "squatter" });
+
   assert.equal(await repo.claimAccount("fresh-password"), true);
 
   const [row] = await db.select().from(user).where(sql`${user.id} = 'fresh-password'`);
   assert.equal(row?.emailVerified, true);
   assert.equal(row?.name, null);
   assert.equal(row?.image, null);
+  assert.deepEqual(await db.select().from(metaAttribution).where(sql`${metaAttribution.userId} = 'fresh-password'`), []);
 });
 
 test("claiming an already confirmed account changes nothing", { skip }, async () => {
+  await db.insert(metaAttribution).values({ userId: "verified-password", userAgent: "owner" });
+
   assert.equal(await repo.claimAccount("verified-password"), false);
 
   const [row] = await db.select().from(user).where(sql`${user.id} = 'verified-password'`);
   assert.equal(row?.name, "Typed Name");
   assert.equal(row?.image, "https://evil.example/pixel.png");
+  assert.equal((await db.select().from(metaAttribution).where(sql`${metaAttribution.userId} = 'verified-password'`)).length, 1);
 });
 
 test("the hit counter counts within its window and restarts after it", { skip }, async () => {
