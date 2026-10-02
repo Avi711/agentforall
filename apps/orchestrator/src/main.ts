@@ -69,6 +69,7 @@ import { MetaGraphClient } from "./services/whatsapp-cloud/graph-client.js";
 import { InboxDispatcher } from "./services/whatsapp-cloud/inbox-dispatcher.js";
 import { WhatsappCloudInboxListener, canListenOn } from "./storage/whatsapp-cloud-listener.js";
 import { WhatsappCloudManager } from "./services/whatsapp-cloud/manager.js";
+import { AgentOwnerAlerts } from "./services/whatsapp-cloud/owner-alerts.js";
 import { whatsappCloudRoutes } from "./routes/whatsapp-cloud.js";
 import { whatsappCloudRelayRoutes } from "./routes/whatsapp-cloud-relay.js";
 import { MCP_RELAY_PATH, WHATSAPP_CLOUD_RELAY_PATH } from "./services/relay.js";
@@ -429,6 +430,7 @@ async function main(): Promise<void> {
   }
 
   const whatsappCloudRepo = new WhatsappCloudRepository(db, encryptionKey);
+  const ownerAlerts = new AgentOwnerAlerts(hosts, log);
   const inboxDispatcher = new InboxDispatcher(whatsappCloudRepo, eventLog, log, {
     pollIntervalMs: config.whatsappCloudInboxPollIntervalMs,
     sweepIntervalMs: config.whatsappCloudInboxSweepIntervalMs,
@@ -441,6 +443,7 @@ async function main(): Promise<void> {
     inboxDispatcher,
     eventLog,
     log,
+    ownerAlerts,
     undefined,
     undefined,
     channelLock,
@@ -537,6 +540,7 @@ async function main(): Promise<void> {
       browserTabJanitor.stop(config.shutdownTimeoutMs / 2),
       onboardingCheckins?.stop(config.shutdownTimeoutMs / 2),
       capacityWatch.settle(config.shutdownTimeoutMs / 2),
+      ownerAlerts.settle(config.shutdownTimeoutMs / 2),
     ]);
 
     try {

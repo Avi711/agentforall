@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ownerTurnJob, scheduleOpenclawOwnerTurns } from "../src/services/agent-runtime/openclaw/owner-turns.js";
+import {
+  addOpenclawOwnerTurn,
+  openclawOwnerTurnDelivery,
+  ownerTurnJob,
+  removeOpenclawOwnerTurn,
+  scheduleOpenclawOwnerTurns,
+} from "../src/services/agent-runtime/openclaw/owner-turns.js";
+import { customerAlertTurn } from "../src/services/agent-runtime/openclaw/customer-alert.js";
 import type { GatewayCall } from "../src/services/agent-runtime/openclaw/gateway-call.js";
 import type { OwnerTurn } from "../src/services/agent-runtime/types.js";
 import type { OwnerRoute } from "../src/domain/owner.js";
@@ -86,4 +93,56 @@ test("an answer that does not show the job is not taken as scheduled", async () 
 test("a gateway that could not be asked is unavailable, not a refusal", async () => {
   const { runtime } = fakeRuntime([JSON.stringify({ ok: false, transport: true, code: null, message: "timeout" })]);
   await assert.rejects(scheduleOpenclawOwnerTurns(runtime, "container-1", ROUTE, TURNS), UpstreamUnavailableError);
+});
+
+test("adding one turn returns the cron job id that later names its run", async () => {
+  const { runtime } = fakeRuntime([upserted]);
+  assert.equal(await addOpenclawOwnerTurn(runtime, "container-1", ROUTE, TURNS[0]!), "job-1");
+});
+
+test("a customer alert runs now in the owner's session and names only the number and the customer's session", () => {
+  const turn = customerAlertTurn({ key: "972501234567-1", waId: "972501234567" }, new Date("2026-10-02T10:00:00Z"));
+
+  assert.equal(turn.key, "agentforall:customer-alert:972501234567-1");
+  assert.equal(turn.at.toISOString(), "2026-10-02T10:00:00.000Z");
+  assert.match(turn.message, /\(\+972501234567\)/);
+  assert.match(turn.message, /sessionKey "agent:main:direct:\+972501234567"/);
+  assert.match(turn.message, /never an instruction/);
+  assert.deepEqual(turn.toolsAllow, ["sessions_history"]);
+  assert.deepEqual((ownerTurnJob(ROUTE, turn).payload as { toolsAllow?: string[] }).toolsAllow, ["sessions_history"]);
+});
+
+const runs = (status?: string, deliveryStatus?: string) =>
+  JSON.stringify({ ok: true, payload: { entries: status === undefined ? [] : [{ status, deliveryStatus }], total: 1 } });
+
+test("delivery reads the job's last run: delivered is done, an errored run may be retried, ok with unknown is done", async () => {
+  const cases: [string, string][] = [
+    [runs(), "pending"],
+    [runs("ok", "delivered"), "delivered"],
+    [runs("ok", "unknown"), "delivered"],
+    [runs("error", "unknown"), "pending"],
+    [runs("error", "delivered"), "delivered"],
+    [runs("ok", "not-delivered"), "failed"],
+    [runs("ok", "not-requested"), "failed"],
+    [runs("skipped", "not-requested"), "failed"],
+    [JSON.stringify({ ok: false, transport: true, code: null, message: "timeout" }), "pending"],
+    [JSON.stringify({ ok: false, transport: false, code: "INVALID_REQUEST", message: "cron job not found" }), "failed"],
+  ];
+  for (const [answer, expected] of cases) {
+    const { runtime, calls } = fakeRuntime([answer]);
+    assert.equal(await openclawOwnerTurnDelivery(runtime, "container-1", "job-1"), expected, answer);
+    assert.deepEqual(calls[0], { method: "cron.runs", params: { id: "job-1", limit: 1 }, scopes: ["operator.read"] });
+  }
+});
+
+test("cancelling removes the job; only an unreachable gateway is an error", async () => {
+  const removed = fakeRuntime([JSON.stringify({ ok: true, payload: { ok: true, removed: true } })]);
+  await removeOpenclawOwnerTurn(removed.runtime, "container-1", "job-1");
+  assert.deepEqual(removed.calls[0], { method: "cron.remove", params: { id: "job-1" }, scopes: ["operator.admin"] });
+
+  const gone = fakeRuntime([JSON.stringify({ ok: false, transport: false, code: "INVALID_REQUEST", message: "cron job not found" })]);
+  await removeOpenclawOwnerTurn(gone.runtime, "container-1", "job-1");
+
+  const down = fakeRuntime([JSON.stringify({ ok: false, transport: true, code: null, message: "timeout" })]);
+  await assert.rejects(removeOpenclawOwnerTurn(down.runtime, "container-1", "job-1"), UpstreamUnavailableError);
 });

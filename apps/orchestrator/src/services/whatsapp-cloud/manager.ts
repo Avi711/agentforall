@@ -19,7 +19,7 @@ import {
   ValidationError,
   errorMessage,
 } from "../../domain/errors.js";
-import { ownerIdentityOf } from "../../domain/owner.js";
+import { ownerIdentityOf, ownerRouteOf } from "../../domain/owner.js";
 import type { Instance, WhatsappCloudChannelConfig } from "../../domain/types.js";
 import type {
   ChannelHealth,
@@ -70,6 +70,7 @@ import {
   type MetaGraphClient,
 } from "./graph-client.js";
 import type { InboxDispatcher } from "./inbox-dispatcher.js";
+import type { OwnerAlerts } from "./owner-alerts.js";
 import { freshPin } from "./pin.js";
 import { freshRelayToken } from "../relay.js";
 import { TokenBuckets } from "./token-bucket.js";
@@ -157,7 +158,7 @@ const NOT_CONNECTED: WhatsappCloudView = {
 };
 const ZERO_WIDTH_JOINER = "\u200D";
 
-// Owner delivery is a plain Bot API message from the orchestrator: no agent turn, so customer text is never an instruction.
+// A request reaches the owner through the owner's agent, told only facts; forwards and fallbacks are plain Bot API messages.
 export class WhatsappCloudManager {
   private readonly lastEscalationAt = new Map<string, number>();
   private readonly escalationsPerBot = new Map<string, EscalationToken[]>();
@@ -174,6 +175,7 @@ export class WhatsappCloudManager {
     private readonly dispatcher: Inbox,
     private readonly eventLog: EventLog,
     private readonly log: FastifyBaseLogger,
+    private readonly ownerAlerts: OwnerAlerts,
     private readonly ownerMessenger: OwnerMessengerFactory = (token) => new TelegramBotApi(token),
     private readonly now: () => Date = () => new Date(),
     // Connect, disconnect and destroy of one bot take turns; destroy takes it before the instance lock, as connect does.
@@ -489,14 +491,24 @@ export class WhatsappCloudManager {
     const name = conversation.profileName ? oneLine(conversation.profileName, PROFILE_NAME_MAX_CHARS) : null;
     const who = name ? `${name} (+${input.waId})` : `+${input.waId}`;
     const lead = input.kind === "forward" ? `לקוח ב-${CHANNEL_LABEL} כתב לך (השיחה אצלך):` : `לקוח ב-${CHANNEL_LABEL} מבקש אותך.`;
+    const direct = `${lead}\nמי: ${who}\nמה: ${oneLine(input.summary, OWNER_MESSAGE_MAX_CHARS)}`;
+    const route = input.kind === "request" ? ownerRouteOf(ctx.instance) : null;
+    const fallback = async () => {
+      await this.messageOwner(ctx.instance, target, direct);
+      await this.eventLog.append(ctx.instance.id, "whatsapp_cloud.escalated", { payload: { waId: input.waId, kind: input.kind, via: "fallback" } });
+    };
+    if (route && (await this.ownerAlerts.start(ctx.instance, route, input.waId, fallback))) {
+      await this.eventLog.append(ctx.instance.id, "whatsapp_cloud.escalated", { payload: { waId: input.waId, kind: input.kind, via: "agent" } });
+      return { notified: true, fallbackToBot: false };
+    }
     try {
-      await this.messageOwner(ctx.instance, target, `${lead}\nמי: ${who}\nמה: ${oneLine(input.summary, OWNER_MESSAGE_MAX_CHARS)}`);
+      await this.messageOwner(ctx.instance, target, direct);
     } catch (err) {
       slot.release();
       if (err instanceof OwnerUnreachableError && input.kind === "forward") return this.handBackToBot(ctx, input.waId, "owner_unreachable");
       throw err;
     }
-    await this.eventLog.append(ctx.instance.id, "whatsapp_cloud.escalated", { payload: { waId: input.waId, kind: input.kind } });
+    await this.eventLog.append(ctx.instance.id, "whatsapp_cloud.escalated", { payload: { waId: input.waId, kind: input.kind, via: "telegram" } });
     return { notified: true, fallbackToBot: false };
   }
 

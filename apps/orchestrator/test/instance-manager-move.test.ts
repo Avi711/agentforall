@@ -687,6 +687,9 @@ class FakeRuntime {
       startWhatsappChannel: async () => ({ status: "started" as const }),
       sendWhatsappMessage: async () => true,
       scheduleOwnerTurns: async () => "scheduled" as const,
+      startCustomerAlert: async () => null,
+      customerAlertDelivery: async () => "failed" as const,
+      cancelCustomerAlert: async () => {},
       prepareState: async (inst) => {
         runtime.prepared.push(inst.id);
       },

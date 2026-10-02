@@ -52,9 +52,17 @@ export interface OwnerTurn {
   name: string;
   at: Date;
   message: string;
+  // Unset keeps the operator default, every tool.
+  toolsAllow?: string[];
 }
 
 export type OwnerTurnsOutcome = "scheduled" | "unsupported";
+export type OwnerTurnDelivery = "pending" | "delivered" | "failed";
+
+export interface CustomerAlert {
+  key: string;
+  waId: string;
+}
 
 // One named invariant of a running bot; detail says what is wrong, null when it holds.
 export interface RuntimeCheck {
@@ -86,6 +94,11 @@ export interface AgentRuntimeAdapter {
   sendWhatsappMessage(containerId: string, to: string, text: string): Promise<boolean>;
   // Throws ValidationError when the runtime refused a turn, UpstreamUnavailableError when it could not be asked.
   scheduleOwnerTurns(containerId: string, route: OwnerRoute, turns: readonly OwnerTurn[]): Promise<OwnerTurnsOutcome>;
+  // The owner's own agent reads the customer's conversation and tells the owner; null when the runtime cannot. Throws like scheduleOwnerTurns.
+  startCustomerAlert(containerId: string, route: OwnerRoute, alert: CustomerAlert): Promise<string | null>;
+  customerAlertDelivery(containerId: string, alertId: string): Promise<OwnerTurnDelivery>;
+  // Best effort: a run already under way may still deliver.
+  cancelCustomerAlert(containerId: string, alertId: string): Promise<void>;
   exportState(containerId: string): Promise<ArchiveStreamResult>;
   restoreState(containerId: string, sourceTarGzip: Readable): Promise<void>;
   // The whole state tree as-is (session included), for a host-to-host move; the container may be stopped.

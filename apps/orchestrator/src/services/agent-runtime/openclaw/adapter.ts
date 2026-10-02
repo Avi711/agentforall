@@ -17,6 +17,8 @@ import type {
   ConfigApplyOutcome,
   GatewayLiveness,
   OwnerTurn,
+  CustomerAlert,
+  OwnerTurnDelivery,
   OwnerTurnsOutcome,
   RuntimeCheck,
   RuntimeConfigFiles,
@@ -57,7 +59,13 @@ import {
 import { probeOpenclawGateway, probeOpenclawWhatsapp } from "./health.js";
 import { startOpenclawChannel } from "./channel-rpc.js";
 import { closeOpenclawBrowserTabs } from "./browser.js";
-import { scheduleOpenclawOwnerTurns } from "./owner-turns.js";
+import { customerAlertTurn } from "./customer-alert.js";
+import {
+  addOpenclawOwnerTurn,
+  openclawOwnerTurnDelivery,
+  removeOpenclawOwnerTurn,
+  scheduleOpenclawOwnerTurns,
+} from "./owner-turns.js";
 import {
   injectOpenclawWhatsappSession,
   listOpenclawWhatsappPairingRequests,
@@ -66,6 +74,8 @@ import {
 } from "./whatsapp.js";
 
 const CHANNEL_START_TIMEOUT_MS = 20_000;
+// Keeps the add, with its exec margin, inside the relay's 15 s budget for the whole escalation.
+const CUSTOMER_ALERT_ADD_TIMEOUT_MS = 5_000;
 
 const CONFIG_READ_LIMIT_BYTES = 1024 * 1024;
 const ENV_READ_LIMIT_BYTES = 64 * 1024;
@@ -326,6 +336,18 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   async scheduleOwnerTurns(containerId: string, route: OwnerRoute, turns: readonly OwnerTurn[]): Promise<OwnerTurnsOutcome> {
     await scheduleOpenclawOwnerTurns(this.runtime, containerId, route, turns);
     return "scheduled";
+  }
+
+  startCustomerAlert(containerId: string, route: OwnerRoute, alert: CustomerAlert): Promise<string> {
+    return addOpenclawOwnerTurn(this.runtime, containerId, route, customerAlertTurn(alert, new Date()), CUSTOMER_ALERT_ADD_TIMEOUT_MS);
+  }
+
+  customerAlertDelivery(containerId: string, alertId: string): Promise<OwnerTurnDelivery> {
+    return openclawOwnerTurnDelivery(this.runtime, containerId, alertId);
+  }
+
+  cancelCustomerAlert(containerId: string, alertId: string): Promise<void> {
+    return removeOpenclawOwnerTurn(this.runtime, containerId, alertId);
   }
 
   listWhatsappPairingRequests(containerId: string): Promise<WhatsappPairingRequest[]> {

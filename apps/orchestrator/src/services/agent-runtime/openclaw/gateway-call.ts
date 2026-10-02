@@ -100,6 +100,13 @@ main();
 
 export type GatewayScope = "operator.read" | "operator.write" | "operator.admin";
 
+// Owner numbers and Telegram ids as gateway errors quote them: E.164, WhatsApp JIDs, chat ids.
+const PEER_ID_PATTERN = /\+?\d{7,}/g;
+
+export function redactPeerIds(text: string): string {
+  return text.replace(PEER_ID_PATTERN, "[redacted]");
+}
+
 export interface GatewayCall {
   method: string;
   params: Record<string, unknown>;
