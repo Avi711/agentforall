@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { FastifyBaseLogger } from "fastify";
-import { findTelegramChannel, findWhatsappCloudChannel } from "../../domain/channels.js";
+import { findTelegramChannel, findWhatsappCloudChannel, replaceWhatsappCloudChannel } from "../../domain/channels.js";
 import {
   AuthenticationError,
   ChannelCredentialError,
@@ -301,9 +301,7 @@ export class WhatsappCloudManager {
       accessToken: input.accessToken,
       pin,
     };
-    await this.instances.updateChannels(instanceId, userId, (channels) =>
-      channels.map((ch) => (ch.type === "whatsapp_cloud" ? refreshed : ch)),
-    );
+    await this.instances.updateChannels(instanceId, userId, (channels) => replaceWhatsappCloudChannel(channels, refreshed));
     this.forgetHealth(instanceId);
     const synced = refreshed.coexistence ? await this.syncAppData(instanceId, refreshed, known?.appDataSynced ?? []) : [];
     await this.eventLog.append(instanceId, "whatsapp_cloud.reconnected", {

@@ -9,7 +9,7 @@ import { BotAvatar, BusyLabel, ChevronEnd, Spinner, SurfaceCard, type AvatarTone
 import { CreatingPanel } from "./CreatingPanel";
 import { buildTimeline } from "@/lib/bots/creation-progress";
 import { WhatsAppAccessDialog } from "./WhatsAppAccessSection";
-import { OwnerIdentityDialog } from "./OwnerIdentityDialog";
+import { OwnerIdentityDialog, type OwnerNumberTarget } from "./OwnerIdentityDialog";
 import { CreditsSection } from "./CreditsSection";
 import { ChannelsSection, telegramRow, whatsappCloudRow, whatsappRow, type Channel } from "./Channels";
 import { TILE_CLASS } from "./action-buttons";
@@ -37,7 +37,7 @@ export function BotCard({
   const [menuOpen, setMenuOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [accessOpen, setAccessOpen] = useState(false);
-  const [identityOpen, setIdentityOpen] = useState(false);
+  const [identityFocus, setIdentityFocus] = useState<OwnerNumberTarget | null>(null);
   const [disconnecting, setDisconnecting] = useState<Channel | null>(null);
   const [whatsappConfirm, setWhatsappConfirm] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<"pair" | "telegram" | null>(null);
@@ -305,7 +305,7 @@ export function BotCard({
             onDisconnect={(channel) => setDisconnecting(channel)}
             onCancelPending={handleCancelPending}
             onOpenAccess={() => setAccessOpen(true)}
-            onEditOwner={() => setIdentityOpen(true)}
+            onEditOwner={setIdentityFocus}
             onConnectWhatsapp={() => setWhatsappConfirm(true)}
           />
 
@@ -400,17 +400,20 @@ export function BotCard({
           onClose={() => setAccessOpen(false)}
           onOpenIdentity={() => {
             setAccessOpen(false);
-            setIdentityOpen(true);
+            setIdentityFocus("whatsapp");
           }}
         />
       ) : null}
 
       <OwnerIdentityDialog
-        open={identityOpen}
+        open={identityFocus !== null}
         botId={bot.id}
         initial={bot.owner}
         whatsappAvailable={bot.hasWhatsappChannel}
-        onClose={() => setIdentityOpen(false)}
+        businessAvailable={bot.whatsappCloud !== null}
+        businessPhone={bot.whatsappCloud?.displayPhoneNumber ?? null}
+        focus={identityFocus ?? "whatsapp"}
+        onClose={() => setIdentityFocus(null)}
       />
     </>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState, type ReactNode } from "react";
+import type { OwnerNumberTarget } from "./OwnerIdentityDialog";
 import { ROW_ACTION_CLASS, TILE_BASE, TILE_CLASS } from "./action-buttons";
 import { ChevronEnd, TelegramGlyph, WhatsAppGlyph } from "./Marks";
 import { formatPhoneForDisplay } from "@/lib/phone";
@@ -195,7 +196,7 @@ interface ChannelsProps {
   onDisconnect: (channel: Channel) => void;
   onCancelPending: (channel: Channel) => void;
   onOpenAccess: () => void;
-  onEditOwner: () => void;
+  onEditOwner: (target: OwnerNumberTarget) => void;
   onConnectWhatsapp: () => void;
 }
 
@@ -217,7 +218,7 @@ function channelEntries({ bot, cancelPending, busy, onDisconnect, onCancelPendin
   if (!bot.whatsappCloudEnabled || bot.hasWhatsappChannel) {
     const missingOwner = whatsapp.connected && ownerNumberMissing(bot);
     const actions: Action[] = [];
-    if (missingOwner) actions.push({ kind: "button", label: "הגדרת המספר שלי", emphasis: "primary", onClick: onEditOwner });
+    if (missingOwner) actions.push({ kind: "button", label: "הגדרת המספר שלי", emphasis: "primary", onClick: () => onEditOwner("whatsapp") });
     const primary = lead(whatsapp.primary, needsChannel);
     if (primary) actions.push(primary);
     const facts: Fact[] = [];
@@ -240,7 +241,7 @@ function channelEntries({ bot, cancelPending, busy, onDisconnect, onCancelPendin
         value: own ? formatPhoneForDisplay(own) : "לא הוגדר",
         ltr: own !== null,
         missing: own === null,
-        onEdit: missingOwner ? undefined : onEditOwner,
+        onEdit: missingOwner ? undefined : () => onEditOwner("whatsapp"),
       });
     }
     if (whatsapp.pending) {
@@ -303,6 +304,11 @@ function channelEntries({ bot, cancelPending, busy, onDisconnect, onCancelPendin
 
   if (bot.whatsappCloudEnabled || bot.whatsappCloud) {
     const businessActions: Action[] = [];
+    const businessOwner = bot.owner.businessNumber;
+    const missingBusinessOwner = business.connected && businessOwner === null;
+    if (missingBusinessOwner) {
+      businessActions.push({ kind: "button", label: "הגדרת המספר שלי", emphasis: "quiet", onClick: () => onEditOwner("business") });
+    }
     if (business.primary && (business.connected || business.stale)) businessActions.push(business.primary);
     if (business.connected) businessActions.push({ kind: "button", label: "ניתוק", emphasis: "danger", onClick: () => onDisconnect("whatsapp-cloud") });
     entries.push({
@@ -318,9 +324,21 @@ function channelEntries({ bot, cancelPending, busy, onDisconnect, onCancelPendin
               ? [{ icon: <PhoneIcon />, label: "המספר העסקי", value: formatPhoneForDisplay(bot.whatsappCloud.displayPhoneNumber), ltr: true, copy: bot.whatsappCloud.displayPhoneNumber }]
               : []),
             ...(bot.whatsappCloud.verifiedName ? [{ icon: <StoreIcon />, label: "שם העסק", value: bot.whatsappCloud.verifiedName }] : []),
+            ...(business.connected
+              ? [
+                  {
+                    icon: <PersonIcon />,
+                    label: "המספר שלכם",
+                    value: businessOwner ? formatPhoneForDisplay(businessOwner) : "לא הוגדר",
+                    ltr: businessOwner !== null,
+                    missing: businessOwner === null,
+                    onEdit: missingBusinessOwner ? undefined : () => onEditOwner("business"),
+                  },
+                ]
+              : []),
           ]
         : [],
-      note: null,
+      note: missingBusinessOwner ? "הגדירו את המספר האישי שלכם, כדי שכשתכתבו למספר העסקי הסוכן יזהה אתכם ולא יתייחס אליכם כלקוח." : null,
       actions: businessActions,
       offer: "מספר עסקי ללקוחות שלכם, דרך מטא",
       connect: { kind: "link", label: "חיבור WhatsApp Business", href: "/app/bot/whatsapp-business", emphasis: "quiet" },

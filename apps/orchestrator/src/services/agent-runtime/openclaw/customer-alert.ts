@@ -1,9 +1,9 @@
 import type { CustomerAlert, OwnerTurn } from "../types.js";
-import { MAIN_AGENT_ID } from "./config.js";
+import { BUSINESS_AGENT_ID } from "./config.js";
 
 // Only facts the orchestrator wrote: the customer's own words reach the agent through sessions_history, as data.
 export function customerAlertTurn(alert: CustomerAlert, now: Date): OwnerTurn {
-  const sessionKey = `agent:${MAIN_AGENT_ID}:direct:+${alert.waId}`;
+  const sessionKey = `agent:${BUSINESS_AGENT_ID}:direct:+${alert.waId}`;
   return {
     key: `agentforall:customer-alert:${alert.key}`,
     name: "Customer asked for the owner",

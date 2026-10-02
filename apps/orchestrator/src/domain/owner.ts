@@ -9,8 +9,7 @@ export interface OwnerRoute {
 export interface OwnerIdentity {
   telegramUserId: string | null;
   whatsappNumber: string | null;
-  // The owner's own phone also identifies them on the business number, when the bot has one.
-  hasBusinessNumber: boolean;
+  businessOwnerNumber: string | null;
 }
 
 // The Telegram allowlist is the owner; the linker writes it as "tg:<id>".
@@ -20,18 +19,21 @@ export function ownerIdentityOf(channels: ChannelConfig[]): OwnerIdentity {
   return {
     telegramUserId: telegram ? telegramOwnerId(telegram.allowFrom ?? []) : null,
     whatsappNumber: whatsapp?.ownerNumber ?? null,
-    hasBusinessNumber: findWhatsappCloudChannel(channels) !== undefined,
+    businessOwnerNumber: findWhatsappCloudChannel(channels)?.ownerNumber ?? null,
   };
 }
 
-// Channel-prefixed peer ids — the shape OpenClaw uses for both identityLinks and commands.ownerAllowFrom.
+// Never the business number: OpenClaw prints ownerAllowFrom ids into every prompt on that channel, customers' included.
 export function ownerPeerIds(identity: OwnerIdentity): string[] {
   const ids: string[] = [];
   if (identity.telegramUserId) ids.push(`telegram:${identity.telegramUserId}`);
-  if (identity.whatsappNumber) {
-    ids.push(`whatsapp:${identity.whatsappNumber}`);
-    if (identity.hasBusinessNumber) ids.push(`whatsapp_cloud:${identity.whatsappNumber}`);
-  }
+  if (identity.whatsappNumber) ids.push(`whatsapp:${identity.whatsappNumber}`);
+  return ids;
+}
+
+export function ownerSessionPeerIds(identity: OwnerIdentity): string[] {
+  const ids = ownerPeerIds(identity);
+  if (identity.businessOwnerNumber) ids.push(`whatsapp_cloud:${identity.businessOwnerNumber}`);
   return ids;
 }
 

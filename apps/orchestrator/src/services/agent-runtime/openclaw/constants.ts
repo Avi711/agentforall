@@ -11,6 +11,9 @@ export const OPENCLAW_CONFIG_PATH = `${OPENCLAW_STATE_ROOT}/openclaw.json`;
 export const OPENCLAW_ENV_PATH = `${OPENCLAW_STATE_ROOT}/.env`;
 export const OPENCLAW_CONFIG_APPLY_TIMEOUT_MS = 20_000;
 export const OPENCLAW_WORKSPACE_PATH = `${OPENCLAW_STATE_ROOT}/workspace`;
+// A sibling, never inside the owner's workspace: the business agent must not see the owner's files.
+export const OPENCLAW_BUSINESS_WORKSPACE_DIR = "workspace-business";
+export const OPENCLAW_BUSINESS_WORKSPACE_PATH = `${OPENCLAW_STATE_ROOT}/${OPENCLAW_BUSINESS_WORKSPACE_DIR}`;
 export const OPENCLAW_WHATSAPP_SESSION_DIR = "whatsapp-session";
 export const OPENCLAW_WHATSAPP_SESSION_PARENT = OPENCLAW_STATE_ROOT;
 export const OPENCLAW_WHATSAPP_SESSION_PATH = `${OPENCLAW_WHATSAPP_SESSION_PARENT}/${OPENCLAW_WHATSAPP_SESSION_DIR}`;

@@ -685,6 +685,7 @@ class FakeRuntime {
       closeBrowserTabs: async () => ({ closed: 0, failed: 0 }),
       listWhatsappPairingRequests: async () => [],
       startWhatsappChannel: async () => ({ status: "started" as const }),
+      restartWhatsappCloudChannel: async () => ({ status: "started" as const }),
       sendWhatsappMessage: async () => true,
       scheduleOwnerTurns: async () => "scheduled" as const,
       startCustomerAlert: async () => null,

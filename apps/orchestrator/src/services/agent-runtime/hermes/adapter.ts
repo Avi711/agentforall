@@ -173,6 +173,10 @@ export class HermesRuntimeAdapter implements AgentRuntimeAdapter {
     return { status: "unavailable", reason: "hermes has no channel start" };
   }
 
+  async restartWhatsappCloudChannel(): Promise<ChannelStartOutcome> {
+    return { status: "unavailable", reason: "hermes has no business number" };
+  }
+
   async sendWhatsappMessage(): Promise<boolean> {
     return false;
   }

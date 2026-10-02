@@ -4,15 +4,12 @@ import type { OwnerIdentityManager } from "../services/owner-identity-manager.js
 
 const UuidParam = z.object({ id: z.string().uuid() });
 
+const E164 = z.string().trim().regex(/^\+?[1-9]\d{6,14}$/, "must be E.164");
+
 const OwnerPatchBody = z
-  .object({
-    whatsappNumber: z
-      .string()
-      .trim()
-      .regex(/^\+?[1-9]\d{6,14}$/, "whatsappNumber must be E.164")
-      .nullable(),
-  })
-  .strict();
+  .object({ whatsappNumber: E164.nullable().optional(), businessNumber: E164.nullable().optional() })
+  .strict()
+  .refine((body) => body.whatsappNumber !== undefined || body.businessNumber !== undefined, "nothing to update");
 
 export interface OwnerIdentityRouteDeps {
   owner: OwnerIdentityManager;

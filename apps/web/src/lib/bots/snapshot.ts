@@ -20,6 +20,7 @@ export interface WhatsappAccessSnapshot {
 export interface OwnerSnapshot {
   telegramLinked: boolean;
   whatsappNumber: string | null;
+  businessNumber: string | null;
 }
 
 export type WhatsappCloudHealth = "ok" | "token_invalid" | "unknown";
@@ -101,12 +102,14 @@ function whatsappAccessSnapshot(channels: Channels): WhatsappAccessSnapshot | nu
 function ownerSnapshot(channels: Channels): OwnerSnapshot {
   const telegram = channels.find((c) => c.type === "telegram");
   const whatsapp = channels.find((c) => c.type === "whatsapp");
+  const business = channels.find((c) => c.type === "whatsapp_cloud");
   const allowFrom: unknown[] = Array.isArray(telegram?.allowFrom) ? telegram.allowFrom : [];
   return {
     telegramLinked: allowFrom.some(
       (entry) => typeof entry === "string" && /^(?:tg:|telegram:)?\d+$/.test(entry),
     ),
     whatsappNumber: typeof whatsapp?.ownerNumber === "string" ? whatsapp.ownerNumber : null,
+    businessNumber: typeof business?.ownerNumber === "string" ? business.ownerNumber : null,
   };
 }
 

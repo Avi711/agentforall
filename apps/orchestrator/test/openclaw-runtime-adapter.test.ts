@@ -732,3 +732,58 @@ function readTarEntry(archive: Buffer, name: string): Promise<string> {
     extract.end(archive);
   });
 }
+
+const businessInstance: Instance = {
+  ...instance,
+  config: { ...instanceConfig, channels: [{ type: "whatsapp" }, makeWhatsappCloudChannel()] },
+};
+
+function businessRuntime(failSeed: boolean) {
+  const steps: string[] = [];
+  const runtime = {
+    isRunning: async () => true,
+    isOnImage: async () => true,
+    readFile: async (_id: string, path: string) =>
+      path.endsWith("openclaw.json") ? Buffer.from(JSON.stringify(existingConfig)) : null,
+    putArchive: async (_id: string, _path: string, archive: Buffer) => {
+      const names = await tarNames(archive);
+      if (names.some((name) => name.includes("workspace-business"))) {
+        if (failSeed) throw new Error("disk full");
+        steps.push("seed business");
+      } else if (names.some((name) => name.includes("workspace/AGENTS.md"))) steps.push("seed owner");
+      else steps.push("stage env");
+    },
+    execCommandBuffer: async (_id: string, cmd: string[]) => {
+      steps.push(cmd[0] === "rm" ? "clear business memory" : "config.apply");
+      return { exitCode: 0, stdout: Buffer.from('{"ok":true}'), stderr: "" };
+    },
+  } as unknown as ContainerRuntime;
+  return { runtime, steps };
+}
+
+test("a business bot's agent files land before any config that names the agent", async () => {
+  const live = businessRuntime(false);
+  await makeAdapter(live.runtime).applyConfig("container-1", businessInstance);
+  assert.deepEqual(live.steps, ["seed business", "clear business memory", "config.apply", "seed owner", "stage env"]);
+});
+
+test("a business bot whose agent files cannot be written gets no config at all", async () => {
+  const live = businessRuntime(true);
+  await assert.rejects(makeAdapter(live.runtime).applyConfig("container-1", businessInstance), /disk full/);
+  assert.equal(live.steps.includes("config.apply"), false);
+});
+
+async function tarNames(archive: Buffer): Promise<string[]> {
+  const extract = tar.extract();
+  const names: string[] = [];
+  return new Promise((resolve, reject) => {
+    extract.on("entry", (header, stream, next) => {
+      names.push(header.name);
+      stream.on("end", next);
+      stream.resume();
+    });
+    extract.on("finish", () => resolve(names));
+    extract.on("error", reject);
+    extract.end(archive);
+  });
+}

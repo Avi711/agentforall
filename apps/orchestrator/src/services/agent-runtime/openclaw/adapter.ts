@@ -35,13 +35,20 @@ import {
 import {
   buildOpenclawConfigTar,
   buildOpenclawEnvTar,
+  businessNameOf,
+  WHATSAPP_CLOUD_CHANNEL_ID,
   generateOpenclawFiles,
   generateRuntimePatchedOpenclawFiles,
   configMatches,
   expectedOpenclawPlugins,
   readOwnerAllowFrom,
 } from "./config.js";
-import { prepareOpenclawState, seedOpenclawWorkspace } from "./migrate.js";
+import {
+  clearOpenclawBusinessMemory,
+  prepareOpenclawState,
+  seedOpenclawBusinessWorkspace,
+  seedOpenclawWorkspace,
+} from "./migrate.js";
 import { verifyOpenclaw } from "./verify.js";
 import { buildConfigApplyCommand, parseConfigApplyOutput } from "./config-rpc.js";
 import type { ConfigApplyResult } from "./config-rpc.js";
@@ -57,7 +64,7 @@ import {
   OPENCLAW_WHATSAPP_CHANNEL,
 } from "./constants.js";
 import { probeOpenclawGateway, probeOpenclawWhatsapp } from "./health.js";
-import { startOpenclawChannel } from "./channel-rpc.js";
+import { restartOpenclawChannel, startOpenclawChannel } from "./channel-rpc.js";
 import { closeOpenclawBrowserTabs } from "./browser.js";
 import { customerAlertTurn } from "./customer-alert.js";
 import {
@@ -133,8 +140,17 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     });
   }
 
-  seedWorkspace(containerId: string): Promise<void> {
-    return seedOpenclawWorkspace(this.runtime, containerId);
+  async seedWorkspace(containerId: string, instance: Instance): Promise<void> {
+    await seedOpenclawWorkspace(this.runtime, containerId, businessNameOf(instance.config) !== null);
+    await this.seedBusinessAgent(containerId, instance, await this.runtime.isRunning(containerId));
+  }
+
+  // Fail closed: a config naming the business agent is never written before its own files are.
+  private async seedBusinessAgent(containerId: string, instance: Instance, running: boolean): Promise<void> {
+    const businessName = businessNameOf(instance.config);
+    if (businessName === null) return;
+    await seedOpenclawBusinessWorkspace(this.runtime, containerId, businessName);
+    if (running) await clearOpenclawBusinessMemory(this.runtime, containerId);
   }
 
   generateConfig(instance: Instance): RuntimeConfigFiles {
@@ -154,6 +170,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   private async stageConfig(containerId: string, instance: Instance): Promise<void> {
+    await this.seedBusinessAgent(containerId, instance, false);
     const existing = await this.readConfig(containerId);
     const files =
       existing === null
@@ -184,6 +201,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     // Staging a file a live gateway will never read is how a change disappears silently, so a
     // container whose config we cannot read is a failure rather than a fallback.
     const existing = await this.requireConfig(containerId);
+    await this.seedBusinessAgent(containerId, instance, true);
     const files = generateRuntimePatchedOpenclawFiles(
       existing,
       instance.config,
@@ -194,8 +212,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     // Env vars are read once at start-up, so a changed env file is not live until the next boot.
     // Reading it before the write keeps a read failure from stranding an applied config.
     const envWasCurrent = await this.envMatches(containerId, files.dotEnv);
+    const hasBusinessNumber = businessNameOf(instance.config) !== null;
     if (envWasCurrent && configMatches(existing, files.configJson)) {
-      // Nothing the runtime reads has changed, so there is no write to spend on it.
+      // Nothing the runtime reads has changed, so there is no write to spend on it; a retry still converges the guidance.
+      await seedOpenclawWorkspace(this.runtime, containerId, hasBusinessNumber);
       return "applied";
     }
 
@@ -207,6 +227,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     }
     if (applied.status === "unreachable") {
       // No session with the gateway, so the file its next boot reads is the way in.
+      await seedOpenclawWorkspace(this.runtime, containerId, hasBusinessNumber);
       await this.runtime.putArchive(
         containerId,
         OPENCLAW_STATE_PARENT,
@@ -218,6 +239,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       throw new UpstreamUnavailableError("openclaw", redact(applied.reason, instance));
     }
 
+    // Once the gateway took the change: the owner's agent learns, or forgets, how to teach the business agent.
+    await seedOpenclawWorkspace(this.runtime, containerId, hasBusinessNumber);
     await this.runtime.putArchive(
       containerId,
       OPENCLAW_STATE_PARENT,
@@ -329,6 +352,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     return startOpenclawChannel(this.runtime, containerId, OPENCLAW_WHATSAPP_CHANNEL, CHANNEL_START_TIMEOUT_MS);
   }
 
+  restartWhatsappCloudChannel(containerId: string): Promise<ChannelStartOutcome> {
+    return restartOpenclawChannel(this.runtime, containerId, WHATSAPP_CLOUD_CHANNEL_ID, CHANNEL_START_TIMEOUT_MS);
+  }
+
   sendWhatsappMessage(containerId: string, to: string, text: string): Promise<boolean> {
     return sendOpenclawWhatsappMessage(this.runtime, containerId, to, text);
   }
@@ -438,7 +465,7 @@ function secretsOf(instance: Instance): (string | undefined)[] {
         secrets.push(channel.ownerNumber);
         break;
       case "whatsapp_cloud":
-        secrets.push(channel.accessToken, channel.relayToken);
+        secrets.push(channel.accessToken, channel.relayToken, channel.ownerNumber);
         if (channel.pin !== null) secrets.push(channel.pin);
         break;
     }

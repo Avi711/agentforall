@@ -15,18 +15,29 @@ export const IDENTITY_HINT =
   "המספר וחשבון הטלגרם שהבוט מזהה כבעלים שלו. השיחה נשמרת אחת בין הערוצים, ופעולות ניהול פתוחות רק להם.";
 const TELEGRAM_HINT = "מזוהה אוטומטית כשמחברים את הבוט לטלגרם — החשבון שלחץ על ״התחל״ הוא הבעלים.";
 const WHATSAPP_HINT = "המספר האישי שממנו אתם כותבים לבוט — לא המספר של הבוט עצמו.";
+const BUSINESS_HINT =
+  "המספר האישי שממנו אתם כותבים למספר העסקי: ממנו תגיעו לעוזר האישי שלכם, בלי תזכורות ופקודות ניהול (אלה בטלגרם ובוואטסאפ האישי). כל מספר אחר הוא לקוח.";
+
+export type OwnerNumberTarget = "whatsapp" | "business";
 
 export function OwnerIdentityDialog({
   open,
   botId,
   initial,
   whatsappAvailable,
+  businessAvailable,
+  businessPhone,
+  focus,
   onClose,
 }: {
   open: boolean;
   botId: string;
   initial: OwnerSnapshot;
   whatsappAvailable: boolean;
+  businessAvailable: boolean;
+  businessPhone: string | null;
+  // The row the dialog was opened from: it asks for its number straight away when none is set.
+  focus: OwnerNumberTarget;
   onClose: () => void;
 }) {
   const { refreshing, refresh } = useRefresh();
@@ -35,16 +46,20 @@ export function OwnerIdentityDialog({
   const phoneId = useId();
 
   const [view, setView] = useState<OwnerIdentity | null>(null);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState<OwnerNumberTarget | null>(null);
   const [phone, setPhone] = useState("");
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const saving = posting || refreshing;
 
   const number = view ? view.whatsappNumber : initial.whatsappNumber;
+  const businessNumber = view ? view.businessNumber : initial.businessNumber;
   const telegramLinked = view ? view.telegram !== null : initial.telegramLinked;
-  const showInput = whatsappAvailable && (number === null || editing);
-  const candidates = view?.candidates ?? [];
+  const numberOf = (target: OwnerNumberTarget) => (target === "whatsapp" ? number : businessNumber);
+  const available = (target: OwnerNumberTarget) => (target === "whatsapp" ? whatsappAvailable : businessAvailable);
+  const inputTarget = editing ?? (available(focus) && numberOf(focus) === null ? focus : null);
+  const showInput = inputTarget !== null;
+  const candidates = inputTarget === "whatsapp" ? (view?.candidates ?? []) : [];
 
   const load = useCallback(async () => {
     try {
@@ -60,7 +75,7 @@ export function OwnerIdentityDialog({
     if (!el) return;
     if (open && !el.open) {
       setView(null);
-      setEditing(false);
+      setEditing(null);
       setPhone("");
       setError(null);
       el.showModal();
@@ -69,14 +84,14 @@ export function OwnerIdentityDialog({
     if (!open && el.open) el.close();
   }, [open, load]);
 
-  // Candidates only change while no number is set; poll just then.
+  // Candidates only change while the personal WhatsApp number is being set; poll just then.
   useEffect(() => {
-    if (!open || number !== null) return;
+    if (!open || inputTarget !== "whatsapp") return;
     const timer = setInterval(() => void load(), CANDIDATES_POLL_MS);
     return () => clearInterval(timer);
-  }, [open, number, load]);
+  }, [open, inputTarget, load]);
 
-  async function save(whatsappNumber: string | null) {
+  async function save(target: OwnerNumberTarget, value: string | null) {
     if (saving) return;
     setPosting(true);
     setError(null);
@@ -84,7 +99,7 @@ export function OwnerIdentityDialog({
       const res = await fetch(`/api/bot/${botId}/owner`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ whatsappNumber }),
+        body: JSON.stringify(target === "whatsapp" ? { whatsappNumber: value } : { businessNumber: value }),
         cache: "no-store",
       });
       const body: unknown = await res.json().catch(() => null);
@@ -99,18 +114,34 @@ export function OwnerIdentityDialog({
   }
 
   function submitTyped() {
+    if (inputTarget === null) return;
     const normalized = normalizePhoneInput(phone);
     if (!normalized) {
       setError("המספר לא תקין. אפשר 050-1234567 או מספר בינלאומי מלא.");
       return;
     }
-    void save(normalized);
+    if (inputTarget === "business" && businessPhone && digitsOf(businessPhone) === digitsOf(normalized)) {
+      setError("זה המספר העסקי עצמו. הקלידו את המספר האישי שממנו אתם כותבים אליו.");
+      return;
+    }
+    void save(inputTarget, normalized);
+  }
+
+  function edit(target: OwnerNumberTarget) {
+    setEditing(target);
+    setPhone("");
+    setError(null);
   }
 
   function cancel() {
     if (saving) return;
-    if (editing && number !== null) {
-      setEditing(false);
+    if (editing !== null && editing !== focus) {
+      setEditing(null);
+      setError(null);
+      return;
+    }
+    if (editing !== null && numberOf(editing) !== null) {
+      setEditing(null);
       setError(null);
       return;
     }
@@ -151,32 +182,24 @@ export function OwnerIdentityDialog({
               </span>
             </IdentityRow>
 
-            <IdentityRow name="WhatsApp" hint={WHATSAPP_HINT}>
-              {!whatsappAvailable ? (
-                <span className="text-sm text-espresso-light">לא מחובר</span>
-              ) : number !== null && !editing ? (
-                <span className="flex flex-wrap items-center gap-2">
-                  <span dir="ltr" className="font-mono text-sm text-espresso break-all">
-                    {number}
-                  </span>
-                  <SmallButton
-                    disabled={saving}
-                    onClick={() => {
-                      setEditing(true);
-                      setPhone("");
-                      setError(null);
-                    }}
-                  >
-                    שינוי
-                  </SmallButton>
-                  <SmallButton disabled={saving} onClick={() => void save(null)}>
-                    הסרה
-                  </SmallButton>
-                </span>
-              ) : (
-                <span className="text-sm text-espresso-light">המספר שלי</span>
-              )}
-            </IdentityRow>
+            {(["whatsapp", "business"] as const)
+              .filter((target) => target === "whatsapp" || businessAvailable)
+              .map((target) => (
+                <IdentityRow
+                  key={target}
+                  name={target === "whatsapp" ? "WhatsApp" : "WhatsApp Business"}
+                  hint={target === "whatsapp" ? WHATSAPP_HINT : BUSINESS_HINT}
+                >
+                  <NumberValue
+                    available={available(target)}
+                    number={numberOf(target)}
+                    typing={inputTarget === target}
+                    saving={saving}
+                    onEdit={() => edit(target)}
+                    onRemove={() => void save(target, null)}
+                  />
+                </IdentityRow>
+              ))}
           </ul>
 
           {showInput ? (
@@ -190,7 +213,7 @@ export function OwnerIdentityDialog({
                         key={candidate.number}
                         candidate={candidate}
                         disabled={saving}
-                        onPick={() => void save(candidate.number)}
+                        onPick={() => void save("whatsapp", candidate.number)}
                       />
                     ))}
                   </ul>
@@ -211,7 +234,7 @@ export function OwnerIdentityDialog({
                 onChange={(e) => setPhone(e.target.value)}
                 className="w-full rounded-xl border border-sand bg-white px-4 py-3 font-mono text-sm text-espresso placeholder:text-sand focus:outline-none focus:border-terra focus:ring-2 focus:ring-terra-pale disabled:opacity-50"
               />
-              {view?.candidatesUnavailable ? (
+              {inputTarget === "whatsapp" && view?.candidatesUnavailable ? (
                 <p className="mt-2 text-xs text-espresso-light">לא הצלחנו לבדוק הודעות נכנסות כרגע.</p>
               ) : null}
             </div>
@@ -253,6 +276,52 @@ export function OwnerIdentityDialog({
         </div>
       </form>
     </dialog>
+  );
+}
+
+function digitsOf(phone: string): string {
+  return phone.replace(/\D/g, "");
+}
+
+function NumberValue({
+  available,
+  number,
+  typing,
+  saving,
+  onEdit,
+  onRemove,
+}: {
+  available: boolean;
+  number: string | null;
+  typing: boolean;
+  saving: boolean;
+  onEdit: () => void;
+  onRemove: () => void;
+}) {
+  if (!available) return <span className="text-sm text-espresso-light">לא מחובר</span>;
+  if (typing) return <span className="text-sm text-espresso-light">המספר שלי</span>;
+  if (number === null) {
+    return (
+      <span className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-espresso-light">לא הוגדר</span>
+        <SmallButton disabled={saving} onClick={onEdit}>
+          הגדרה
+        </SmallButton>
+      </span>
+    );
+  }
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      <span dir="ltr" className="font-mono text-sm text-espresso break-all">
+        {number}
+      </span>
+      <SmallButton disabled={saving} onClick={onEdit}>
+        שינוי
+      </SmallButton>
+      <SmallButton disabled={saving} onClick={onRemove}>
+        הסרה
+      </SmallButton>
+    </span>
   );
 }
 

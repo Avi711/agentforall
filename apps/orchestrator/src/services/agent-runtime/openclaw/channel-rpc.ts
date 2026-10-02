@@ -18,6 +18,25 @@ export function channelStartOutcomeOf(result: GatewayCallResult): ChannelStartOu
   return { status: "unavailable", reason: outcome?.reason || outcome?.status || "not started" };
 }
 
+// The plugin keeps the config it started with, so routing changes reach it only through a restart of the channel.
+export async function restartOpenclawChannel(
+  runtime: ContainerRuntime,
+  containerId: string,
+  channel: string,
+  timeoutMs: number,
+): Promise<ChannelStartOutcome> {
+  const stopped = await callOpenclawGateway(
+    runtime,
+    containerId,
+    { method: "channels.stop", params: { channel }, scopes: ["operator.read", "operator.admin"] },
+    timeoutMs,
+  );
+  if (stopped.status !== "ok") return { status: "unavailable", reason: stopped.reason };
+  // A stopped channel stays down until started, so a failed start gets a second try.
+  const started = await startOpenclawChannel(runtime, containerId, channel, timeoutMs);
+  return started.status === "started" ? started : startOpenclawChannel(runtime, containerId, channel, timeoutMs);
+}
+
 export async function startOpenclawChannel(
   runtime: ContainerRuntime,
   containerId: string,

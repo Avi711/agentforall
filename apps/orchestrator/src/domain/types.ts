@@ -79,6 +79,8 @@ export interface WhatsappCloudChannel {
   pin: string | null;
   coexistence: boolean;
   relayToken: string;
+  // The owner's own phone: it reaches their personal agent here; every other sender is a customer.
+  ownerNumber?: string;
 }
 
 export type WhatsappChannelConfig = Extract<ChannelConfig, { type: "whatsapp" }>;
@@ -166,6 +168,7 @@ export const InstanceConfigSchema: z.ZodType<InstanceConfig, z.ZodTypeDef, unkno
         pin: z.string().min(1).nullable(),
         coexistence: z.boolean().default(false),
         relayToken: z.string().min(1),
+        ownerNumber: z.string().optional(),
       }),
     ]),
   ),

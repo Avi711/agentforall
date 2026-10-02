@@ -180,6 +180,8 @@ export type OwnerSyncState = (typeof OWNER_SYNC_STATES)[number];
 export const OwnerIdentitySchema = z.object({
   telegram: z.object({ userId: z.string(), botUsername: z.string().nullable() }).nullable(),
   whatsappNumber: z.string().nullable(),
+  // Defaulted: an orchestrator one release behind does not send it yet.
+  businessNumber: z.string().nullable().default(null),
   sync: z.enum(OWNER_SYNC_STATES),
   candidates: z.array(
     z.object({
@@ -194,8 +196,10 @@ export const OwnerIdentitySchema = z.object({
 export type OwnerIdentity = z.infer<typeof OwnerIdentitySchema>;
 export type OwnerCandidate = OwnerIdentity["candidates"][number];
 
+// Undefined leaves that number as it is.
 export interface OwnerIdentityUpdate {
-  whatsappNumber: string | null;
+  whatsappNumber?: string | null;
+  businessNumber?: string | null;
 }
 
 export const AdminInstanceSchema = z.object({

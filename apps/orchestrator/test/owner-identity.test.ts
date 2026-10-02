@@ -6,7 +6,7 @@ import {
   generateRuntimePatchedOpenclawFiles,
   readOwnerAllowFrom,
 } from "../src/services/agent-runtime/openclaw/config.js";
-import { ownerIdentityOf, ownerPeerIds, sameOwnerIds } from "../src/domain/owner.js";
+import { ownerIdentityOf, ownerPeerIds, ownerSessionPeerIds, sameOwnerIds } from "../src/domain/owner.js";
 import { NotFoundError } from "../src/domain/errors.js";
 import { OwnerIdentityManager } from "../src/services/owner-identity-manager.js";
 import type { AgentRuntimeRegistry } from "../src/services/agent-runtime/registry.js";
@@ -14,7 +14,7 @@ import type { WhatsappPairingRequest } from "../src/services/agent-runtime/types
 import type { EventRepository } from "../src/storage/event-repository.js";
 import type { ContainerRuntime } from "../src/services/container-runtime.js";
 import type { ChannelConfig, Instance } from "../src/domain/types.js";
-import { RELAY_URLS, configWith, fakeChannelManager, makeInstance } from "./helpers/fixtures.js";
+import { RELAY_URLS, configWith, fakeChannelManager, makeInstance, makeWhatsappCloudChannel } from "./helpers/fixtures.js";
 import { singleHost } from "./helpers/host-runtimes.js";
 
 const TELEGRAM: ChannelConfig = {
@@ -54,17 +54,17 @@ test("ownerIdentityOf reads telegram from the allowlist and whatsapp from ownerN
   assert.deepEqual(ownerIdentityOf([TELEGRAM, WHATSAPP_OWNED]), {
     telegramUserId: "123456",
     whatsappNumber: "+972501234567",
-    hasBusinessNumber: false,
+    businessOwnerNumber: null,
   });
   assert.deepEqual(ownerIdentityOf([{ type: "whatsapp" }]), {
     telegramUserId: null,
     whatsappNumber: null,
-    hasBusinessNumber: false,
+    businessOwnerNumber: null,
   });
   assert.deepEqual(ownerIdentityOf([{ type: "telegram" }]), {
     telegramUserId: null,
     whatsappNumber: null,
-    hasBusinessNumber: false,
+    businessOwnerNumber: null,
   });
 });
 
@@ -72,13 +72,12 @@ test("ownerPeerIds emits channel-prefixed ids and sameOwnerIds ignores order", (
   const ids = ownerPeerIds({
     telegramUserId: "123456",
     whatsappNumber: "+972501234567",
-    hasBusinessNumber: false,
+    businessOwnerNumber: null,
   });
   assert.deepEqual(ids, OWNER_IDS);
-  assert.deepEqual(
-    ownerPeerIds({ telegramUserId: null, whatsappNumber: "+972501234567", hasBusinessNumber: true }),
-    ["whatsapp:+972501234567", "whatsapp_cloud:+972501234567"],
-  );
+  const business = { telegramUserId: null, whatsappNumber: "+972501234567", businessOwnerNumber: "+972541112222" };
+  assert.deepEqual(ownerPeerIds(business), ["whatsapp:+972501234567"], "never the business number: OpenClaw prints these in customers' prompts");
+  assert.deepEqual(ownerSessionPeerIds(business), ["whatsapp:+972501234567", "whatsapp_cloud:+972541112222"]);
   assert.equal(sameOwnerIds(ids, [...ids].reverse()), true);
   assert.equal(sameOwnerIds(ids, ["telegram:123456"]), false);
   assert.equal(sameOwnerIds([], []), true);
@@ -118,10 +117,11 @@ test("readOwnerAllowFrom tolerates missing or malformed blocks", () => {
 interface FakeAdapter {
   readOwnerIds?: () => Promise<string[] | null>;
   listWhatsappPairingRequests?: () => Promise<WhatsappPairingRequest[]>;
+  restartWhatsappCloudChannel?: (containerId: string) => Promise<{ status: "started" | "unavailable"; reason?: string }>;
 }
 
-function harness(initial: Instance, adapter: FakeAdapter) {
-  const channels = fakeChannelManager(initial);
+function harness(initial: Instance, adapter: FakeAdapter, outcome: "applied" | "restart_required" = "applied") {
+  const channels = fakeChannelManager(initial, outcome);
   const events: string[] = [];
   const runtimes = {
     get: () => ({
@@ -135,7 +135,7 @@ function harness(initial: Instance, adapter: FakeAdapter) {
       events.push(type);
     },
   } as unknown as EventRepository;
-  const logger = { warn: () => {} } as unknown as FastifyBaseLogger;
+  const logger = { warn: () => {}, error: () => {} } as unknown as FastifyBaseLogger;
   return {
     owner: new OwnerIdentityManager(channels.manager, singleHost({} as ContainerRuntime, runtimes), eventLog, logger),
     writes: channels.writes,
@@ -211,6 +211,46 @@ test("update refuses when the bot has no whatsapp channel", async () => {
     () => harness(inst, {}).owner.update(inst.id, inst.userId, { whatsappNumber: "+972501234567" }),
     NotFoundError,
   );
+});
+
+test("the business number's owner phone is stored on that connection and restarts its channel to take effect", async () => {
+  const restarts: string[] = [];
+  const cloud = makeWhatsappCloudChannel();
+  const inst = { ...makeInstance([TELEGRAM, cloud]), containerId: "container-1" };
+  const h = harness(inst, {
+    restartWhatsappCloudChannel: async (containerId) => (restarts.push(containerId), { status: "started" }),
+  });
+
+  const set = await h.owner.update(inst.id, inst.userId, { businessNumber: "0541112222".replace(/^0/, "972") });
+  assert.equal(set.businessNumber, "+972541112222");
+  assert.equal(set.whatsappNumber, null);
+  assert.deepEqual(h.writes[0], [TELEGRAM, { ...cloud, ownerNumber: "+972541112222" }]);
+  assert.deepEqual(restarts, ["container-1"]);
+
+  await h.owner.update(inst.id, inst.userId, { businessNumber: "+972 54-111-2222" });
+  assert.equal(h.writes.length, 1, "the same number writes nothing");
+  assert.equal(restarts.length, 1);
+
+  await assert.rejects(h.owner.update(inst.id, inst.userId, { businessNumber: cloud.displayPhoneNumber }), /business number itself/);
+  await h.owner.update(inst.id, inst.userId, { businessNumber: null });
+  assert.deepEqual(h.writes[1], [TELEGRAM, cloud]);
+});
+
+test("a business owner number needs a business number, and a failed channel restart does not fail the save", async () => {
+  const noBusiness = makeInstance([TELEGRAM]);
+  await assert.rejects(harness(noBusiness, {}).owner.update(noBusiness.id, noBusiness.userId, { businessNumber: "+972541112222" }), NotFoundError);
+
+  const inst = { ...makeInstance([TELEGRAM, makeWhatsappCloudChannel()]), containerId: "container-1" };
+  const h = harness(inst, { restartWhatsappCloudChannel: async () => ({ status: "unavailable", reason: "gateway busy" }) });
+  assert.equal((await h.owner.update(inst.id, inst.userId, { businessNumber: "+972541112222" })).businessNumber, "+972541112222");
+});
+
+test("a change that restarted the bot needs no separate channel restart", async () => {
+  const restarts: string[] = [];
+  const inst = { ...makeInstance([TELEGRAM, makeWhatsappCloudChannel()]), containerId: "container-1" };
+  const h = harness(inst, { restartWhatsappCloudChannel: async (id) => (restarts.push(id), { status: "started" }) }, "restart_required");
+  await h.owner.update(inst.id, inst.userId, { businessNumber: "+972541112222" });
+  assert.deepEqual(restarts, []);
 });
 
 test("candidates surface only in claim mode", async () => {

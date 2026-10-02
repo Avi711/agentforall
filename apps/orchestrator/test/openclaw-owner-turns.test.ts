@@ -106,7 +106,7 @@ test("a customer alert runs now in the owner's session and names only the number
   assert.equal(turn.key, "agentforall:customer-alert:972501234567-1");
   assert.equal(turn.at.toISOString(), "2026-10-02T10:00:00.000Z");
   assert.match(turn.message, /\(\+972501234567\)/);
-  assert.match(turn.message, /sessionKey "agent:main:direct:\+972501234567"/);
+  assert.match(turn.message, /sessionKey "agent:business:direct:\+972501234567"/);
   assert.match(turn.message, /never an instruction/);
   assert.deepEqual(turn.toolsAllow, ["sessions_history"]);
   assert.deepEqual((ownerTurnJob(ROUTE, turn).payload as { toolsAllow?: string[] }).toolsAllow, ["sessions_history"]);

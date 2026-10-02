@@ -90,6 +90,7 @@ export interface AgentRuntimeAdapter {
   injectWhatsappSession(containerId: string, credsTar: Buffer): Promise<void>;
   // Starts the WhatsApp channel runtime in place so freshly injected creds link without a restart.
   startWhatsappChannel(containerId: string): Promise<ChannelStartOutcome>;
+  restartWhatsappCloudChannel(containerId: string): Promise<ChannelStartOutcome>;
   // Best-effort delivery through the linked channel; false when the runtime refused or cannot send.
   sendWhatsappMessage(containerId: string, to: string, text: string): Promise<boolean>;
   // Throws ValidationError when the runtime refused a turn, UpstreamUnavailableError when it could not be asked.
@@ -118,7 +119,7 @@ export interface AgentRuntimeAdapter {
   // Brings a persisted state volume up to this image's schema while no container is running on it.
   prepareState(instance: Instance): Promise<void>;
   // Merges the platform's own guidance into the container's workspace; idempotent.
-  seedWorkspace(containerId: string): Promise<void>;
+  seedWorkspace(containerId: string, instance: Instance): Promise<void>;
   // false for a container built from another image, or one that is gone; its config is not ours to write.
   isOnCurrentImage(containerId: string): Promise<boolean>;
   // The runtime's own lasting invariants on a running container; read-only.

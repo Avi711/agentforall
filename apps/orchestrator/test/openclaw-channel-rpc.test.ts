@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { channelStartOutcomeOf, startOpenclawChannel } from "../src/services/agent-runtime/openclaw/channel-rpc.js";
+import { channelStartOutcomeOf, restartOpenclawChannel, startOpenclawChannel } from "../src/services/agent-runtime/openclaw/channel-rpc.js";
 import type { GatewayCall } from "../src/services/agent-runtime/openclaw/gateway-call.js";
 import type { ContainerRuntime } from "../src/services/container-runtime.js";
 
@@ -49,4 +49,31 @@ test("an answer that does not say started never reads as started", () => {
   assert.equal(channelStartOutcomeOf(ok({})).status, "unavailable");
   assert.equal(channelStartOutcomeOf(ok(null)).status, "unavailable");
   assert.equal(channelStartOutcomeOf(ok({ started: "yes" })).status, "unavailable");
+});
+
+test("a channel restart stops then starts it, and a failed stop never starts it", async () => {
+  const replies = (answers: string[]) => {
+    const calls: GatewayCall[] = [];
+    const runtime = {
+      execCommandBuffer: async (_id: string, _cmd: string[], _t: number, _m: number, input?: Buffer) => {
+        calls.push(JSON.parse(input?.toString("utf8") ?? "null") as GatewayCall);
+        return { exitCode: 0, stdout: Buffer.from(answers.shift() ?? ""), stderr: "" };
+      },
+    } as unknown as ContainerRuntime;
+    return { runtime, calls };
+  };
+
+  const ok = replies([JSON.stringify({ ok: true, payload: {} }), JSON.stringify({ ok: true, payload: { started: true } })]);
+  assert.deepEqual(await restartOpenclawChannel(ok.runtime, "container-1", "whatsapp_cloud", 9000), { status: "started" });
+  assert.deepEqual(ok.calls.map((call) => [call.method, call.params]), [
+    ["channels.stop", { channel: "whatsapp_cloud" }],
+    ["channels.start", { channel: "whatsapp_cloud" }],
+  ]);
+
+  const refused = replies([JSON.stringify({ ok: false, transport: false, code: "INVALID_REQUEST", message: "unknown channel" })]);
+  assert.deepEqual(await restartOpenclawChannel(refused.runtime, "container-1", "whatsapp_cloud", 9000), {
+    status: "unavailable",
+    reason: "unknown channel",
+  });
+  assert.equal(refused.calls.length, 1);
 });

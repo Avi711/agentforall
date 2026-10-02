@@ -487,7 +487,7 @@ export class InstanceManager {
   // Best effort: guidance missing from a workspace is a support ticket, not a broken bot.
   private async seedWorkspace(inst: Instance, containerId: string): Promise<void> {
     try {
-      await this.hosts.for(inst.hostId).adapters.get(inst.runtimeKind).seedWorkspace(containerId);
+      await this.hosts.for(inst.hostId).adapters.get(inst.runtimeKind).seedWorkspace(containerId, inst);
     } catch (err) {
       this.logger.warn({ instanceId: inst.id, err }, "workspace guidance seed failed");
     }
@@ -801,13 +801,13 @@ export class InstanceManager {
     id: string,
     userId: string,
     mutate: (channels: ChannelConfig[]) => ChannelConfig[],
-  ): Promise<{ instance: Instance; changed: boolean }> {
+  ): Promise<{ instance: Instance; changed: boolean; outcome: ConfigApplyOutcome | null }> {
     return this.operationLock.run(id, async () => {
       const inst = await this.requireOwnedInstance(id, userId);
       const next = mutate(inst.config.channels);
-      if (next === inst.config.channels) return { instance: inst, changed: false };
-      const instance = await this.updateConfigLocked(id, userId, { channels: next });
-      return { instance, changed: true };
+      if (next === inst.config.channels) return { instance: inst, changed: false, outcome: null };
+      const { instance, outcome } = await this.applyConfigLocked(id, userId, { channels: next });
+      return { instance, changed: true, outcome };
     });
   }
 
@@ -845,11 +845,15 @@ export class InstanceManager {
     }
   }
 
-  private async updateConfigLocked(
+  private async updateConfigLocked(id: string, userId: string, patch: ConfigPatch): Promise<Instance> {
+    return (await this.applyConfigLocked(id, userId, patch)).instance;
+  }
+
+  private async applyConfigLocked(
     id: string,
     userId: string,
     patch: ConfigPatch,
-  ): Promise<Instance> {
+  ): Promise<{ instance: Instance; outcome: ConfigApplyOutcome | null }> {
     const inst = await this.requireOwnedInstance(id, userId);
 
     if (inst.status === "provisioning" || inst.status === "destroying") {
@@ -913,7 +917,7 @@ export class InstanceManager {
       await this.restartContainer(inst, inst.containerId);
     }
 
-    return this.requireOwnedInstance(id, userId);
+    return { instance: await this.requireOwnedInstance(id, userId), outcome };
   }
 
   // Invalidates the managed bot's token so the orphaned Telegram bot can't be reused,

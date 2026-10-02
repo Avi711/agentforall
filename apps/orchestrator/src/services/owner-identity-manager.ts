@@ -3,7 +3,9 @@ import { NotFoundError, ValidationError } from "../domain/errors.js";
 import {
   findTelegramChannel,
   findWhatsappChannel,
+  findWhatsappCloudChannel,
   replaceWhatsappChannel,
+  replaceWhatsappCloudChannel,
 } from "../domain/channels.js";
 import {
   ownerIdentityOf,
@@ -14,8 +16,10 @@ import {
 import { normalizeE164 } from "../domain/phone.js";
 import {
   isContainerUp,
+  type ChannelConfig,
   type Instance,
   type WhatsappChannelConfig,
+  type WhatsappCloudChannelConfig,
 } from "../domain/types.js";
 import type { EventRepository } from "../storage/event-repository.js";
 import type { HostRuntimes } from "./host-runtimes.js";
@@ -28,6 +32,7 @@ export type OwnerSyncState = (typeof OWNER_SYNC_STATES)[number];
 export interface OwnerIdentityView {
   telegram: { userId: string; botUsername: string | null } | null;
   whatsappNumber: string | null;
+  businessNumber: string | null;
   // Whether the live runtime config carries exactly these owner ids.
   sync: OwnerSyncState;
   // Senders held by WhatsApp claim mode — shortcuts for "this is me".
@@ -35,8 +40,10 @@ export interface OwnerIdentityView {
   candidatesUnavailable: boolean;
 }
 
+// Undefined leaves that number as it is.
 export interface OwnerIdentityUpdate {
-  whatsappNumber: string | null;
+  whatsappNumber?: string | null;
+  businessNumber?: string | null;
 }
 
 interface Candidates {
@@ -69,27 +76,48 @@ export class OwnerIdentityManager {
     userId: string,
     patch: OwnerIdentityUpdate,
   ): Promise<OwnerIdentityView> {
-    const { instance, changed } = await this.manager.updateChannels(
-      instanceId,
-      userId,
-      (channels) => {
-        const whatsapp = findWhatsappChannel(channels);
-        if (!whatsapp) throw new NotFoundError("whatsapp channel", instanceId);
-        const next = withOwnerNumber(whatsapp, patch.whatsappNumber);
-        // Same number → no config write, no container restart.
-        if ((next.ownerNumber ?? null) === (whatsapp.ownerNumber ?? null)) return channels;
-        return replaceWhatsappChannel(channels, next);
-      },
-    );
+    let businessChanged = false;
+    const { instance, changed, outcome } = await this.manager.updateChannels(instanceId, userId, (channels) => {
+      // Same number → the same array back: no config write, no container restart.
+      let next = channels;
+      if (patch.whatsappNumber !== undefined) next = withWhatsappOwner(next, patch.whatsappNumber, instanceId);
+      if (patch.businessNumber !== undefined) {
+        const withBusiness = withBusinessOwner(next, patch.businessNumber, instanceId);
+        businessChanged = withBusiness !== next;
+        next = withBusiness;
+      }
+      return next;
+    });
     if (changed) {
       await this.eventLog.append(instanceId, "owner.identity_updated", {
         actor: userId,
-        payload: { whatsappSet: patch.whatsappNumber !== null },
+        payload: {
+          ...(patch.whatsappNumber !== undefined ? { whatsappSet: patch.whatsappNumber !== null } : {}),
+          ...(patch.businessNumber !== undefined ? { businessSet: patch.businessNumber !== null } : {}),
+        },
       });
     }
+    // A container restart already started the plugin on the new routing; only a live apply needs the channel restarted.
+    if (businessChanged && outcome === "applied") await this.restartBusinessChannel(instance);
 
     const identity = ownerIdentityOf(instance.config.channels);
     return toView(instance, identity, await this.syncState(instance, identity), NO_CANDIDATES);
+  }
+
+  // The config is saved either way; a channel left stopped is logged as an error, and the next bot restart revives it.
+  private async restartBusinessChannel(inst: Instance): Promise<void> {
+    if (!inst.containerId) return;
+    try {
+      const outcome = await this.hosts
+        .for(inst.hostId)
+        .adapters.get(inst.runtimeKind)
+        .restartWhatsappCloudChannel(inst.containerId);
+      if (outcome.status !== "started") {
+        this.logger.error({ instanceId: inst.id, reason: outcome.reason }, "business channel not running after an owner number change");
+      }
+    } catch (err) {
+      this.logger.error({ instanceId: inst.id, err }, "business channel restart failed");
+    }
   }
 
   private async syncState(inst: Instance, identity: OwnerIdentity): Promise<OwnerSyncState> {
@@ -123,19 +151,36 @@ export class OwnerIdentityManager {
   }
 }
 
-function withOwnerNumber(
-  channel: WhatsappChannelConfig,
-  whatsappNumber: string | null,
-): WhatsappChannelConfig {
-  const next: WhatsappChannelConfig = { ...channel };
-  if (whatsappNumber === null) {
-    delete next.ownerNumber;
-    return next;
+function withWhatsappOwner(channels: ChannelConfig[], number: string | null, instanceId: string): ChannelConfig[] {
+  const whatsapp = findWhatsappChannel(channels);
+  if (!whatsapp) throw new NotFoundError("whatsapp channel", instanceId);
+  const ownerNumber = normalizedOwnerNumber(number, "whatsappNumber");
+  if (ownerNumber === (whatsapp.ownerNumber ?? null)) return channels;
+  const next: WhatsappChannelConfig = { ...whatsapp };
+  if (ownerNumber === null) delete next.ownerNumber;
+  else next.ownerNumber = ownerNumber;
+  return replaceWhatsappChannel(channels, next);
+}
+
+function withBusinessOwner(channels: ChannelConfig[], number: string | null, instanceId: string): ChannelConfig[] {
+  const business = findWhatsappCloudChannel(channels);
+  if (!business) throw new NotFoundError("whatsapp_cloud channel", instanceId);
+  const ownerNumber = normalizedOwnerNumber(number, "businessNumber");
+  if (ownerNumber !== null && ownerNumber === normalizeE164(business.displayPhoneNumber)) {
+    throw new ValidationError("businessNumber is the business number itself; use the phone you write from");
   }
-  const normalized = normalizeE164(whatsappNumber);
-  if (!normalized) throw new ValidationError("whatsappNumber must be E.164");
-  next.ownerNumber = normalized;
-  return next;
+  if (ownerNumber === (business.ownerNumber ?? null)) return channels;
+  const next: WhatsappCloudChannelConfig = { ...business };
+  if (ownerNumber === null) delete next.ownerNumber;
+  else next.ownerNumber = ownerNumber;
+  return replaceWhatsappCloudChannel(channels, next);
+}
+
+function normalizedOwnerNumber(number: string | null, field: string): string | null {
+  if (number === null) return null;
+  const normalized = normalizeE164(number);
+  if (!normalized) throw new ValidationError(`${field} must be E.164`);
+  return normalized;
 }
 
 function toView(
@@ -150,6 +195,7 @@ function toView(
       ? { userId: identity.telegramUserId, botUsername: telegram?.botUsername ?? null }
       : null,
     whatsappNumber: identity.whatsappNumber,
+    businessNumber: identity.businessOwnerNumber,
     sync,
     candidates: candidates.list,
     candidatesUnavailable: candidates.unavailable,

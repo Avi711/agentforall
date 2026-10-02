@@ -10,7 +10,7 @@ import { relayUrlsFor } from "../../src/services/relay.js";
 export const RELAY_URLS = relayUrlsFor("11111111-1111-4111-8111-111111111111", "http://orchestrator:3000");
 
 // Stand-in for services that only read channels and rewrite them through updateChannels.
-export function fakeChannelManager(initial: Instance) {
+export function fakeChannelManager(initial: Instance, outcome: "applied" | "restart_required" = "applied") {
   let inst = initial;
   const writes: ChannelConfig[][] = [];
   const manager = {
@@ -21,10 +21,10 @@ export function fakeChannelManager(initial: Instance) {
       mutate: (channels: ChannelConfig[]) => ChannelConfig[],
     ) => {
       const next = mutate(inst.config.channels);
-      if (next === inst.config.channels) return { instance: inst, changed: false };
+      if (next === inst.config.channels) return { instance: inst, changed: false, outcome: null };
       writes.push(next);
       inst = { ...inst, config: { ...inst.config, channels: next } };
-      return { instance: inst, changed: true };
+      return { instance: inst, changed: true, outcome };
     },
   } as unknown as InstanceManager;
   return {

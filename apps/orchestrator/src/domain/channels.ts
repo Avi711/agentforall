@@ -49,6 +49,13 @@ export function findWhatsappCloudChannel(
   return channels.find((ch): ch is WhatsappCloudChannelConfig => ch.type === "whatsapp_cloud");
 }
 
+export function replaceWhatsappCloudChannel(
+  channels: ChannelConfig[],
+  business: WhatsappCloudChannelConfig,
+): ChannelConfig[] {
+  return channels.map((ch) => (ch.type === "whatsapp_cloud" ? business : ch));
+}
+
 export function findTelegramChannel(
   channels: ChannelConfig[],
 ): TelegramChannelConfig | undefined {

@@ -52,15 +52,12 @@ export const WhatsappAccessBodySchema = z
   .object({ access: z.enum(WHATSAPP_DM_ACCESS) })
   .strict();
 
+const E164Schema = z.string().trim().regex(/^\+?[1-9]\d{6,14}$/, "must be E.164");
+
 export const OwnerIdentityBodySchema = z
-  .object({
-    whatsappNumber: z
-      .string()
-      .trim()
-      .regex(/^\+?[1-9]\d{6,14}$/, "whatsappNumber must be E.164")
-      .nullable(),
-  })
-  .strict();
+  .object({ whatsappNumber: E164Schema.nullable().optional(), businessNumber: E164Schema.nullable().optional() })
+  .strict()
+  .refine((body) => body.whatsappNumber !== undefined || body.businessNumber !== undefined, "nothing to update");
 
 export type WhatsappAccessBody = z.infer<typeof WhatsappAccessBodySchema>;
 export type OwnerIdentityBody = z.infer<typeof OwnerIdentityBodySchema>;

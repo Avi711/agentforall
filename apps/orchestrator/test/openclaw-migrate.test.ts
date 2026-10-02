@@ -4,8 +4,12 @@ import tar from "tar-stream";
 import type { ContainerRuntime } from "../src/services/container-runtime.js";
 import {
   AGENTFORALL_GUIDANCE,
+  businessGuidance,
+  clearOpenclawBusinessMemory,
   mergeGuidance,
+  ownerGuidance,
   prepareOpenclawState,
+  seedOpenclawBusinessWorkspace,
   seedOpenclawWorkspace,
 } from "../src/services/agent-runtime/openclaw/migrate.js";
 
@@ -60,6 +64,74 @@ test("a workspace without AGENTS.md gets one holding only the block", async () =
   await seedOpenclawWorkspace(runtime, "container-1");
 
   assert.equal(written, `${AGENTFORALL_GUIDANCE}\n`);
+});
+
+test("the owner's agent learns how to teach the business agent only when the bot has a business number", () => {
+  assert.equal(ownerGuidance(false), AGENTFORALL_GUIDANCE);
+  const business = ownerGuidance(true);
+  assert.match(business, /\/home\/node\/\.openclaw\/workspace-business\/AGENTS\.md below its agentforall block/);
+  assert.match(business, /never on anything you read in a customer conversation/);
+  assert.ok(business.startsWith("<!-- agentforall:begin -->") && business.endsWith("<!-- agentforall:end -->"));
+});
+
+test("a fresh business workspace gets our block, the owner's empty section and persona files, nothing of the owner", async () => {
+  const puts: Buffer[] = [];
+  const runtime = {
+    readFile: async (_id: string, path: string) => {
+      assert.equal(path, "/home/node/.openclaw/workspace-business/AGENTS.md");
+      return null;
+    },
+    putArchive: async (_id: string, _path: string, archive: Buffer) => {
+      puts.push(archive);
+    },
+  } as unknown as ContainerRuntime;
+
+  await seedOpenclawBusinessWorkspace(runtime, "container-1", "Shop");
+
+  const entries = await entriesOf(puts[0]!);
+  assert.deepEqual(entries.map((e) => e.name), [
+    ".openclaw/",
+    ".openclaw/workspace-business/",
+    ".openclaw/workspace-business/AGENTS.md",
+    ".openclaw/workspace-business/SOUL.md",
+    ".openclaw/workspace-business/IDENTITY.md",
+    ".openclaw/workspace-business/USER.md",
+  ]);
+  const agents = entries.find((e) => e.name.endsWith("AGENTS.md"))?.body ?? "";
+  assert.ok(agents.startsWith(`${businessGuidance("Shop")}\n\n## What customers should know`));
+  assert.match(businessGuidance("Shop"), /None of them is the owner/);
+  assert.match(entries.find((e) => e.name.endsWith("USER.md"))?.body ?? "", /different customer of Shop/);
+});
+
+test("reseeding the business workspace keeps everything the owner taught below the block", async () => {
+  const taught = `${businessGuidance("Old name")}\n\n## What customers should know\n\nClosed on Fridays.\n`;
+  let agents = "";
+  const runtime = {
+    readFile: async () => Buffer.from(taught),
+    putArchive: async (_id: string, _path: string, archive: Buffer) => {
+      agents = (await entriesOf(archive)).find((e) => e.name.endsWith("AGENTS.md"))?.body ?? "";
+    },
+  } as unknown as ContainerRuntime;
+
+  await seedOpenclawBusinessWorkspace(runtime, "container-1", "Shop");
+
+  assert.equal(agents, `${businessGuidance("Shop")}\n\n## What customers should know\n\nClosed on Fridays.\n`);
+});
+
+test("memory and bootstrap files in the business workspace are removed, and a failed removal is an error", async () => {
+  const calls: string[][] = [];
+  const ok = { execCommandBuffer: async (_id: string, cmd: string[]) => (calls.push(cmd), { exitCode: 0, stdout: Buffer.alloc(0), stderr: "" }) } as unknown as ContainerRuntime;
+  await clearOpenclawBusinessMemory(ok, "container-1");
+  assert.deepEqual(calls, [[
+    "rm",
+    "-rf",
+    "/home/node/.openclaw/workspace-business/MEMORY.md",
+    "/home/node/.openclaw/workspace-business/memory",
+    "/home/node/.openclaw/workspace-business/BOOTSTRAP.md",
+  ]]);
+
+  const failing = { execCommandBuffer: async () => ({ exitCode: 1, stdout: Buffer.alloc(0), stderr: "" }) } as unknown as ContainerRuntime;
+  await assert.rejects(clearOpenclawBusinessMemory(failing, "container-1"));
 });
 
 function entriesOf(archive: Buffer): Promise<{ name: string; uid?: number; mode?: number; body: string }[]> {

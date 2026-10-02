@@ -11,10 +11,11 @@ import type {
   WhatsappCloudChannelConfig,
 } from "../../../domain/types.js";
 import { findWhatsappCloudChannel } from "../../../domain/channels.js";
-import { ownerIdentityOf, ownerPeerIds } from "../../../domain/owner.js";
+import { ownerIdentityOf, ownerPeerIds, ownerSessionPeerIds, type OwnerIdentity } from "../../../domain/owner.js";
 import type { RuntimeConfigFiles } from "../types.js";
 import type { RelayUrls } from "../../relay.js";
 import {
+  OPENCLAW_BUSINESS_WORKSPACE_PATH,
   OPENCLAW_INTERNAL_PORT,
   OPENCLAW_USER,
   OPENCLAW_WHATSAPP_SESSION_PATH,
@@ -26,7 +27,9 @@ import type {
   MediaCapability,
   MediaModelEntry,
   MediaToolsConfig,
+  AgentEntryConfig,
   OpenclawConfig,
+  RouteBinding,
   SenderToolPolicy,
   SessionConfig,
   ToolsConfig,
@@ -49,6 +52,7 @@ const MEDIA_PLUGIN_ID = "agentforall-media";
 const MEDIA_ENV_KEY = "AGENTFORALL_MEDIA_API_KEY";
 const MEMORY_PLUGIN_ID = "memory-core";
 export const MAIN_AGENT_ID = "main";
+export const BUSINESS_AGENT_ID = "business";
 const OWNER_IDENTITY = "owner";
 export const OWNER_SESSION_KEY = `agent:${MAIN_AGENT_ID}:direct:${OWNER_IDENTITY}`;
 export const MCP_RELAY_SERVER_NAME = "agentforall";
@@ -128,6 +132,9 @@ export function generateRuntimePatchedOpenclawFiles(
   for (const path of ownedPaths(generated, live)) {
     setPath(patched, path, readPath(generated, path));
   }
+  if (rendersBusiness(generated) || rendersBusiness(live)) reconcileRoster(patched, generated, live);
+  // Which agent the heartbeat runs for is the roster's call, not the heartbeat block's.
+  else setPath(patched, HEARTBEAT_AGENT_PATH, readPath(live, HEARTBEAT_AGENT_PATH));
   return {
     configJson: JSON.stringify(patched, null, 2),
     dotEnv: generateOpenclawEnv(config, gatewayToken),
@@ -146,12 +153,20 @@ export async function buildOpenclawEnvTar(dotEnv: string): Promise<Buffer> {
   });
 }
 
-export async function buildOpenclawWorkspaceFileTar(fileName: string, content: string): Promise<Buffer> {
+export async function buildOpenclawWorkspaceTar(workspaceDir: string, files: Record<string, string>): Promise<Buffer> {
   return packTar(async (pack) => {
     await writeEntry(pack, { name: ".openclaw/", type: "directory", mode: 0o700, ...OPENCLAW_USER });
-    await writeEntry(pack, { name: ".openclaw/workspace/", type: "directory", mode: 0o700, ...OPENCLAW_USER });
-    await writeEntry(pack, { name: `.openclaw/workspace/${fileName}`, mode: 0o644, ...OPENCLAW_USER }, content);
+    await writeEntry(pack, { name: `.openclaw/${workspaceDir}/`, type: "directory", mode: 0o700, ...OPENCLAW_USER });
+    for (const [fileName, content] of Object.entries(files)) {
+      await writeEntry(pack, { name: `.openclaw/${workspaceDir}/${fileName}`, mode: 0o644, ...OPENCLAW_USER }, content);
+    }
   });
+}
+
+export function businessNameOf(config: InstanceConfig): string | null {
+  const business = findWhatsappCloudChannel(config.channels);
+  if (!business) return null;
+  return business.verifiedName.trim() || config.displayName.trim();
 }
 
 export async function buildOpenclawConfigTar(
@@ -213,22 +228,35 @@ function generateOpenclawConfig(
   const tools = buildToolsConfig(provider, business ? buildToolsBySender(config) : null);
   const mcp = buildMcp(config, relay.mcp);
   const media = new Set(provider.media ?? []);
-  const owner = ownerPeerIds(ownerIdentityOf(config.channels));
+  const identity = ownerIdentityOf(config.channels);
+  const owner = ownerPeerIds(identity);
   const name = config.displayName.trim();
+  const mainAgent: AgentEntryConfig = name ? { identity: { name } } : {};
+  const channels = buildChannels(config.channels, relay.whatsappCloud);
   const openclawConfig: OpenclawConfig = {
     agents: {
+      ...(business ? { ownership: "explicit" as const } : {}),
       defaults: {
         model,
         ...(media.has("image") ? { imageModel: model } : {}),
         ...(media.has("pdf") ? { pdfModel: model } : {}),
         workspace: OPENCLAW_WORKSPACE_PATH,
         maxConcurrent: 2,
-        heartbeat: HEARTBEAT,
+        // With a second agent, an unscoped heartbeat would run for it too.
+        heartbeat: business ? { ...HEARTBEAT, agentId: MAIN_AGENT_ID } : HEARTBEAT,
+        ...(business ? { systemAgent: { agentId: MAIN_AGENT_ID } } : {}),
       },
-      entries: { [MAIN_AGENT_ID]: name ? { identity: { name } } : {} },
+      entries: business
+        ? {
+            // Pinned: in a multi-agent roster an agent without a workspace moves to <workspace>/<id>.
+            [MAIN_AGENT_ID]: { ...mainAgent, workspace: OPENCLAW_WORKSPACE_PATH },
+            [BUSINESS_AGENT_ID]: buildBusinessAgent(config),
+          }
+        : { [MAIN_AGENT_ID]: mainAgent },
     },
+    ...(business ? { bindings: buildBindings(channels, identity) } : {}),
     ...(models ? { models } : {}),
-    channels: buildChannels(config.channels, relay.whatsappCloud),
+    channels,
     ...(tools ? { tools } : {}),
     ...(mcp ? { mcp } : {}),
     plugins: buildPlugins(config.channels),
@@ -242,7 +270,7 @@ function generateOpenclawConfig(
       headless: true,
       noSandbox: true,
     },
-    session: buildSession(owner),
+    session: buildSession(ownerSessionPeerIds(identity)),
     ...(owner.length > 0 ? { commands: { ownerAllowFrom: owner } } : {}),
   };
 
@@ -299,6 +327,7 @@ function generateOpenclawEnv(
 // defaults such as memory-core (a live gateway went from 10 plugins to 3). The boot warning
 // about an unpinned non-bundled plugin is the price.
 function buildPlugins(channels: InstanceConfig["channels"]): OpenclawConfig["plugins"] {
+  const business = channels.some((ch) => ch.type === "whatsapp_cloud");
   return {
     entries: {
       [CREDIT_PLUGIN_ID]: {
@@ -308,7 +337,13 @@ function buildPlugins(channels: InstanceConfig["channels"]): OpenclawConfig["plu
       [MEDIA_PLUGIN_ID]: { enabled: true },
       // Dreaming (nightly memory consolidation) is on by default; pinned so a default flip upstream
       // cannot change tenant spend unnoticed.
-      [MEMORY_PLUGIN_ID]: { enabled: true, config: { dreaming: { enabled: true } } },
+      [MEMORY_PLUGIN_ID]: {
+        enabled: true,
+        config: {
+          dreaming: { enabled: true },
+          ...(business ? { memoryPolicy: { excludeSessions: { channels: [WHATSAPP_CLOUD_CHANNEL_ID] } } } : {}),
+        },
+      },
       ...(channels.some((ch) => ch.type === "whatsapp") ? { whatsapp: { enabled: true } } : {}),
       // Always on: the gateway validates a connect only against loaded plugins; absent from the volume it is inert.
       [WHATSAPP_CLOUD_PLUGIN_ID]: { enabled: true },
@@ -396,6 +431,37 @@ function buildChannels(channels: InstanceConfig["channels"], whatsappCloudRelayU
   }
 
   return block;
+}
+
+// Its own workspace and one tool: a customer reaches nothing of the owner's, whatever the model is talked into.
+function buildBusinessAgent(config: InstanceConfig): AgentEntryConfig {
+  const name = businessNameOf(config);
+  return {
+    ...(name ? { identity: { name } } : {}),
+    workspace: OPENCLAW_BUSINESS_WORKSPACE_PATH,
+    skills: [],
+    memory: { search: { enabled: false } },
+    tools: { allow: [WHATSAPP_CLOUD_ESCALATE_TOOL] },
+  };
+}
+
+// With two agents OpenClaw refuses an unbound channel, so every other channel is bound to the owner's agent.
+function buildBindings(channels: ChannelsConfig, identity: OwnerIdentity): RouteBinding[] {
+  const bindings: RouteBinding[] = [];
+  if (identity.businessOwnerNumber) {
+    bindings.push({
+      agentId: MAIN_AGENT_ID,
+      match: { channel: WHATSAPP_CLOUD_CHANNEL_ID, accountId: "*", peer: { kind: "direct", id: identity.businessOwnerNumber } },
+    });
+  }
+  bindings.push({ agentId: BUSINESS_AGENT_ID, match: { channel: WHATSAPP_CLOUD_CHANNEL_ID, accountId: "*" } });
+  return [...bindings, ...mainBindings(Object.keys(channels))];
+}
+
+function mainBindings(channels: string[]): RouteBinding[] {
+  return channels
+    .filter((channel) => channel !== WHATSAPP_CLOUD_CHANNEL_ID)
+    .map((channel) => ({ agentId: MAIN_AGENT_ID, match: { channel, accountId: "*" } }));
 }
 
 // Customers are always open; the owner's identity is what separates them, not the allowlist.
@@ -514,11 +580,9 @@ function buildToolsBySender(config: InstanceConfig): Record<string, SenderToolPo
   const identity = ownerIdentityOf(config.channels);
   const policy: Record<string, SenderToolPolicy> = {};
   if (identity.telegramUserId) policy[`channel:telegram:${identity.telegramUserId}`] = {};
-  if (identity.whatsappNumber) {
-    policy[`e164:${identity.whatsappNumber}`] = {};
-    // Our plugin reports the sender as +E.164 and never a separate e164 field, so the channel key is the one that matches.
-    if (identity.hasBusinessNumber) policy[`channel:${WHATSAPP_CLOUD_CHANNEL_ID}:${identity.whatsappNumber}`] = {};
-  }
+  if (identity.whatsappNumber) policy[`e164:${identity.whatsappNumber}`] = {};
+  // Our plugin reports the sender as +E.164 and never a separate e164 field, so the channel key is the one that matches.
+  if (identity.businessOwnerNumber) policy[`channel:${WHATSAPP_CLOUD_CHANNEL_ID}:${identity.businessOwnerNumber}`] = {};
   policy["*"] = STRANGER_TOOL_POLICY;
   return policy;
 }
@@ -569,7 +633,15 @@ function buildToolsConfig(
   const tools: ToolsConfig = {
     ...(models.length > 0 ? { media: mediaConfig } : {}),
     // exec runs on the gateway host once there is no sandbox; a business bot never gets it.
-    ...(toolsBySender ? { exec: { security: "deny" }, toolsBySender } : {}),
+    ...(toolsBySender
+      ? {
+          exec: { security: "deny" },
+          toolsBySender,
+          // The owner's agent reads customer conversations, which belong to the business agent.
+          sessions: { visibility: "all" },
+          agentToAgent: { enabled: true, allow: [MAIN_AGENT_ID, BUSINESS_AGENT_ID] },
+        }
+      : {}),
   };
   return Object.keys(tools).length > 0 ? tools : undefined;
 }
@@ -700,6 +772,44 @@ const CHANNEL_DEFAULT_PATHS: Partial<Record<ChannelType, readonly (readonly stri
   telegram: [["groupPolicy"], ["groups"]],
 };
 
+// Ours while we render them or the live config still holds ours; a tenant's own agents are never touched.
+const BUSINESS_OWNED_PATHS: readonly (readonly string[])[] = [
+  ["agents", "defaults", "systemAgent"],
+  ["agents", "entries", BUSINESS_AGENT_ID],
+];
+const OUR_AGENT_IDS = new Set([MAIN_AGENT_ID, BUSINESS_AGENT_ID]);
+const HEARTBEAT_AGENT_PATH = ["agents", "defaults", "heartbeat", "agentId"];
+
+function rendersBusiness(config: Record<string, unknown>): boolean {
+  return readPath(config, ["agents", "entries", BUSINESS_AGENT_ID]) !== undefined;
+}
+
+// Decided by the roster, not by the business number: any roster of two or more agents, whoever added the second,
+// needs the explicit marker, main's workspace pinned, main as the system agent and every channel bound. Bindings to
+// agents the tenant added stay, ahead of ours; a legacy default marker is left to the tenant.
+function reconcileRoster(
+  patched: Record<string, unknown>,
+  generated: Record<string, unknown>,
+  live: Record<string, unknown>,
+): void {
+  const entries = readPath(patched, ["agents", "entries"]);
+  const roster = isRecord(entries) ? Object.values(entries) : [];
+  const multi = roster.length > 1;
+
+  const liveBindings = Array.isArray(live.bindings) ? live.bindings : [];
+  const theirs = liveBindings.filter((binding) => !(isRecord(binding) && OUR_AGENT_IDS.has(String(binding.agentId))));
+  const rendered = isRecord(generated.channels) ? Object.keys(generated.channels) : [];
+  const ours = Array.isArray(generated.bindings) ? generated.bindings : multi ? mainBindings(rendered) : [];
+  const bindings = [...theirs, ...ours];
+  setPath(patched, ["bindings"], bindings.length > 0 ? bindings : undefined);
+
+  if (roster.some((entry) => isRecord(entry) && entry.default === true)) return;
+  setPath(patched, ["agents", "ownership"], multi ? "explicit" : undefined);
+  setPath(patched, ["agents", "entries", MAIN_AGENT_ID, "workspace"], multi ? OPENCLAW_WORKSPACE_PATH : undefined);
+  setPath(patched, ["agents", "defaults", "systemAgent"], multi ? { agentId: MAIN_AGENT_ID } : undefined);
+  setPath(patched, HEARTBEAT_AGENT_PATH, multi ? MAIN_AGENT_ID : undefined);
+}
+
 function ownedPaths(
   generated: Record<string, unknown>,
   live: Record<string, unknown>,
@@ -708,6 +818,7 @@ function ownedPaths(
   const liveChannels = isRecord(live.channels) ? live.channels : {};
   return [
     ...OWNED_PATHS,
+    ...(rendersBusiness(generated) || rendersBusiness(live) ? BUSINESS_OWNED_PATHS : []),
     ...CHANNEL_TYPES.flatMap((type) => {
       // A channel the dashboard no longer renders is removed whole, which is what disconnecting it
       // means; while it exists, only its own keys are ours.

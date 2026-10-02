@@ -1,5 +1,7 @@
 export interface OpenclawConfig {
   agents: {
+    // Required by OpenClaw once there is more than one agent.
+    ownership?: "explicit";
     defaults: {
       model: ModelSelection;
       imageModel?: ModelSelection;
@@ -7,9 +9,11 @@ export interface OpenclawConfig {
       workspace: string;
       maxConcurrent: number;
       heartbeat: HeartbeatConfig;
+      systemAgent?: { agentId: string };
     };
     entries: Record<string, AgentEntryConfig>;
   };
+  bindings?: RouteBinding[];
   models?: ModelsConfig;
   channels: ChannelsConfig;
   tools?: ToolsConfig;
@@ -28,9 +32,20 @@ export interface OpenclawConfig {
 
 export interface AgentEntryConfig {
   identity?: { name?: string; emoji?: string };
+  workspace?: string;
+  skills?: string[];
+  memory?: { search: { enabled: boolean } };
+  tools?: { allow: string[] };
+}
+
+// The most specific match wins: an exact peer, then an account, then the whole channel.
+export interface RouteBinding {
+  agentId: string;
+  match: { channel: string; accountId?: string; peer?: { kind: "direct"; id: string } };
 }
 
 export interface HeartbeatConfig {
+  agentId?: string;
   every: string;
   activeHours?: { start: string; end: string; timezone?: string };
   isolatedSession?: boolean;
@@ -41,7 +56,10 @@ export interface HeartbeatConfig {
 export interface PluginEntryConfig {
   enabled: boolean;
   hooks?: { allowConversationAccess?: boolean; timeoutMs?: number };
-  config?: { dreaming?: { enabled: boolean } };
+  config?: {
+    dreaming?: { enabled: boolean };
+    memoryPolicy?: { excludeSessions: { channels: string[] } };
+  };
 }
 
 export interface McpServerConfig {
@@ -102,6 +120,8 @@ export interface ToolsConfig {
   exec?: { security: "deny" | "allowlist" | "full" };
   // Per-sender policy; first matching key wins, "*" is everyone else. Cannot grant back global denials.
   toolsBySender?: Record<string, SenderToolPolicy>;
+  sessions?: { visibility: "self" | "tree" | "agent" | "all" };
+  agentToAgent?: { enabled: boolean; allow: string[] };
 }
 
 export interface SenderToolPolicy {
