@@ -219,11 +219,11 @@ export function LoginForm({
     <div className="space-y-5">
       <ErrorAlert>{urlError}</ErrorAlert>
       <div className="space-y-3">
+        {openInBrowser ? <OpenInBrowserButton handoff={openInBrowser} /> : null}
         <button type="button" onClick={() => google.start(redirectTo)} disabled={busy} aria-busy={google.redirecting} className={AUTH_WIDE_BUTTON}>
           {google.redirecting ? <Spinner className="h-5 w-5" /> : <GoogleMark />}
           <span>המשך עם Google</span>
         </button>
-        {openInBrowser ? <OpenInBrowserButton handoff={openInBrowser} /> : null}
       </div>
       <ErrorAlert>{google.error}</ErrorAlert>
       <div className="flex items-center gap-3 text-xs text-espresso-light" aria-hidden="true">

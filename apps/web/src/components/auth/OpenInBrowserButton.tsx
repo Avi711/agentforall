@@ -2,11 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { BrowserHandoff, HandoffTarget } from "@/lib/auth/in-app-browser";
-import { AUTH_WIDE_BUTTON } from "./styles";
+import { FEATURED_TILE } from "@/app/app/action-buttons";
+import { ChevronEnd } from "@/app/app/Marks";
+import { ChromeMark } from "@/components/ChromeMark";
 
-const COPY: Record<HandoffTarget, { label: string; caption: string }> = {
-  "default-browser": { label: "פתיחה בדפדפן הרגיל", caption: "בספארי או בכרום חשבון הגוגל שלכם בדרך כלל כבר מחובר" },
-  chrome: { label: "פתיחה בכרום", caption: "בכרום חשבון הגוגל שלכם בדרך כלל כבר מחובר" },
+const LABEL: Record<HandoffTarget, string> = {
+  "default-browser": "המשך בדפדפן",
+  chrome: "המשך בכרום",
 };
 
 const HANDOFF_TIMEOUT_MS = 1500;
@@ -16,7 +18,7 @@ const PAUSED_SLACK_MS = 1000;
 export function OpenInBrowserButton({ handoff }: { handoff: BrowserHandoff }) {
   const [showHint, setShowHint] = useState(false);
   const stopWatching = useRef(() => {});
-  const { label, caption } = COPY[handoff.opens];
+  const label = LABEL[handoff.opens];
 
   useEffect(() => () => stopWatching.current(), []);
 
@@ -44,11 +46,25 @@ export function OpenInBrowserButton({ handoff }: { handoff: BrowserHandoff }) {
 
   return (
     <div>
-      <a href={handoff.href} onClick={watchHandoff} className={AUTH_WIDE_BUTTON}>
-        <OpenExternallyIcon />
-        <span>{label}</span>
+      <a href={handoff.href} onClick={watchHandoff} className={FEATURED_TILE}>
+        {handoff.opens === "chrome" ? (
+          <ChromeMark />
+        ) : (
+          <span aria-hidden className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-espresso">
+            <OpenExternallyIcon />
+          </span>
+        )}
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="text-[15px] font-semibold text-espresso">{label}</span>
+            <span className="rounded-full bg-espresso px-2 py-0.5 text-[11px] font-semibold text-cream">הכי מהיר</span>
+          </span>
+          <span className="text-[13px] text-espresso-light">בדרך כלל כבר מחוברים שם לגוגל</span>
+        </span>
+        <span className="text-espresso-light transition group-hover:text-espresso">
+          <ChevronEnd />
+        </span>
       </a>
-      <p className="mt-2 text-balance text-center text-[13px] text-espresso-light">{caption}</p>
       <div className="disclosure" data-open={showHint || undefined} aria-live="polite">
         <div>
           {showHint ? (

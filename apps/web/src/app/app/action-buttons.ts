@@ -20,3 +20,5 @@ export const TILE_BASE =
   "group flex h-full min-h-16 w-full items-center gap-3 rounded-2xl border px-4 py-3.5 text-start transition focus:outline-none focus-visible:ring-2 focus-visible:ring-terra";
 
 export const TILE_CLASS = `${TILE_BASE} border-sand-light bg-white hover:border-sand hover:bg-cream`;
+
+export const FEATURED_TILE = `${TILE_BASE} border-sand bg-cream shadow-[0_8px_22px_-14px_rgba(44,24,16,0.4)] hover:border-espresso/40 hover:bg-cream-dark`;

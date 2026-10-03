@@ -1,13 +1,11 @@
 "use client";
 
 import { useId, type ReactNode } from "react";
-import { TILE_BASE, TILE_CLASS } from "./action-buttons";
+import { FEATURED_TILE, TILE_CLASS } from "./action-buttons";
 import { ChevronEnd } from "./Marks";
 import { PendingLink } from "./Pending";
 
 type ChannelOfferTarget = { label: string } & ({ kind: "link"; href: string } | { kind: "button"; onClick: () => void });
-
-const FEATURED_TILE = `${TILE_BASE} border-sand bg-cream shadow-[0_8px_22px_-14px_rgba(44,24,16,0.4)] hover:border-espresso/40 hover:bg-cream-dark`;
 
 export function ChannelOfferTile({
   glyph,
